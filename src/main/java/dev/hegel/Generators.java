@@ -1,6 +1,8 @@
 package dev.hegel;
 
 import com.upokecenter.cbor.CBORObject;
+import java.math.BigInteger;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +70,67 @@ public final class Generators {
     return new BasicGenerator<>(schema, Cbor::asLong);
   }
 
+  /**
+   * Generates {@code byte} values across the full {@code byte} range.
+   *
+   * @return a byte generator
+   */
+  public static Generator<Byte> bytes() {
+    return bytes(Byte.MIN_VALUE, Byte.MAX_VALUE);
+  }
+
+  /**
+   * Generates {@code byte} values in {@code [min, max]} (inclusive). For arbitrary-length byte
+   * sequences use {@link #binary()} instead.
+   *
+   * @param min lower bound (inclusive)
+   * @param max upper bound (inclusive)
+   * @return a byte generator
+   */
+  public static Generator<Byte> bytes(byte min, byte max) {
+    return integers(min, max).map(i -> (byte) (int) i);
+  }
+
+  /**
+   * Generates {@code short} values across the full {@code short} range.
+   *
+   * @return a short generator
+   */
+  public static Generator<Short> shorts() {
+    return shorts(Short.MIN_VALUE, Short.MAX_VALUE);
+  }
+
+  /**
+   * Generates {@code short} values in {@code [min, max]} (inclusive).
+   *
+   * @param min lower bound (inclusive)
+   * @param max upper bound (inclusive)
+   * @return a short generator
+   */
+  public static Generator<Short> shorts(short min, short max) {
+    return integers(min, max).map(i -> (short) (int) i);
+  }
+
+  /**
+   * Generates {@link BigInteger} values in {@code [min, max]} (inclusive). Both bounds are
+   * required: the engine has no unbounded-integer schema.
+   *
+   * @param min lower bound (inclusive)
+   * @param max upper bound (inclusive)
+   * @return a big-integer generator
+   */
+  public static Generator<BigInteger> bigIntegers(BigInteger min, BigInteger max) {
+    if (min.compareTo(max) > 0) {
+      throw new IllegalArgumentException("bigIntegers: min (" + min + ") > max (" + max + ")");
+    }
+    CBORObject schema =
+        CBORObject.NewMap()
+            .Add("type", "integer")
+            .Add("min_value", CBORObject.FromObject(min))
+            .Add("max_value", CBORObject.FromObject(max));
+    return new BasicGenerator<>(schema, Cbor::asBigInteger);
+  }
+
   // --- floats ---
 
   /**
@@ -77,6 +140,43 @@ public final class Generators {
    */
   public static FloatGenerator floats() {
     return new FloatGenerator(null, null, null, null, false, false);
+  }
+
+  /**
+   * Generates single-precision {@code float} values across the default range. For finer control
+   * (bounds, NaN/infinity policy) configure {@link #floats()} and call {@link
+   * FloatGenerator#asFloat()}.
+   *
+   * @return a float generator
+   */
+  public static Generator<Float> floats32() {
+    return floats().asFloat();
+  }
+
+  // --- time & duration values ---
+
+  /**
+   * Generates non-negative {@link Duration} values up to {@code Long.MAX_VALUE} nanoseconds.
+   *
+   * @return a duration generator
+   */
+  public static Generator<Duration> durations() {
+    return durations(Duration.ZERO, Duration.ofNanos(Long.MAX_VALUE));
+  }
+
+  /**
+   * Generates {@link Duration} values in {@code [min, max]} (inclusive). The bounds must be
+   * representable in nanoseconds as a {@code long}.
+   *
+   * @param min lower bound (inclusive)
+   * @param max upper bound (inclusive)
+   * @return a duration generator
+   */
+  public static Generator<Duration> durations(Duration min, Duration max) {
+    if (min.compareTo(max) > 0) {
+      throw new IllegalArgumentException("durations: min (" + min + ") > max (" + max + ")");
+    }
+    return longs(min.toNanos(), max.toNanos()).map(Duration::ofNanos);
   }
 
   // --- booleans ---
@@ -414,13 +514,29 @@ public final class Generators {
   }
 
   /**
-   * Generates strings matching a (Python-compatible) regular expression.
+   * Generates strings <em>containing</em> a match for a (Python-compatible) regular expression.
    *
    * @param pattern the regex pattern
    * @return a regex generator
    */
   public static Generator<String> fromRegex(String pattern) {
-    CBORObject schema = CBORObject.NewMap().Add("type", "regex").Add("pattern", pattern);
+    return fromRegex(pattern, false);
+  }
+
+  /**
+   * Generates strings matching a (Python-compatible) regular expression.
+   *
+   * @param pattern the regex pattern
+   * @param fullmatch if {@code true}, the whole string must match; if {@code false}, the string
+   *     need only contain a match
+   * @return a regex generator
+   */
+  public static Generator<String> fromRegex(String pattern, boolean fullmatch) {
+    CBORObject schema =
+        CBORObject.NewMap()
+            .Add("type", "regex")
+            .Add("pattern", pattern)
+            .Add("fullmatch", fullmatch);
     return new BasicGenerator<>(schema, Cbor::asString);
   }
 

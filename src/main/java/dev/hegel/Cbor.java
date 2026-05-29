@@ -36,9 +36,17 @@ final class Cbor {
     return convert(CBORObject.DecodeFromBytes(bytes));
   }
 
+  /** CBOR tags for arbitrary-precision integers (RFC 8949 §3.4.3). */
+  private static final int TAG_POSITIVE_BIGNUM = 2;
+
+  private static final int TAG_NEGATIVE_BIGNUM = 3;
+
   static Object convert(CBORObject o) {
     if (o.HasMostOuterTag(TAG_WTF8)) {
       return new String(o.Untag().GetByteString(), StandardCharsets.UTF_8);
+    }
+    if (o.HasMostOuterTag(TAG_POSITIVE_BIGNUM) || o.HasMostOuterTag(TAG_NEGATIVE_BIGNUM)) {
+      return o.ToObject(BigInteger.class);
     }
     switch (o.getType()) {
       case Integer:

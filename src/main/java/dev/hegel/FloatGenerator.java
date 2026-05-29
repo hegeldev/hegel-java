@@ -16,6 +16,7 @@ public final class FloatGenerator implements Generator<Double>, MaybeBasic<Doubl
   private final Boolean allowInfinity;
   private final boolean excludeMin;
   private final boolean excludeMax;
+  private final int width;
 
   FloatGenerator(
       Double min,
@@ -24,6 +25,17 @@ public final class FloatGenerator implements Generator<Double>, MaybeBasic<Doubl
       Boolean allowInfinity,
       boolean excludeMin,
       boolean excludeMax) {
+    this(min, max, allowNan, allowInfinity, excludeMin, excludeMax, 64);
+  }
+
+  private FloatGenerator(
+      Double min,
+      Double max,
+      Boolean allowNan,
+      Boolean allowInfinity,
+      boolean excludeMin,
+      boolean excludeMax,
+      int width) {
     if (min != null && Double.isNaN(min)) {
       throw new IllegalArgumentException("floats: min must not be NaN");
     }
@@ -47,6 +59,7 @@ public final class FloatGenerator implements Generator<Double>, MaybeBasic<Doubl
     this.allowInfinity = allowInfinity;
     this.excludeMin = excludeMin;
     this.excludeMax = excludeMax;
+    this.width = width;
   }
 
   /**
@@ -111,7 +124,7 @@ public final class FloatGenerator implements Generator<Double>, MaybeBasic<Doubl
             .Add("exclude_max", excludeMax)
             .Add("allow_nan", an)
             .Add("allow_infinity", ai)
-            .Add("width", 64);
+            .Add("width", width);
     if (hasMin) {
       schema.Add("min_value", min);
     }
@@ -132,5 +145,18 @@ public final class FloatGenerator implements Generator<Double>, MaybeBasic<Doubl
   @Override
   public Double generate(TestCase tc) {
     return asBasic().generate(tc);
+  }
+
+  /**
+   * Produce single-precision {@code float} values instead of {@code double}, honouring all the
+   * bounds and special-value options configured so far. The engine generates values at 32-bit
+   * precision; the result is narrowed to {@code float}.
+   *
+   * @return a {@code float} generator
+   */
+  public Generator<Float> asFloat() {
+    FloatGenerator single =
+        new FloatGenerator(min, max, allowNan, allowInfinity, excludeMin, excludeMax, 32);
+    return single.map(d -> (float) (double) d);
   }
 }

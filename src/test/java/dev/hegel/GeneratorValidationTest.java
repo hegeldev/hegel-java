@@ -1,6 +1,8 @@
 package dev.hegel;
 
+import static dev.hegel.Generators.bigIntegers;
 import static dev.hegel.Generators.binary;
+import static dev.hegel.Generators.durations;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.integers;
 import static dev.hegel.Generators.lists;
@@ -20,6 +22,12 @@ class GeneratorValidationTest {
   void numericBounds() {
     assertThrows(IllegalArgumentException.class, () -> integers(5, 1));
     assertThrows(IllegalArgumentException.class, () -> longs(5, 1));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> bigIntegers(java.math.BigInteger.ONE, java.math.BigInteger.ZERO));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> durations(java.time.Duration.ofSeconds(2), java.time.Duration.ofSeconds(1)));
   }
 
   @Test

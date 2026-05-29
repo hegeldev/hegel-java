@@ -2,15 +2,19 @@ package dev.hegel;
 
 import static dev.hegel.Checks.assertAllExamples;
 import static dev.hegel.Checks.minimal;
+import static dev.hegel.Generators.bigIntegers;
 import static dev.hegel.Generators.binary;
 import static dev.hegel.Generators.booleans;
+import static dev.hegel.Generators.bytes;
 import static dev.hegel.Generators.characters;
 import static dev.hegel.Generators.compose;
 import static dev.hegel.Generators.dates;
 import static dev.hegel.Generators.datetimes;
 import static dev.hegel.Generators.domains;
+import static dev.hegel.Generators.durations;
 import static dev.hegel.Generators.emails;
 import static dev.hegel.Generators.floats;
+import static dev.hegel.Generators.floats32;
 import static dev.hegel.Generators.fromRegex;
 import static dev.hegel.Generators.integers;
 import static dev.hegel.Generators.ipv4;
@@ -31,6 +35,8 @@ import static dev.hegel.Generators.uuids;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.math.BigInteger;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -80,6 +86,32 @@ class ConformanceTest {
   void binaryRespectsLength() {
     assertAllExamples(binary(1, 4), b -> b.length >= 1 && b.length <= 4);
     assertAllExamples(binary(), b -> b != null);
+  }
+
+  @Test
+  void widerNumericsAndDurations() {
+    assertAllExamples(bytes(), b -> b >= Byte.MIN_VALUE && b <= Byte.MAX_VALUE);
+    assertAllExamples(bytes((byte) -3, (byte) 3), b -> b >= -3 && b <= 3);
+    assertAllExamples(Generators.shorts(), s -> s >= Short.MIN_VALUE && s <= Short.MAX_VALUE);
+    assertAllExamples(Generators.shorts((short) 0, (short) 10), s -> s >= 0 && s <= 10);
+    assertAllExamples(
+        bigIntegers(BigInteger.valueOf(-5), BigInteger.valueOf(5)),
+        v -> v.abs().compareTo(BigInteger.valueOf(5)) <= 0);
+    // Bounds beyond the long range round-trip through the CBOR bignum encoding (tags 2 and 3).
+    BigInteger big = BigInteger.TEN.pow(30);
+    assertAllExamples(bigIntegers(big, big), v -> v.equals(big));
+    assertAllExamples(bigIntegers(big.negate(), big.negate()), v -> v.equals(big.negate()));
+    assertAllExamples(floats32(), f -> true);
+    assertAllExamples(floats().min(0).max(1).asFloat(), f -> f >= 0f && f <= 1f);
+    assertAllExamples(durations(), d -> !d.isNegative());
+    assertAllExamples(
+        durations(Duration.ofSeconds(1), Duration.ofSeconds(2)),
+        d -> d.compareTo(Duration.ofSeconds(1)) >= 0 && d.compareTo(Duration.ofSeconds(2)) <= 0);
+  }
+
+  @Test
+  void regexFullmatch() {
+    assertAllExamples(fromRegex("[0-9]{3}", true), s -> s.matches("[0-9]{3}"));
   }
 
   @Test
