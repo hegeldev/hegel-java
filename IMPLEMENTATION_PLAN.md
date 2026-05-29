@@ -5,44 +5,37 @@ Bring hegel-java up to feature parity with hegel-rust / hegel-go, **except** the
 to libhegel separately).
 
 Baseline before this work: 130 tests, 100% instruction+branch coverage, conformance + lint + docs
-all green.
-
-Each item must keep `just check` (lint + 100% coverage + docs) and `just conformance` green, and is
-committed independently.
+all green. After: 151 tests, still 100% coverage and green.
 
 ## Self-contained generator additions
 
-- [ ] `fromRegex(pattern, fullmatch)` overload (schema `fullmatch` bool, default false)
-- [ ] Wider numerics: `bytes()`/`bytes(min,max)` → `Byte`, `shorts()`/`shorts(min,max)` → `Short`
-      (maps over `integers`), `bigIntegers(min,max)` → `BigInteger` (new basic gen; engine requires
-      both bounds)
-- [ ] `float32`: `FloatGenerator.asFloat()` → `Generator<Float>` (schema `width:32`), plus
-      `Generators.floats32()` convenience
-- [ ] `durations()` / `durations(min,max)` → `java.time.Duration` (client-side integer nanos)
-- [ ] Native `java.time`: `localDates()`, `localTimes()`, `localDateTimes()`, `instants()` (map the
-      engine's ISO format strings; verify exact layout against hegel-go) + derivation for
-      `LocalDate`/`LocalTime`/`LocalDateTime`/`Instant`/`Duration`
-- [ ] `arrays(componentType, element, length)` → `Generator<T[]>` (fixed length over list schema);
-      derivation for array-typed components (variable length)
-- [ ] `fixedDict(Map<String,Generator<?>>)` → `Generator<Map<String,Object>>` (basic via tuple
-      schema when all fields basic; composite otherwise)
-- [ ] `deferred(Supplier<Generator<T>>)` forward-reference / recursive combinator
+- [x] `fromRegex(pattern, fullmatch)` overload (schema `fullmatch` bool, default false)
+- [x] Wider numerics: `bytes()`/`bytes(min,max)`, `shorts()`/`shorts(min,max)`,
+      `bigIntegers(min,max)` (+ CBOR tag 2/3 bignum decoding)
+- [x] `float32`: `FloatGenerator.asFloat()` + `Generators.floats32()`
+- [x] `durations()` / `durations(min,max)`
+- [x] Native `java.time`: `localDates`/`localTimes`/`localDateTimes`/`instants` + derivation
+- [x] `arrays(componentType, element, length)` + array-component derivation (variable length)
+- [x] `fixedDict(Map<String,Generator<?>>)`
+- [x] `deferred(Supplier<Generator<T>>)` forward-reference / recursive combinator
 
 ## Derivation
 
-- [ ] Sealed-interface derivation: `oneOf` over `getPermittedSubclasses()`
+- [x] Sealed-interface derivation: `oneOf` over `getPermittedSubclasses()`
 
 ## Larger features
 
-- [ ] Tier-1 stateful testing: `StateMachine` interface (`rules()`/`invariants()`), `Rule`,
-      `Stateful.run(tc, machine)` — draw step count + rule index, apply in a STATEFUL span, recover
-      `assume` rejections, check invariants after each step (mirrors hegel-go `RunStateful`).
-      **Variables/value-pool deliberately out of scope** (blocked on engine pool API).
-- [ ] Explicit examples: wire up the inert `EXPLICIT` phase. `Settings.example(Map<String,Object>)`
-      replays the body with preset label→value draws (no engine), gated on the EXPLICIT phase, run
-      before the generation loop (mirrors Rust's `ExplicitTestCase`).
+- [x] Tier-1 stateful testing: `StateMachine`/`Rule`/`Stateful.run`
+      (Variables/value-pool deliberately out of scope — blocked on engine pool API)
+- [x] Explicit examples: `Settings.example(Map)` wired to the `EXPLICIT` phase
 
 ## Cross-cutting
 
-- [ ] README / docs updated for new generators and stateful/explicit features
-- [ ] CLAUDE.md architecture notes updated
+- [x] README / GETTING_STARTED updated for new generators and stateful/explicit features
+- [x] CLAUDE.md architecture notes updated
+
+## Out of scope (blocked on engine)
+
+- [ ] Stateful `Variables` value pools — needs `hegel_new_pool` / `hegel_pool_add` /
+      `hegel_pool_generate` exported over the C ABI (the engine's i128 ids are being narrowed to
+      usize first).

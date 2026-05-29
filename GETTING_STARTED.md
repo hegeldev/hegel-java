@@ -85,9 +85,11 @@ n = 50;
 ## Use generators
 
 `dev.hegel.Generators` provides a rich set of generators. Primitives include `integers`,
-`longs`, `floats`, `booleans`, `text`, and `binary`; collections include `lists`, `sets`, and
-`maps`; and there are `tuples`, `oneOf`, `optional`, `sampledFrom`, `just`, plus format
-generators (`emails`, `urls`, `ipv4`, `dates`, `fromRegex`, …).
+`longs`, `bytes`, `shorts`, `bigIntegers`, `floats`, `floats32`, `booleans`, `text`, and `binary`;
+collections include `lists`, `sets`, `maps`, `arrays`, and `fixedDict`; time values include
+`durations`, `localDates`, `localTimes`, `localDateTimes`, and `instants`; and there are `tuples`,
+`oneOf`, `optional`, `sampledFrom`, `just`, plus format generators (`emails`, `urls`, `ipv4`,
+`dates`, `uuids`, `fromRegex`, …).
 
 For example, generate a list of integers:
 
@@ -132,6 +134,13 @@ Build new generators from existing ones:
   Generator<int[]> pair = Generators.compose(tc -> new int[] {
       tc.draw(integers()), tc.draw(integers())
   });
+  ```
+- `deferred` lets a generator refer to itself, for recursive data:
+  ```java
+  Generator<Node>[] ref = new Generator[1];
+  Generator<Node> node = Generators.deferred(() -> ref[0]);
+  ref[0] = Generators.compose(tc ->
+      new Node(tc.draw(integers()), tc.draw(optional(node)).orElse(null)));
   ```
 
 ## Control functions
@@ -180,18 +189,76 @@ Hegel.with()
     .check(tc -> { /* ... */ });
 ```
 
+## Explicit examples
+
+Sometimes you want to make sure a specific input is always tried (a past regression, a known edge
+case). Register it with `example(Map.of(label, value))`; the body is replayed once per example with
+those values substituted for its labelled draws, before the generation phase. Examples require
+labelled draws:
+
+```java
+Hegel.with()
+    .example(Map.of("x", 0))
+    .example(Map.of("x", Integer.MAX_VALUE))
+    .check(tc -> {
+      int x = tc.draw(integers(), "x");
+      assertTrue(timesTwo(x) % 2 == 0);
+    });
+```
+
+Explicit examples run as part of the `EXPLICIT` phase (enabled by default); disable them by leaving
+`EXPLICIT` out of `phases(...)`.
+
+## Stateful (model-based) testing
+
+For testing a stateful system, describe it as a `StateMachine`: a list of `Rule`s (actions) and
+optional `invariants` that must hold after every step. Hegel draws a sequence of rules, applies
+them, and checks the invariants, shrinking any failing sequence to a minimal one. Hold the system's
+state in the machine instance, created fresh per test case:
+
+```java
+final class CounterModel implements StateMachine {
+  private int n = 0;
+
+  @Override public List<Rule> rules() {
+    return List.of(
+        Rule.of("increment", tc -> n++),
+        Rule.of("decrement", tc -> n--));
+  }
+
+  @Override public List<Rule> invariants() {
+    return List.of(Rule.of("inRange", tc -> assertTrue(Math.abs(n) < 1_000_000)));
+  }
+}
+
+@HegelTest
+void counter(TestCase tc) {
+  Stateful.run(tc, new CounterModel());
+}
+```
+
+A rule that calls `tc.assume(...)` to reject the current state is skipped and another is drawn.
+(Engine-managed value pools — `Variables` — are not yet supported.)
+
 ## Deriving generators from types
 
-Hegel can build a generator for a record, enum, or supported scalar/collection type by reflection:
+Hegel can build a generator for many types by reflection: scalars and their wrappers, `String`,
+`byte[]`, enums, records (recursively), arrays, `List`/`Set`/`Optional`/`Map`, `java.time` types
+(`LocalDate`, `LocalTime`, `LocalDateTime`, `Instant`, `Duration`), and sealed interfaces (a choice
+over their permitted subclasses):
 
 ```java
 record Point(int x, int y) {}
 enum Color { RED, GREEN, BLUE }
+sealed interface Shape permits Circle, Square {}
+record Circle(double radius) implements Shape {}
+record Square(int side) implements Shape {}
 
 @HegelTest
 void derived(TestCase tc) {
   Point p = tc.draw(Generators.forType(Point.class));
   Color c = tc.draw(Generators.forType(Color.class));
+  Shape s = tc.draw(Generators.forType(Shape.class)); // a Circle or a Square
   // Override a single component:
   Point bounded = tc.draw(Generators.records(Point.class).with("x", integers(0, 9)));
 }

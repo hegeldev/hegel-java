@@ -38,13 +38,24 @@ Layers (all in package `dev.hegel`):
 - **Generators** — `Generator<T>` (public) with `map`/`filter`/`flatMap`. `BasicGenerator`
   (schema + parse) and the `MaybeBasic` marker drive the basic/composite dual path: `map` on a
   basic generator composes the parse over the same schema (one engine call); otherwise it falls
-  back to a span. `Generators` is the factory facade. Collection/`oneOf`/tuple generators choose
-  the basic schema path when their elements are basic and the engine collection API otherwise.
+  back to a span. `Generators` is the factory facade. Collection/`oneOf`/tuple/`fixedDict`/`arrays`
+  generators choose the basic schema path when their elements are basic and the engine collection
+  API otherwise. `Gen.Deferred` (`deferred`) is a memoised, intentionally non-basic forward
+  reference for recursive generators. `bigIntegers` sends bignum bounds and `Cbor` decodes CBOR
+  tag 2/3 bignums; `durations`/`localDates`/`localTimes`/`localDateTimes`/`instants` map engine
+  integers/format strings to `java.time`.
 - **Public API** — `Hegel.check` / `Hegel.with`, `TestCase` (`draw`/`assume`/`note`/`target`),
   the `@HegelTest` annotation + `HegelTestExtension` (a JUnit 5 `TestTemplateInvocationContextProvider`
   that drives the engine loop and invokes the user method per case).
-- **Derivation** — `Derive` + `RecordGenerator` build generators from records, enums, scalars, and
-  generic `List`/`Set`/`Optional`/`Map` by reflection.
+- **Stateful testing** — `StateMachine` (`rules`/`invariants`) + `Rule` + `Stateful.run`, a
+  client-side driver over the span/`draw` primitives (no engine support; mirrors hegel-go's
+  `RunStateful`). Value pools (`Variables`) are deferred until libhegel exposes a pool C ABI.
+- **Explicit examples** — `Settings.example(Map)` registers label→value examples; `Runner` replays
+  the body against an explicit-mode `TestCase` (draws resolve by label, no engine) before the
+  generation loop, gated on the `EXPLICIT` phase.
+- **Derivation** — `Derive` + `RecordGenerator` build generators from records, enums, scalars,
+  arrays, sealed interfaces (a `oneOf` over permitted subclasses), `java.time` types, and generic
+  `List`/`Set`/`Optional`/`Map` by reflection.
 
 ## Coverage notes
 
