@@ -87,7 +87,7 @@ class StatefulTest {
 
   @Test
   void emptyRulesRejected() {
-    TestCase tc = new TestCase(null, false, System.err);
+    TestCase tc = new TestCase((DataSource) null, false, System.err);
     assertThrows(IllegalArgumentException.class, () -> Stateful.run(tc, List::of));
   }
 }

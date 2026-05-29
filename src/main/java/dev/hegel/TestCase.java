@@ -18,6 +18,7 @@ import java.util.Map;
  */
 public final class TestCase {
   private final DataSource source;
+  private final Map<String, Object> explicit; // non-null => explicit-example replay mode
   private final boolean reporting;
   private final PrintStream out;
   private int drawDepth;
@@ -25,6 +26,14 @@ public final class TestCase {
 
   TestCase(DataSource source, boolean reporting, PrintStream out) {
     this.source = source;
+    this.explicit = null;
+    this.reporting = reporting;
+    this.out = out;
+  }
+
+  TestCase(Map<String, Object> explicit, boolean reporting, PrintStream out) {
+    this.source = null;
+    this.explicit = explicit;
     this.reporting = reporting;
     this.out = out;
   }
@@ -49,6 +58,9 @@ public final class TestCase {
    * @return the generated value
    */
   public <T> T draw(Generator<T> generator, String label) {
+    if (explicit != null) {
+      return drawExplicit(label);
+    }
     boolean top = drawDepth == 0;
     drawDepth++;
     T value;
@@ -65,6 +77,18 @@ public final class TestCase {
       }
     }
     return value;
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> T drawExplicit(String label) {
+    if (label == null) {
+      throw new HegelException(
+          "explicit examples require labelled draws: use draw(generator, label)");
+    }
+    if (!explicit.containsKey(label)) {
+      throw new HegelException("explicit example has no value for label '" + label + "'");
+    }
+    return (T) explicit.get(label);
   }
 
   /**
@@ -106,7 +130,9 @@ public final class TestCase {
    * @param label groups observations for multi-objective search
    */
   public void target(double value, String label) {
-    source.target(value, label);
+    if (explicit == null) {
+      source.target(value, label);
+    }
   }
 
   // --- package-private primitives used by generators ---

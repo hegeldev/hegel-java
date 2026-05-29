@@ -8,7 +8,7 @@ package dev.hegel;
  * shrinking (useful to see an unshrunk failure quickly), and {@code phases()} runs nothing.
  */
 public enum Phase {
-  /** Run hard-coded explicit examples (reserved for future use). */
+  /** Run the explicit examples registered via {@link Settings#example} before generation. */
   EXPLICIT(Abi.PHASE_EXPLICIT),
   /** Replay counterexamples persisted from previous runs (requires a database + key). */
   REUSE(Abi.PHASE_REUSE),

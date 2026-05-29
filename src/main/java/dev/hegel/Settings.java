@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -25,7 +27,19 @@ public final class Settings {
 
   private static final Settings DEFAULTS =
       new Settings(
-          100, false, 0L, null, DbMode.DEFAULT, null, 0, null, Verbosity.NORMAL, false, null, null);
+          100,
+          false,
+          0L,
+          null,
+          DbMode.DEFAULT,
+          null,
+          0,
+          null,
+          Verbosity.NORMAL,
+          false,
+          null,
+          null,
+          List.of());
 
   final long testCases;
   final boolean hasSeed;
@@ -39,6 +53,7 @@ public final class Settings {
   final boolean singleTestCase;
   final Boolean reportMultipleFailures;
   final String name;
+  final List<Map<String, Object>> examples;
 
   private Settings(
       long testCases,
@@ -52,7 +67,8 @@ public final class Settings {
       Verbosity verbosity,
       boolean singleTestCase,
       Boolean reportMultipleFailures,
-      String name) {
+      String name,
+      List<Map<String, Object>> examples) {
     this.testCases = testCases;
     this.hasSeed = hasSeed;
     this.seed = seed;
@@ -65,6 +81,7 @@ public final class Settings {
     this.singleTestCase = singleTestCase;
     this.reportMultipleFailures = reportMultipleFailures;
     this.name = name;
+    this.examples = examples;
   }
 
   /**
@@ -88,7 +105,8 @@ public final class Settings {
       Verbosity verbosity,
       boolean singleTestCase,
       Boolean reportMultipleFailures,
-      String name) {
+      String name,
+      List<Map<String, Object>> examples) {
     return new Settings(
         testCases,
         hasSeed,
@@ -101,7 +119,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -126,7 +145,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -148,7 +168,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -170,7 +191,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -192,7 +214,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -213,7 +236,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -239,7 +263,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -266,7 +291,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -288,7 +314,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -310,7 +337,8 @@ public final class Settings {
         verbosity,
         single,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -332,7 +360,8 @@ public final class Settings {
         verbosity,
         singleTestCase,
         yes,
-        name);
+        name,
+        examples);
   }
 
   /**
@@ -354,7 +383,36 @@ public final class Settings {
         verbosity,
         singleTestCase,
         reportMultipleFailures,
-        name);
+        name,
+        examples);
+  }
+
+  /**
+   * Register an explicit example: a map of {@code draw} label to the value to supply for it. Before
+   * the generation phase (when the {@link Phase#EXPLICIT} phase is enabled, as it is by default),
+   * the body is run once per registered example with these values substituted for its labelled
+   * draws. The body must draw with labels (see {@link TestCase#draw(Generator, String)}).
+   *
+   * @param values the label-to-value map for one example
+   * @return a new settings instance
+   */
+  public Settings example(Map<String, Object> values) {
+    List<Map<String, Object>> next = new ArrayList<>(examples);
+    next.add(Map.copyOf(values));
+    return copy(
+        testCases,
+        hasSeed,
+        seed,
+        derandomize,
+        dbMode,
+        dbPath,
+        suppressMask,
+        phasesMask,
+        verbosity,
+        singleTestCase,
+        reportMultipleFailures,
+        name,
+        List.copyOf(next));
   }
 
   /**

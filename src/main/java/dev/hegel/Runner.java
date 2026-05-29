@@ -29,6 +29,9 @@ final class Runner {
       Consumer<TestCase> body,
       Map<String, String> env,
       PrintStream out) {
+    if (!settings.examples.isEmpty() && explicitPhaseOn(settings)) {
+      runExplicitExamples(settings, body);
+    }
     MemorySegment s = lib.settingsNew();
     try {
       applySettings(lib, s, settings, env);
@@ -107,6 +110,38 @@ final class Runner {
       throw new HegelException(
           "hegel_mark_complete failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
     }
+  }
+
+  static boolean explicitPhaseOn(Settings st) {
+    return st.phasesMask == null || (st.phasesMask & Abi.PHASE_EXPLICIT) != 0;
+  }
+
+  static void runExplicitExamples(Settings st, Consumer<TestCase> body) {
+    for (Map<String, Object> example : st.examples) {
+      TestCase tc = new TestCase(example, false, null);
+      try {
+        body.accept(tc);
+      } catch (AssumeRejected e) {
+        // The example failed a precondition; skip it like any rejected case.
+      } catch (HegelException e) {
+        throw e;
+      } catch (Throwable e) {
+        throw explicitFailure(example, e);
+      }
+    }
+  }
+
+  private static AssertionError explicitFailure(Map<String, Object> example, Throwable e) {
+    StringBuilder sb = new StringBuilder("Hegel explicit example failed:");
+    for (Map.Entry<String, Object> entry : example.entrySet()) {
+      sb.append("\n  ")
+          .append(entry.getKey())
+          .append(" = ")
+          .append(TestCase.repr(entry.getValue()))
+          .append(";");
+    }
+    sb.append("\n").append(describe(e));
+    return new AssertionError(sb.toString());
   }
 
   static void applySettings(Libhegel lib, MemorySegment s, Settings st, Map<String, String> env) {
