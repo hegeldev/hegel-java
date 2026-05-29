@@ -34,8 +34,10 @@ all green. After: 151 tests, still 100% coverage and green.
 - [x] README / GETTING_STARTED updated for new generators and stateful/explicit features
 - [x] CLAUDE.md architecture notes updated
 
-## Out of scope (blocked on engine)
+## Deferred — blocked on the engine (not in scope for this branch)
 
-- [ ] Stateful `Variables` value pools — needs `hegel_new_pool` / `hegel_pool_add` /
-      `hegel_pool_generate` exported over the C ABI (the engine's i128 ids are being narrowed to
-      usize first).
+Stateful `Variables` value pools are **intentionally not implemented**: they require
+`hegel_new_pool` / `hegel_pool_add` / `hegel_pool_generate` to be exported over the libhegel C ABI
+(the engine's i128 pool/variable ids are being narrowed to `usize` first). The Tier-1 stateful
+driver is built so this can be layered on once those hooks exist. This is the only known gap and it
+is external to hegel-java.
