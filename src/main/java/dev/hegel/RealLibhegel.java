@@ -43,6 +43,7 @@ final class RealLibhegel implements Libhegel {
   private final MethodHandle settingsReportMultipleFailures;
   private final MethodHandle settingsDatabase;
   private final MethodHandle settingsDatabaseKey;
+  private final MethodHandle settingsPhases;
   private final MethodHandle settingsSuppressHealthCheck;
   private final MethodHandle runStart;
   private final MethodHandle nextTestCase;
@@ -116,6 +117,8 @@ final class RealLibhegel implements Libhegel {
             lookup,
             "hegel_settings_database_key",
             FunctionDescriptor.ofVoid(ADDRESS, ADDRESS));
+    this.settingsPhases =
+        h(linker, lookup, "hegel_settings_phases", FunctionDescriptor.ofVoid(ADDRESS, JAVA_INT));
     this.settingsSuppressHealthCheck =
         h(
             linker,
@@ -292,6 +295,11 @@ final class RealLibhegel implements Libhegel {
   @Override
   public void settingsDatabaseKey(MemorySegment s, String key) {
     invoke(settingsDatabaseKey, s, cstr(settingsArenas.get(s.address()), key));
+  }
+
+  @Override
+  public void settingsPhases(MemorySegment s, int mask) {
+    invoke(settingsPhases, s, mask);
   }
 
   @Override

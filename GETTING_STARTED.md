@@ -168,8 +168,17 @@ void thorough(TestCase tc) { /* ... */ }
 ```
 
 Other settings include `derandomize`, `database`/`noDatabase`, `suppressHealthCheck`, `verbosity`,
-and `singleTestCase`. In CI (detected automatically) runs default to deterministic and the example
-database is disabled.
+`singleTestCase`, and `phases`. In CI (detected automatically) runs default to deterministic and the
+example database is disabled.
+
+`phases(Phase...)` enables only the listed phases (the default is all of `EXPLICIT`, `REUSE`,
+`GENERATE`, `TARGET`, `SHRINK`). For example, to see an unshrunk failure quickly:
+
+```java
+Hegel.with()
+    .phases(Phase.EXPLICIT, Phase.REUSE, Phase.GENERATE, Phase.TARGET) // everything but SHRINK
+    .check(tc -> { /* ... */ });
+```
 
 ## Deriving generators from types
 

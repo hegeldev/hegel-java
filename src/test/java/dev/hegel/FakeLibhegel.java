@@ -89,6 +89,13 @@ final class FakeLibhegel implements Libhegel {
   @Override
   public void settingsDatabaseKey(MemorySegment s, String key) {}
 
+  int phasesMask = -1; // captured; -1 means settingsPhases was never called
+
+  @Override
+  public void settingsPhases(MemorySegment s, int mask) {
+    phasesMask = mask;
+  }
+
   @Override
   public void settingsSuppressHealthCheck(MemorySegment s, int mask) {}
 

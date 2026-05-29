@@ -75,6 +75,34 @@ class SettingsHealthDatabaseTest {
   }
 
   @Test
+  void phasesCanDisableGeneration() {
+    // With no GENERATE phase the engine produces no test cases, so the body never runs and a
+    // would-be-failing property passes vacuously.
+    Hegel.with()
+        .phases()
+        .noDatabase()
+        .check(
+            tc -> {
+              throw new AssertionError("body should not run when generation is disabled");
+            });
+  }
+
+  @Test
+  void phasesGenerateWithoutShrinkStillFindsFailures() {
+    assertThrows(
+        AssertionError.class,
+        () ->
+            Hegel.with()
+                .phases(Phase.GENERATE)
+                .noDatabase()
+                .check(
+                    tc -> {
+                      tc.draw(integers());
+                      throw new AssertionError("boom");
+                    }));
+  }
+
+  @Test
   void databasePersistsAndReplaysFailures(@TempDir Path dbDir) throws Exception {
     Consumer<TestCase> failing =
         tc -> {

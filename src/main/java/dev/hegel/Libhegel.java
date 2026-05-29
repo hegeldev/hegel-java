@@ -41,6 +41,8 @@ interface Libhegel {
 
   void settingsDatabaseKey(MemorySegment s, String key);
 
+  void settingsPhases(MemorySegment s, int mask);
+
   void settingsSuppressHealthCheck(MemorySegment s, int mask);
 
   // Run lifecycle.

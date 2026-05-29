@@ -167,11 +167,13 @@ class RunnerTest {
             .reportMultipleFailures(false)
             .singleTestCase(true)
             .suppressHealthCheck(HealthCheck.FILTER_TOO_MUCH, HealthCheck.TOO_SLOW)
+            .phases(Phase.GENERATE, Phase.SHRINK)
             .verbosity(Verbosity.VERBOSE)
             .database("/tmp/hegel-db")
             .name("myTest");
     run(fake, s, tc -> {});
     assertEquals(List.of(Abi.STATUS_VALID), fake.markedStatuses);
+    assertEquals(Phase.GENERATE.bit | Phase.SHRINK.bit, fake.phasesMask);
   }
 
   @Test

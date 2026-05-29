@@ -126,6 +126,9 @@ final class Runner {
     if (st.suppressMask != 0) {
       lib.settingsSuppressHealthCheck(s, st.suppressMask);
     }
+    if (st.phasesMask != null) {
+      lib.settingsPhases(s, st.phasesMask);
+    }
 
     boolean dbEnabled;
     switch (st.dbMode) {

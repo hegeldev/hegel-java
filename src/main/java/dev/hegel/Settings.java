@@ -25,7 +25,7 @@ public final class Settings {
 
   private static final Settings DEFAULTS =
       new Settings(
-          100, false, 0L, null, DbMode.DEFAULT, null, 0, Verbosity.NORMAL, false, null, null);
+          100, false, 0L, null, DbMode.DEFAULT, null, 0, null, Verbosity.NORMAL, false, null, null);
 
   final long testCases;
   final boolean hasSeed;
@@ -34,6 +34,7 @@ public final class Settings {
   final DbMode dbMode;
   final String dbPath;
   final int suppressMask;
+  final Integer phasesMask; // null = leave the engine default (all phases)
   final Verbosity verbosity;
   final boolean singleTestCase;
   final Boolean reportMultipleFailures;
@@ -47,6 +48,7 @@ public final class Settings {
       DbMode dbMode,
       String dbPath,
       int suppressMask,
+      Integer phasesMask,
       Verbosity verbosity,
       boolean singleTestCase,
       Boolean reportMultipleFailures,
@@ -58,13 +60,18 @@ public final class Settings {
     this.dbMode = dbMode;
     this.dbPath = dbPath;
     this.suppressMask = suppressMask;
+    this.phasesMask = phasesMask;
     this.verbosity = verbosity;
     this.singleTestCase = singleTestCase;
     this.reportMultipleFailures = reportMultipleFailures;
     this.name = name;
   }
 
-  /** The default settings (100 test cases, all phases, normal verbosity). */
+  /**
+   * The default settings (100 test cases, all phases, normal verbosity).
+   *
+   * @return the default settings
+   */
   public static Settings defaults() {
     return DEFAULTS;
   }
@@ -77,6 +84,7 @@ public final class Settings {
       DbMode dbMode,
       String dbPath,
       int suppressMask,
+      Integer phasesMask,
       Verbosity verbosity,
       boolean singleTestCase,
       Boolean reportMultipleFailures,
@@ -89,6 +97,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -113,6 +122,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -134,6 +144,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -155,6 +166,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -176,6 +188,7 @@ public final class Settings {
         DbMode.CUSTOM,
         path,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -196,6 +209,7 @@ public final class Settings {
         DbMode.DISABLED,
         null,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -221,6 +235,34 @@ public final class Settings {
         dbMode,
         dbPath,
         mask,
+        phasesMask,
+        verbosity,
+        singleTestCase,
+        reportMultipleFailures,
+        name);
+  }
+
+  /**
+   * Enable only the listed phases; phases not listed are disabled. The default is all phases. With
+   * an empty argument list the run does nothing.
+   *
+   * @param phases the phases to enable
+   * @return a new settings instance
+   */
+  public Settings phases(Phase... phases) {
+    int mask = 0;
+    for (Phase p : phases) {
+      mask |= p.bit;
+    }
+    return copy(
+        testCases,
+        hasSeed,
+        seed,
+        derandomize,
+        dbMode,
+        dbPath,
+        suppressMask,
+        mask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -242,6 +284,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,
@@ -263,6 +306,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         single,
         reportMultipleFailures,
@@ -284,6 +328,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         yes,
@@ -305,6 +350,7 @@ public final class Settings {
         dbMode,
         dbPath,
         suppressMask,
+        phasesMask,
         verbosity,
         singleTestCase,
         reportMultipleFailures,

@@ -19,6 +19,7 @@ Initial release.
 - Control functions `assume`, `note`, and `target`; minimal-counterexample reporting with labelled
   draws.
 - Settings: test-case count, seed, derandomize, verbosity, single-test-case mode, health-check
-  suppression, and the persistent example database (with CI-aware defaults).
+  suppression, run phases (`phases(Phase...)` — e.g. disable shrinking), and the persistent example
+  database (with CI-aware defaults).
 - Type-directed derivation via `Generators.forType` and `Generators.records` for records, enums,
   scalars, and `List`/`Set`/`Optional`/`Map`.
