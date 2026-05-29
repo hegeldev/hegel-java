@@ -1,0 +1,220 @@
+package dev.hegel;
+
+import java.io.PrintStream;
+import java.lang.foreign.MemorySegment;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+
+/**
+ * Drives a single property test: builds the settings handle, runs the engine's case loop, maps each
+ * case outcome to a status, and turns the aggregated result into a pass or an {@link
+ * AssertionError} carrying the minimal falsifying example.
+ */
+final class Runner {
+  private Runner() {}
+
+  /** Stable origin for a failure surfaced after the body returned (none today; reserved). */
+  private static final String[] INFRA_PREFIXES = {
+    "dev.hegel.", "org.junit.", "org.opentest4j.", "jdk.", "java.", "sun.", "com.sun."
+  };
+
+  static void run(Settings settings, Consumer<TestCase> body) {
+    run(Engine.get(), settings, body, System.getenv(), System.err);
+  }
+
+  static void run(
+      Libhegel lib,
+      Settings settings,
+      Consumer<TestCase> body,
+      Map<String, String> env,
+      PrintStream out) {
+    MemorySegment s = lib.settingsNew();
+    try {
+      applySettings(lib, s, settings, env);
+      MemorySegment run = lib.runStart(s);
+      if (isNull(run)) {
+        throw backend(lib, "hegel_run_start");
+      }
+      try {
+        Map<String, String> panicByOrigin = new HashMap<>();
+        loop(lib, run, settings, body, out, panicByOrigin);
+        MemorySegment result = lib.runResult(run);
+        if (isNull(result)) {
+          throw backend(lib, "hegel_run_result");
+        }
+        if (!lib.resultPassed(result)) {
+          throw buildFailure(lib, result, panicByOrigin);
+        }
+      } finally {
+        lib.runFree(run);
+      }
+    } finally {
+      lib.settingsFree(s);
+    }
+  }
+
+  private static void loop(
+      Libhegel lib,
+      MemorySegment run,
+      Settings settings,
+      Consumer<TestCase> body,
+      PrintStream out,
+      Map<String, String> panicByOrigin) {
+    while (true) {
+      MemorySegment tc = lib.nextTestCase(run);
+      if (isNull(tc)) {
+        String msg = lib.lastErrorMessage();
+        if (msg != null && !msg.isEmpty()) {
+          throw new HegelException("hegel_next_test_case failed: " + msg);
+        }
+        return;
+      }
+      driveOneCase(lib, tc, settings.singleTestCase, body, out, panicByOrigin);
+    }
+  }
+
+  static void driveOneCase(
+      Libhegel lib,
+      MemorySegment tc,
+      boolean single,
+      Consumer<TestCase> body,
+      PrintStream out,
+      Map<String, String> panicByOrigin) {
+    boolean reporting = single || lib.isFinalReplay(tc);
+    TestCase testCase = new TestCase(new LiveDataSource(lib, tc), reporting, out);
+    int status;
+    String origin = null;
+    try {
+      body.accept(testCase);
+      status = Abi.STATUS_VALID;
+    } catch (AssumeRejected e) {
+      status = Abi.STATUS_INVALID;
+    } catch (StopTest e) {
+      status = Abi.STATUS_OVERRUN;
+    } catch (HegelException e) {
+      throw e;
+    } catch (Throwable e) {
+      status = Abi.STATUS_INTERESTING;
+      origin = originOf(e);
+      panicByOrigin.putIfAbsent(origin, describe(e));
+      if (reporting) {
+        out.println(describe(e));
+      }
+    }
+    int rc = lib.markComplete(tc, status, origin);
+    if (rc != Abi.OK) {
+      throw new HegelException(
+          "hegel_mark_complete failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
+    }
+  }
+
+  static void applySettings(Libhegel lib, MemorySegment s, Settings st, Map<String, String> env) {
+    boolean ci = Settings.isCi(env);
+    lib.settingsTestCases(s, st.testCases);
+    lib.settingsVerbosity(s, st.verbosity.code);
+    if (st.hasSeed) {
+      lib.settingsSeed(s, st.seed, true);
+    }
+    lib.settingsDerandomize(s, st.derandomize != null ? st.derandomize : ci);
+    if (st.reportMultipleFailures != null) {
+      lib.settingsReportMultipleFailures(s, st.reportMultipleFailures);
+    }
+    if (st.singleTestCase) {
+      lib.settingsMode(s, Abi.MODE_SINGLE_TEST_CASE);
+    }
+    if (st.suppressMask != 0) {
+      lib.settingsSuppressHealthCheck(s, st.suppressMask);
+    }
+
+    boolean dbEnabled;
+    switch (st.dbMode) {
+      case DISABLED:
+        lib.settingsDatabase(s, "");
+        dbEnabled = false;
+        break;
+      case CUSTOM:
+        lib.settingsDatabase(s, st.dbPath);
+        dbEnabled = true;
+        break;
+      default:
+        if (ci) {
+          lib.settingsDatabase(s, "");
+          dbEnabled = false;
+        } else {
+          dbEnabled = true;
+        }
+        break;
+    }
+    if (dbEnabled && st.name != null) {
+      lib.settingsDatabaseKey(s, databaseKey(st.name));
+    }
+  }
+
+  static String databaseKey(String name) {
+    return name;
+  }
+
+  static String originOf(Throwable e) {
+    for (StackTraceElement f : e.getStackTrace()) {
+      if (isUserFrame(f.getClassName())) {
+        return e.getClass().getSimpleName() + " at " + f.getFileName() + ":" + f.getLineNumber();
+      }
+    }
+    return e.getClass().getName();
+  }
+
+  private static boolean isUserFrame(String className) {
+    for (String prefix : INFRA_PREFIXES) {
+      if (className.startsWith(prefix)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static String describe(Throwable e) {
+    String msg = e.getMessage();
+    return msg == null ? e.getClass().getName() : e.getClass().getName() + ": " + msg;
+  }
+
+  static AssertionError buildFailure(
+      Libhegel lib, MemorySegment result, Map<String, String> panicByOrigin) {
+    long n = lib.resultFailureCount(result);
+    StringBuilder sb = new StringBuilder();
+    sb.append("Hegel found ")
+        .append(n)
+        .append(n == 1 ? " failing example:" : " distinct failing examples:");
+    for (long i = 0; i < n; i++) {
+      MemorySegment failure = lib.resultFailure(result, i);
+      String diagnostic = lib.failureDiagnostic(failure);
+      String panic = lib.failurePanicMessage(failure);
+      String origin = lib.failureOrigin(failure);
+      sb.append("\n\n").append(pick(diagnostic, panic));
+      String captured = panicByOrigin.get(origin);
+      if (captured != null) {
+        sb.append("\n  ").append(captured);
+      }
+    }
+    return new AssertionError(sb.toString());
+  }
+
+  private static String pick(String diagnostic, String panic) {
+    if (diagnostic != null && !diagnostic.isEmpty()) {
+      return diagnostic;
+    }
+    return nullToEmpty(panic);
+  }
+
+  private static String nullToEmpty(String s) {
+    return s == null ? "" : s;
+  }
+
+  private static HegelException backend(Libhegel lib, String op) {
+    return new HegelException(op + " failed: " + nullToEmpty(lib.lastErrorMessage()));
+  }
+
+  static boolean isNull(MemorySegment seg) {
+    return seg == null || seg.address() == 0;
+  }
+}
