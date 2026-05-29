@@ -114,6 +114,17 @@ class ConformanceTest {
     assertAllExamples(fromRegex("[0-9]{3}", true), s -> s.matches("[0-9]{3}"));
   }
 
+  record Node(int value, Node next) {}
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void deferredRecursive() {
+    Generator<Node>[] ref = new Generator[1];
+    Generator<Node> node = Generators.deferred(() -> ref[0]);
+    ref[0] = compose(tc -> new Node(tc.draw(integers(0, 9)), tc.draw(optional(node)).orElse(null)));
+    assertAllExamples(node, n -> n.value() >= 0 && n.value() <= 9);
+  }
+
   @Test
   void fixedDictBasicAndNonBasic() {
     java.util.LinkedHashMap<String, Generator<?>> basic = new java.util.LinkedHashMap<>();

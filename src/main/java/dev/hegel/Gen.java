@@ -2,10 +2,33 @@ package dev.hegel;
 
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /** Internal combinator implementations and the basicness dispatch helper. */
 final class Gen {
   private Gen() {}
+
+  /**
+   * A lazily-resolved generator for forward references and recursion. It is intentionally not
+   * {@link MaybeBasic}: resolving eagerly would recurse forever, so a deferred generator always
+   * takes the composite path.
+   */
+  static final class Deferred<T> implements Generator<T> {
+    private final Supplier<Generator<T>> supplier;
+    private Generator<T> resolved;
+
+    Deferred(Supplier<Generator<T>> supplier) {
+      this.supplier = supplier;
+    }
+
+    @Override
+    public T generate(TestCase tc) {
+      if (resolved == null) {
+        resolved = supplier.get();
+      }
+      return resolved.generate(tc);
+    }
+  }
 
   /** Conventional retry limit before a filter rejects the whole case. */
   static final int FILTER_RETRIES = 3;

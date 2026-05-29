@@ -474,6 +474,24 @@ public final class Generators {
     return new FixedDictGenerator(fields);
   }
 
+  /**
+   * A lazily-resolved generator, for forward references and recursive definitions. The supplier is
+   * invoked on first use and the result memoised:
+   *
+   * <pre>{@code
+   * Generator<Node>[] ref = new Generator[1];
+   * Generator<Node> node = deferred(() -> ref[0]);
+   * ref[0] = compose(tc -> new Node(tc.draw(integers()), tc.draw(optional(node)).orElse(null)));
+   * }</pre>
+   *
+   * @param supplier supplies the underlying generator on first draw
+   * @param <T> the value type
+   * @return a deferred generator
+   */
+  public static <T> Generator<T> deferred(java.util.function.Supplier<Generator<T>> supplier) {
+    return new Gen.Deferred<>(supplier);
+  }
+
   // --- imperative composition ---
 
   /**
