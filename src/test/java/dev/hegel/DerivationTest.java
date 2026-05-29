@@ -108,6 +108,20 @@ class DerivationTest {
     assertThrows(HegelException.class, () -> Derive.fromType(weird));
   }
 
+  record Temporal(
+      java.time.LocalDate d,
+      java.time.LocalTime t,
+      java.time.LocalDateTime dt,
+      java.time.Instant i,
+      java.time.Duration dur) {}
+
+  @Test
+  void derivesJavaTimeTypes() {
+    assertAllExamples(
+        forType(Temporal.class),
+        v -> v.d() != null && v.t() != null && v.dt() != null && v.i() != null && v.dur() != null);
+  }
+
   @Test
   void pointGeneratesIntegers() {
     Generator<Point> g = forType(Point.class);

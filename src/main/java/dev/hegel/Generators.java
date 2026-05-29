@@ -3,6 +3,11 @@ package dev.hegel;
 import com.upokecenter.cbor.CBORObject;
 import java.math.BigInteger;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -177,6 +182,42 @@ public final class Generators {
       throw new IllegalArgumentException("durations: min (" + min + ") > max (" + max + ")");
     }
     return longs(min.toNanos(), max.toNanos()).map(Duration::ofNanos);
+  }
+
+  /**
+   * Generates {@link LocalDate} values (the engine's {@code YYYY-MM-DD} dates parsed natively).
+   *
+   * @return a local-date generator
+   */
+  public static Generator<LocalDate> localDates() {
+    return dates().map(LocalDate::parse);
+  }
+
+  /**
+   * Generates {@link LocalTime} values (the engine's time-of-day strings parsed natively).
+   *
+   * @return a local-time generator
+   */
+  public static Generator<LocalTime> localTimes() {
+    return times().map(LocalTime::parse);
+  }
+
+  /**
+   * Generates {@link LocalDateTime} values (the engine's ISO-8601 datetimes parsed natively).
+   *
+   * @return a local-date-time generator
+   */
+  public static Generator<LocalDateTime> localDateTimes() {
+    return datetimes().map(LocalDateTime::parse);
+  }
+
+  /**
+   * Generates {@link Instant} values by interpreting the engine's ISO-8601 datetimes as UTC.
+   *
+   * @return an instant generator
+   */
+  public static Generator<Instant> instants() {
+    return datetimes().map(s -> LocalDateTime.parse(s).toInstant(ZoneOffset.UTC));
   }
 
   // --- booleans ---

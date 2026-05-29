@@ -115,6 +115,14 @@ class ConformanceTest {
   }
 
   @Test
+  void nativeTimeTypes() {
+    assertAllExamples(Generators.localDates(), d -> d != null);
+    assertAllExamples(Generators.localTimes(), t -> t.getHour() >= 0 && t.getHour() <= 23);
+    assertAllExamples(Generators.localDateTimes(), dt -> dt.getMonthValue() >= 1);
+    assertAllExamples(Generators.instants(), i -> i != null);
+  }
+
+  @Test
   void selectionGenerators() {
     assertAllExamples(just("k"), v -> v.equals("k"));
     assertAllExamples(sampledFrom("a", "b", "c"), v -> List.of("a", "b", "c").contains(v));

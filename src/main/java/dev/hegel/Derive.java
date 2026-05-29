@@ -62,6 +62,21 @@ final class Derive {
     if (cls == byte[].class) {
       return Generators.binary();
     }
+    if (cls == java.time.Duration.class) {
+      return Generators.durations();
+    }
+    if (cls == java.time.LocalDate.class) {
+      return Generators.localDates();
+    }
+    if (cls == java.time.LocalTime.class) {
+      return Generators.localTimes();
+    }
+    if (cls == java.time.LocalDateTime.class) {
+      return Generators.localDateTimes();
+    }
+    if (cls == java.time.Instant.class) {
+      return Generators.instants();
+    }
     return null;
   }
 
