@@ -22,7 +22,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.release>25</maven.compiler.release>
+    <maven.compiler.release>22</maven.compiler.release>
     <junit.version>5.11.4</junit.version>
     <cbor.version>4.5.6</cbor.version>
     <jacoco.version>0.8.14</jacoco.version>
