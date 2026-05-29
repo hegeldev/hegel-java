@@ -1,0 +1,46 @@
+name: Check release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: {}
+
+jobs:
+  check-release:
+    name: check release
+    if: "!contains(github.event.pull_request.labels.*.name, 'skip release')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require RELEASE.md when source changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if git diff --name-only "$BASE_SHA"...HEAD | grep -qE '^(src/|pom\.xml$)'; then
+            if [ ! -f RELEASE.md ]; then
+              echo "::error::Source files changed but RELEASE.md is missing." \
+                   "Add one (see RELEASE-sample.md) or label the PR 'skip release'."
+              exit 1
+            fi
+            first=$(head -n1 RELEASE.md)
+            case "$first" in
+              "RELEASE_TYPE: major"|"RELEASE_TYPE: minor"|"RELEASE_TYPE: patch") ;;
+              *)
+                echo "::error::RELEASE.md must start with" \
+                     "'RELEASE_TYPE: major|minor|patch', got: $first"
+                exit 1
+                ;;
+            esac
+            echo "RELEASE.md present and well-formed ($first)."
+          else
+            echo "No source changes; RELEASE.md not required."
+          fi
