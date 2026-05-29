@@ -1,3 +1,7 @@
 target/
 .hegel/
 *.class
+
+# implementation-loop hook state files
+.claude/review-complete
+.claude/improvements-complete
