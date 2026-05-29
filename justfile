@@ -27,8 +27,9 @@ test:
     mvn -B test
 
 # Run tests with 100% coverage enforcement. Fails if coverage < 100%.
+# Uses a clean build so stale jacoco.exec data cannot mask a coverage regression.
 coverage:
-    mvn -B verify
+    mvn -B clean verify
 
 # Run the conformance/behaviour suite against the real libhegel.
 conformance:

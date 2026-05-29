@@ -108,6 +108,12 @@
             <goals>
               <goal>prepare-agent</goal>
             </goals>
+            <!-- Overwrite (don't append to) jacoco.exec each run so a removed test cannot be
+                 masked by stale coverage from a previous, non-clean run. Safe because surefire
+                 uses a single forked JVM (forkCount=1). -->
+            <configuration>
+              <append>false</append>
+            </configuration>
           </execution>
           <execution>
             <id>report</id>
