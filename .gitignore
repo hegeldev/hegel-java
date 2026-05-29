@@ -5,3 +5,9 @@ target/
 # implementation-loop hook state files
 .claude/review-complete
 .claude/improvements-complete
+
+# editor / IDE / OS artifacts
+.idea/
+*.iml
+.vscode/
+.DS_Store
