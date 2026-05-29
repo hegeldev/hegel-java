@@ -463,6 +463,17 @@ public final class Generators {
             });
   }
 
+  /**
+   * Generates a map with a fixed set of keys, each value drawn from its own generator. Iteration
+   * order follows {@code fields}; pass a {@link java.util.LinkedHashMap} for a predictable order.
+   *
+   * @param fields the generator for each key
+   * @return a fixed-key map generator
+   */
+  public static Generator<Map<String, Object>> fixedDict(Map<String, Generator<?>> fields) {
+    return new FixedDictGenerator(fields);
+  }
+
   // --- imperative composition ---
 
   /**

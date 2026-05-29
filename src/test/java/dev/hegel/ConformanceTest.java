@@ -115,6 +115,21 @@ class ConformanceTest {
   }
 
   @Test
+  void fixedDictBasicAndNonBasic() {
+    java.util.LinkedHashMap<String, Generator<?>> basic = new java.util.LinkedHashMap<>();
+    basic.put("a", integers(0, 9));
+    basic.put("b", booleans());
+    assertAllExamples(
+        Generators.fixedDict(basic),
+        m -> m.keySet().equals(java.util.Set.of("a", "b")) && (Integer) m.get("a") <= 9);
+    // A non-basic field forces the composite path.
+    java.util.LinkedHashMap<String, Generator<?>> mixed = new java.util.LinkedHashMap<>();
+    mixed.put("x", integers(0, 20).filter(v -> v % 2 == 0));
+    mixed.put("y", text().maxSize(2));
+    assertAllExamples(Generators.fixedDict(mixed), m -> (Integer) m.get("x") % 2 == 0);
+  }
+
+  @Test
   void arraysFixedLength() {
     assertAllExamples(
         Generators.arrays(Integer.class, integers(0, 9), 3),
