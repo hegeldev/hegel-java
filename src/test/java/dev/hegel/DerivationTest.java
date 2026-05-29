@@ -122,6 +122,17 @@ class DerivationTest {
         v -> v.d() != null && v.t() != null && v.dt() != null && v.i() != null && v.dur() != null);
   }
 
+  sealed interface Shape permits Circle, Rectangle {}
+
+  record Circle(double radius) implements Shape {}
+
+  record Rectangle(int w, int h) implements Shape {}
+
+  @Test
+  void derivesSealedInterface() {
+    assertAllExamples(forType(Shape.class), s -> s instanceof Circle || s instanceof Rectangle);
+  }
+
   record WithArrays(int[] nums, String[] words) {}
 
   @Test

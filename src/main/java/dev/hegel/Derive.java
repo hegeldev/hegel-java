@@ -37,6 +37,9 @@ final class Derive {
     if (cls.isRecord()) {
       return (Generator<Object>) (Generator<?>) new RecordGenerator<>(cls, java.util.Map.of());
     }
+    if (cls.isSealed()) {
+      return sealed(cls);
+    }
     if (cls.isArray()) {
       return arrayOf(cls.getComponentType());
     }
@@ -44,6 +47,17 @@ final class Derive {
         "No default generator for "
             + cls.getName()
             + "; supply one explicitly (e.g. a Generator parameter or a record override).");
+  }
+
+  /** Derive a sum type as a choice over its permitted subclasses. */
+  private static Generator<Object> sealed(Class<?> cls) {
+    Class<?>[] subs = cls.getPermittedSubclasses();
+    @SuppressWarnings("unchecked")
+    Generator<Object>[] options = new Generator[subs.length];
+    for (int i = 0; i < subs.length; i++) {
+      options[i] = fromType(subs[i]);
+    }
+    return Generators.oneOf(options);
   }
 
   @SuppressWarnings("unchecked")
