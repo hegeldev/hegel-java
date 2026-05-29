@@ -37,10 +37,29 @@ final class Derive {
     if (cls.isRecord()) {
       return (Generator<Object>) (Generator<?>) new RecordGenerator<>(cls, java.util.Map.of());
     }
+    if (cls.isArray()) {
+      return arrayOf(cls.getComponentType());
+    }
     throw new HegelException(
         "No default generator for "
             + cls.getName()
             + "; supply one explicitly (e.g. a Generator parameter or a record override).");
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Generator<Object> arrayOf(Class<?> componentType) {
+    Generator<Object> elem = fromType(componentType);
+    return (Generator<Object>)
+        (Generator<?>)
+            Generators.lists(elem)
+                .map(
+                    list -> {
+                      Object arr = java.lang.reflect.Array.newInstance(componentType, list.size());
+                      for (int i = 0; i < list.size(); i++) {
+                        java.lang.reflect.Array.set(arr, i, list.get(i));
+                      }
+                      return arr;
+                    });
   }
 
   private static Generator<?> scalar(Class<?> cls) {

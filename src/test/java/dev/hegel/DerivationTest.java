@@ -122,6 +122,18 @@ class DerivationTest {
         v -> v.d() != null && v.t() != null && v.dt() != null && v.i() != null && v.dur() != null);
   }
 
+  record WithArrays(int[] nums, String[] words) {}
+
+  @Test
+  void derivesArrayComponents() {
+    assertAllExamples(
+        forType(WithArrays.class),
+        v ->
+            v.nums() != null
+                && v.words() != null
+                && java.util.Arrays.stream(v.words()).allMatch(w -> w != null));
+  }
+
   @Test
   void pointGeneratesIntegers() {
     Generator<Point> g = forType(Point.class);

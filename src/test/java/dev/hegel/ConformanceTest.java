@@ -115,6 +115,13 @@ class ConformanceTest {
   }
 
   @Test
+  void arraysFixedLength() {
+    assertAllExamples(
+        Generators.arrays(Integer.class, integers(0, 9), 3),
+        a -> a.length == 3 && java.util.Arrays.stream(a).allMatch(x -> x >= 0 && x <= 9));
+  }
+
+  @Test
   void nativeTimeTypes() {
     assertAllExamples(Generators.localDates(), d -> d != null);
     assertAllExamples(Generators.localTimes(), t -> t.getHour() >= 0 && t.getHour() <= 23);

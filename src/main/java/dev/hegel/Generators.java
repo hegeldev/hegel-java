@@ -441,6 +441,28 @@ public final class Generators {
     return new TupleGenerator(List.of(generators));
   }
 
+  /**
+   * Generates fixed-length arrays of {@code componentType} with elements drawn from {@code
+   * element}. For variable-length arrays of reference types use {@link #lists(Generator)} and
+   * convert, or derive them via {@link #forType(Class)}.
+   *
+   * @param componentType the array component type (a reference type)
+   * @param element the element generator
+   * @param length the exact array length
+   * @param <T> the component type
+   * @return a fixed-length array generator
+   */
+  public static <T> Generator<T[]> arrays(
+      Class<T> componentType, Generator<T> element, int length) {
+    return lists(element, length, length)
+        .map(
+            list -> {
+              @SuppressWarnings("unchecked")
+              T[] arr = (T[]) java.lang.reflect.Array.newInstance(componentType, list.size());
+              return list.toArray(arr);
+            });
+  }
+
   // --- imperative composition ---
 
   /**
