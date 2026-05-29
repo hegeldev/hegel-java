@@ -9,9 +9,10 @@ authoritative references are hegel-rust (the engine and canonical client) and it
 
 ## Build & test
 
-- `just coverage` / `mvn verify` — runs all tests and enforces **100% instruction + branch
-  coverage** (JaCoCo). This is a hard gate.
-- `just conformance` — the behaviour suite against the real engine.
+- `just coverage` / `mvn clean verify` — runs all tests and enforces **100% instruction + branch
+  coverage** (JaCoCo). This is a hard gate. `GeneratorBehaviourTest` exercises every generator and
+  combinator against the real engine (there is no separate "conformance" suite — with the in-process
+  libhegel engine there is no protocol to conform to, only ordinary integration testing).
 - `just build-libhegel` — build `libhegel` from a sibling `../hegel-rust` checkout.
 - `just format` / `just lint` — google-java-format via fmt-maven-plugin.
 

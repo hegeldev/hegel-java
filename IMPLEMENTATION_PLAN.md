@@ -4,8 +4,10 @@ Bring hegel-java up to feature parity with hegel-rust / hegel-go, **except** the
 `Variables`/value-pool feature, which is blocked on a new engine C ABI (the pool API is being added
 to libhegel separately).
 
-Baseline before this work: 130 tests, 100% instruction+branch coverage, conformance + lint + docs
-all green. After: 151 tests, still 100% coverage and green.
+Baseline before this work: 130 tests, 100% instruction+branch coverage, lint + docs all green.
+After: still 100% coverage and green. (The generator integration tests formerly framed as a
+"conformance" suite have been folded into `GeneratorBehaviourTest`; the in-process libhegel engine
+has no protocol to conform to, so there is no separate conformance concept.)
 
 ## Self-contained generator additions
 

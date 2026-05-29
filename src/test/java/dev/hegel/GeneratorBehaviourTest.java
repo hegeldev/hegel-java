@@ -40,8 +40,8 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Behaviour/conformance suite exercising every generator against the real engine. */
-class ConformanceTest {
+/** Integration tests exercising every generator and combinator against the real engine. */
+class GeneratorBehaviourTest {
   @Test
   void booleansAreBooleans() {
     assertAllExamples(booleans(), b -> b != null);

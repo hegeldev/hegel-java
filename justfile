@@ -31,10 +31,6 @@ test:
 coverage:
     mvn -B clean verify
 
-# Run the conformance/behaviour suite against the real libhegel.
-conformance:
-    mvn -B test -Dtest='*Conformance*,*Behaviour*'
-
 # Auto-format sources.
 format:
     mvn -B com.spotify.fmt:fmt-maven-plugin:format

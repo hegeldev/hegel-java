@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
-/** Hegel-testing-Hegel utilities used by the conformance suite. */
+/** Hegel-testing-Hegel utilities used by the generator behaviour tests. */
 final class Checks {
   private Checks() {}
 
