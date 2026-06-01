@@ -6,9 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
@@ -19,19 +17,17 @@ import java.util.function.Function;
  * <p>Resolution order (first hit wins):
  *
  * <ol>
- *   <li>{@code $HEGEL_LIBHEGEL_PATH} — explicit override, no fallback.
- *   <li>a sibling {@code ../hegel-rust/target/{release,debug}/} build (for local engine work).
+ *   <li>{@code $HEGEL_LIBHEGEL_PATH} — explicit override (e.g. for local engine development).
  *   <li>the native library bundled in the jar for this OS/arch, unpacked to a per-user cache.
  * </ol>
  *
  * <p>The bundled libraries are placed on the classpath at build time (see {@code
  * scripts/fetch_natives.py}), so the shipped jar is self-contained and nothing is downloaded at
- * runtime. Configuration (environment, cache dir, project root, OS/arch, and the resource opener)
- * is injected so the resolver is fully unit-testable, including the unpack path.
+ * runtime. Configuration (environment, cache dir, OS/arch, and the resource opener) is injected so
+ * the resolver is fully unit-testable, including the unpack path.
  */
 final class LibraryLoader {
   private final Map<String, String> env;
-  private final Path projectRoot;
   private final Path cacheDir;
   private final String goos;
   private final String goarch;
@@ -39,13 +35,11 @@ final class LibraryLoader {
 
   LibraryLoader(
       Map<String, String> env,
-      Path projectRoot,
       Path cacheDir,
       String goos,
       String goarch,
       Function<String, InputStream> resources) {
     this.env = env;
-    this.projectRoot = projectRoot;
     this.cacheDir = cacheDir;
     this.goos = goos;
     this.goarch = goarch;
@@ -57,12 +51,9 @@ final class LibraryLoader {
    */
   static LibraryLoader fromEnvironment() {
     Map<String, String> env = System.getenv();
-    Path root = detectProjectRoot(Path.of(System.getProperty("user.dir")));
-    Path cache = defaultCacheDir(env);
     return new LibraryLoader(
         env,
-        root,
-        cache,
+        defaultCacheDir(env),
         mapOs(System.getProperty("os.name")),
         mapArch(System.getProperty("os.arch")),
         LibraryLoader::classpathResource);
@@ -71,17 +62,6 @@ final class LibraryLoader {
   /** Open a bundled native library resource from the classpath, or {@code null} if absent. */
   static InputStream classpathResource(String name) {
     return LibraryLoader.class.getClassLoader().getResourceAsStream(name);
-  }
-
-  static Path detectProjectRoot(Path start) {
-    Path dir = start.toAbsolutePath();
-    while (dir != null) {
-      if (Files.exists(dir.resolve("pom.xml")) || Files.exists(dir.resolve(".git"))) {
-        return dir;
-      }
-      dir = dir.getParent();
-    }
-    return start.toAbsolutePath();
   }
 
   static Path defaultCacheDir(Map<String, String> env) {
@@ -139,14 +119,6 @@ final class LibraryLoader {
           "HEGEL_LIBHEGEL_PATH is set to '" + override + "' but no file exists there.");
     }
 
-    List<String> tried = new ArrayList<>();
-    for (Path candidate : siblingCandidates()) {
-      if (Files.isRegularFile(candidate)) {
-        return candidate;
-      }
-      tried.add(candidate.toString());
-    }
-
     Path bundled = unpackBundled();
     if (bundled != null) {
       return bundled;
@@ -159,20 +131,7 @@ final class LibraryLoader {
             + goarch
             + " (resource "
             + resourcePath()
-            + "), and no sibling build at "
-            + String.join(", ", tried)
-            + ". Set HEGEL_LIBHEGEL_PATH to a prebuilt library.");
-  }
-
-  List<Path> siblingCandidates() {
-    Path siblingRust = projectRoot.getParent() == null ? null : projectRoot.getParent();
-    List<Path> out = new ArrayList<>();
-    if (siblingRust != null) {
-      Path base = siblingRust.resolve("hegel-rust").resolve("target");
-      out.add(base.resolve("release").resolve("libhegel." + libExt()));
-      out.add(base.resolve("debug").resolve("libhegel." + libExt()));
-    }
-    return out;
+            + "). Set HEGEL_LIBHEGEL_PATH to a prebuilt library.");
   }
 
   /**

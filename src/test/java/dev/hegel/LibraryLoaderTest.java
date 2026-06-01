@@ -20,6 +20,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class LibraryLoaderTest {
 
+  private static final String LINUX_RESOURCE = "native/linux-amd64/libhegel.so";
+
   /** A resource opener that bundles a single library at {@code path}; everything else is absent. */
   private static Function<String, InputStream> bundled(String path, byte[] bytes) {
     return name -> name.equals(path) ? new ByteArrayInputStream(bytes) : null;
@@ -28,8 +30,8 @@ class LibraryLoaderTest {
   private static final Function<String, InputStream> NO_RESOURCES = name -> null;
 
   private LibraryLoader loader(
-      Map<String, String> env, Path root, Path cache, Function<String, InputStream> resources) {
-    return new LibraryLoader(new HashMap<>(env), root, cache, "linux", "amd64", resources);
+      Map<String, String> env, Path cache, Function<String, InputStream> resources) {
+    return new LibraryLoader(new HashMap<>(env), cache, "linux", "amd64", resources);
   }
 
   @Test
@@ -57,30 +59,6 @@ class LibraryLoaderTest {
   }
 
   @Test
-  void detectProjectRoot(@TempDir Path dir) throws IOException {
-    Path nested = dir.resolve("a/b");
-    Files.createDirectories(nested);
-    Files.writeString(dir.resolve("pom.xml"), "<project/>");
-    assertEquals(dir, LibraryLoader.detectProjectRoot(nested));
-  }
-
-  @Test
-  void detectProjectRootFallsBackToStart(@TempDir Path dir) {
-    // No pom.xml or .git up the chain inside the temp dir; but parents may have one,
-    // so just assert it returns some existing ancestor directory.
-    Path root = LibraryLoader.detectProjectRoot(dir);
-    assertTrue(root.toString().length() > 0);
-  }
-
-  @Test
-  void detectProjectRootViaGitDirectory(@TempDir Path dir) throws IOException {
-    Path nested = dir.resolve("x");
-    Files.createDirectories(nested);
-    Files.createDirectories(dir.resolve(".git"));
-    assertEquals(dir, LibraryLoader.detectProjectRoot(nested));
-  }
-
-  @Test
   void cacheDirAndHomeEdgeCases() {
     assertEquals(
         Path.of("/h/.cache/hegel-java/libhegel"),
@@ -102,9 +80,9 @@ class LibraryLoaderTest {
 
   @Test
   void resourcePathPerPlatform(@TempDir Path dir) {
-    LibraryLoader linux = loader(Map.of(), dir, dir, NO_RESOURCES);
+    LibraryLoader linux = loader(Map.of(), dir, NO_RESOURCES);
     assertEquals("native/linux-amd64/libhegel.so", linux.resourcePath());
-    LibraryLoader darwin = new LibraryLoader(Map.of(), dir, dir, "darwin", "arm64", NO_RESOURCES);
+    LibraryLoader darwin = new LibraryLoader(Map.of(), dir, "darwin", "arm64", NO_RESOURCES);
     assertEquals("native/darwin-arm64/libhegel.dylib", darwin.resourcePath());
   }
 
@@ -117,61 +95,29 @@ class LibraryLoaderTest {
   void overrideUsesExactPath(@TempDir Path dir) throws IOException {
     Path lib = dir.resolve("custom.so");
     Files.writeString(lib, "x");
-    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", lib.toString()), dir, dir, NO_RESOURCES);
+    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", lib.toString()), dir, NO_RESOURCES);
     assertEquals(lib, l.resolve());
   }
 
   @Test
   void overrideMissingFails(@TempDir Path dir) {
-    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", "/no/such.so"), dir, dir, NO_RESOURCES);
+    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", "/no/such.so"), dir, NO_RESOURCES);
     assertThrows(HegelException.class, l::resolve);
   }
 
   @Test
-  void emptyOverrideFallsThroughToSibling(@TempDir Path dir) throws IOException {
-    Path root = dir.resolve("hegel-java");
-    Path release = dir.resolve("hegel-rust/target/release");
-    Files.createDirectories(release);
-    Path lib = release.resolve("libhegel.so");
-    Files.writeString(lib, "x");
-    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", ""), root, dir, NO_RESOURCES);
-    assertEquals(lib, l.resolve()); // empty override is treated as unset
-  }
-
-  @Test
-  void siblingCheckoutIsFound(@TempDir Path dir) throws IOException {
-    Path root = dir.resolve("hegel-java");
-    Path release = dir.resolve("hegel-rust/target/release");
-    Files.createDirectories(release);
-    Files.createDirectories(root);
-    Path lib = release.resolve("libhegel.so");
-    Files.writeString(lib, "x");
-    LibraryLoader l = loader(Map.of(), root, dir, NO_RESOURCES);
-    assertEquals(lib, l.resolve());
-  }
-
-  @Test
-  void siblingCandidatesEmptyWhenNoParent() {
-    LibraryLoader l = loader(Map.of(), Path.of("/"), Path.of("/tmp/c"), NO_RESOURCES);
-    assertTrue(l.siblingCandidates().isEmpty());
-  }
-
-  @Test
-  void darwinUsesDylibExtension(@TempDir Path dir) {
+  void emptyOverrideFallsThroughToBundled(@TempDir Path dir) throws IOException {
+    byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
     LibraryLoader l =
-        new LibraryLoader(
-            Map.of(), dir.resolve("hegel-java"), dir, "darwin", "arm64", NO_RESOURCES);
-    assertTrue(l.siblingCandidates().get(0).toString().endsWith("libhegel.dylib"));
-    assertEquals("native/darwin-arm64/libhegel.dylib", l.resourcePath());
+        loader(Map.of("HEGEL_LIBHEGEL_PATH", ""), dir, bundled(LINUX_RESOURCE, payload));
+    Path got = l.resolve(); // empty override is treated as unset
+    assertArrayEquals(payload, Files.readAllBytes(got));
   }
 
   @Test
   void bundledNativeUnpackedAndCached(@TempDir Path dir) throws IOException {
     byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
-    Path root = dir.resolve("hegel-java"); // no sibling hegel-rust under dir
-    Path cache = dir.resolve("cache");
-    LibraryLoader l =
-        loader(Map.of(), root, cache, bundled("native/linux-amd64/libhegel.so", payload));
+    LibraryLoader l = loader(Map.of(), dir.resolve("cache"), bundled(LINUX_RESOURCE, payload));
 
     Path got = l.resolve();
     assertTrue(Files.exists(got));
@@ -183,12 +129,7 @@ class LibraryLoaderTest {
   @Test
   void staleCacheEntryIsReplaced(@TempDir Path dir) throws IOException {
     byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
-    LibraryLoader l =
-        loader(
-            Map.of(),
-            dir.resolve("hegel-java"),
-            dir.resolve("cache"),
-            bundled("native/linux-amd64/libhegel.so", payload));
+    LibraryLoader l = loader(Map.of(), dir.resolve("cache"), bundled(LINUX_RESOURCE, payload));
     Path got = l.resolve();
     // A cached file of a different length is treated as stale and rewritten.
     Files.writeString(got, "short");
@@ -199,10 +140,9 @@ class LibraryLoaderTest {
 
   @Test
   void noBundledNativeFails(@TempDir Path dir) {
-    LibraryLoader l =
-        loader(Map.of(), dir.resolve("hegel-java"), dir.resolve("cache"), NO_RESOURCES);
+    LibraryLoader l = loader(Map.of(), dir.resolve("cache"), NO_RESOURCES);
     HegelException e = assertThrows(HegelException.class, l::resolve);
-    assertTrue(e.getMessage().contains("native/linux-amd64/libhegel.so"));
+    assertTrue(e.getMessage().contains(LINUX_RESOURCE));
   }
 
   @Test
@@ -215,7 +155,7 @@ class LibraryLoaderTest {
                 throw new IOException("boom");
               }
             };
-    LibraryLoader l = loader(Map.of(), dir.resolve("hegel-java"), dir.resolve("cache"), failing);
+    LibraryLoader l = loader(Map.of(), dir.resolve("cache"), failing);
     HegelException e = assertThrows(HegelException.class, l::resolve);
     assertTrue(e.getMessage().contains("Failed to read bundled libhegel"));
   }
@@ -225,12 +165,7 @@ class LibraryLoaderTest {
     byte[] payload = "x".getBytes(StandardCharsets.UTF_8);
     Path cacheAsFile = dir.resolve("cache-is-a-file");
     Files.writeString(cacheAsFile, "occupied"); // createDirectories under it must fail
-    LibraryLoader l =
-        loader(
-            Map.of(),
-            dir.resolve("hegel-java"),
-            cacheAsFile,
-            bundled("native/linux-amd64/libhegel.so", payload));
+    LibraryLoader l = loader(Map.of(), cacheAsFile, bundled(LINUX_RESOURCE, payload));
     HegelException e = assertThrows(HegelException.class, l::resolve);
     assertTrue(e.getMessage().contains("Failed to unpack bundled libhegel"));
   }

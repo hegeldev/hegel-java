@@ -12,10 +12,11 @@ build-libhegel:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -d ../hegel-rust ]; then
-        echo "Building libhegel from ../hegel-rust ..."
         (cd ../hegel-rust && cargo build --release -p hegeltest-c)
+        echo "Built libhegel. Point the tests at it with:"
+        echo "  export HEGEL_LIBHEGEL_PATH=$(cd ../hegel-rust && pwd)/target/release/libhegel.\$(uname -s | grep -qi darwin && echo dylib || echo so)"
     else
-        echo "No sibling ../hegel-rust checkout; the auto-downloader will fetch libhegel."
+        echo "No sibling ../hegel-rust checkout; tests use the libhegel bundled in the jar."
     fi
 
 # Compile the library and tests.

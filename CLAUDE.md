@@ -15,12 +15,13 @@ authoritative references are hegel-rust (the engine and canonical client) and it
 - `just build-libhegel` — build `libhegel` from a sibling `../hegel-rust` checkout.
 - `just format` / `just lint` — google-java-format via fmt-maven-plugin.
 
-Tests resolve `libhegel` from `$HEGEL_LIBHEGEL_PATH`, then a sibling `../hegel-rust/target/{release,debug}/`,
-then the native bundled in the jar for the host OS/arch (unpacked to a per-user cache). The bundled
-libraries are fetched at build time by `scripts/fetch_natives.py` (wired into Maven's
-`generate-resources` phase), which discovers whatever shared objects the pinned `<libhegel.version>`
-release publishes — no runtime download. Build the sibling first for local engine work, or pass
-`-Dhegel.natives.skip=true` to skip the fetch when offline.
+`libhegel` resolves from `$HEGEL_LIBHEGEL_PATH`, else the native bundled in the jar for the host
+OS/arch (unpacked to a per-user cache). The bundled libraries are fetched at build time by
+`scripts/fetch_natives.py` (wired into Maven's `generate-resources` phase), which discovers whatever
+shared objects the pinned `<libhegel.version>` release publishes — no runtime download. For local
+engine work, build a `libhegel` and point `$HEGEL_LIBHEGEL_PATH` at it (`just build-libhegel` builds
+one from a sibling `../hegel-rust`), or pass `-Dhegel.natives.skip=true` to skip the build-time
+fetch.
 
 ## Architecture
 
