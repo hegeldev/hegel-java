@@ -49,9 +49,9 @@ class SettingsHealthDatabaseTest {
 
   @Test
   void filterTooMuchHealthCheckFiresAndCanBeSuppressed() {
-    AssertionError err =
+    HealthCheckFailure err =
         assertThrows(
-            AssertionError.class,
+            HealthCheckFailure.class,
             () ->
                 Hegel.with()
                     .noDatabase()

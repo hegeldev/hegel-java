@@ -6,8 +6,9 @@ package dev.hegel;
  * <p>A failing property is reported as an {@link AssertionError} carrying the minimal falsifying
  * example, so it integrates with test frameworks; this exception signals that something went wrong
  * with Hegel itself (a malformed generator, a missing engine library, an internal backend error).
+ * {@link HealthCheckFailure} is a subtype, raised when a {@link HealthCheck} aborts the run.
  */
-public final class HegelException extends RuntimeException {
+public class HegelException extends RuntimeException {
   HegelException(String message) {
     super(message);
   }

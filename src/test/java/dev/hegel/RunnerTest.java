@@ -148,6 +148,24 @@ class RunnerTest {
   }
 
   @Test
+  void healthCheckFailureThrowsHealthCheckFailure() {
+    // A health check is reported as a failure whose panic message is "FailedHealthCheck: ..." and
+    // surfaces as HealthCheckFailure regardless of mode — not the body's exception, not a plain
+    // AssertionError.
+    FakeLibhegel fake = new FakeLibhegel();
+    fake.passed = false;
+    FakeLibhegel.Failure f = new FakeLibhegel.Failure();
+    f.panic = "FailedHealthCheck: FilterTooMuch — too many rejected";
+    f.diagnostic = "FailedHealthCheck: FilterTooMuch — too many rejected\n";
+    fake.failures.add(f);
+    HealthCheckFailure e =
+        assertThrows(
+            HealthCheckFailure.class,
+            () -> run(fake, Settings.defaults().noDatabase(), tc -> tc.assume(false)));
+    assertTrue(e.getMessage().contains("FilterTooMuch"), e.getMessage());
+  }
+
+  @Test
   void failureWithoutAFinalReplayFallsBackToEngineDiagnostic() {
     // In default mode a failure the engine surfaces without a final replay (e.g. a health-check
     // abort, or the replay phase disabled) has no Java exception to rethrow, so the report uses

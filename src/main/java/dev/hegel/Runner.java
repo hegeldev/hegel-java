@@ -67,19 +67,27 @@ final class Runner {
           throw backend(lib, "hegel_run_result");
         }
         if (!lib.resultPassed(result)) {
+          MemorySegment failure = lib.resultFailure(result, 0);
+          // A health check aborts the run regardless of mode; the engine reports it as a failure
+          // whose panic message is "FailedHealthCheck: ..." (the documented ABI format, stable
+          // across engine versions). Surface it as its own type, not a property failure.
+          String panic = lib.failurePanicMessage(failure);
+          if (panic != null && panic.startsWith("FailedHealthCheck")) {
+            throw new HealthCheckFailure(failureMessage(lib, failure));
+          }
           if (panicByOrigin != null) {
             throw buildFailure(lib, result, panicByOrigin);
           }
-          // Rethrow the body's own exception (always unchecked, from Consumer#accept) directly.
+          // Otherwise rethrow the body's own exception (always unchecked, from Consumer#accept).
           if (captured[0] instanceof Error error) {
             throw error;
           }
           if (captured[0] instanceof RuntimeException re) {
             throw re;
           }
-          // No Java exception to rethrow (a health-check abort, or a failure found with the
-          // replay phase disabled): surface the engine's own diagnostic.
-          throw fallbackFailure(lib, result);
+          // A failure with no Java exception to rethrow (e.g. the replay phase was disabled):
+          // surface the engine's own diagnostic.
+          throw new AssertionError(failureMessage(lib, failure));
         }
       } finally {
         lib.runFree(run);
@@ -239,11 +247,9 @@ final class Runner {
     return new AssertionError(sb.toString());
   }
 
-  /** Failure with no Java exception to rethrow: surface the engine's own diagnostic. */
-  private static AssertionError fallbackFailure(Libhegel lib, MemorySegment result) {
-    MemorySegment failure = lib.resultFailure(result, 0);
-    return new AssertionError(
-        pick(lib.failureDiagnostic(failure), lib.failurePanicMessage(failure)));
+  /** The engine's own message for a failure (full diagnostic, or panic message as a fallback). */
+  private static String failureMessage(Libhegel lib, MemorySegment failure) {
+    return pick(lib.failureDiagnostic(failure), lib.failurePanicMessage(failure));
   }
 
   private static String pick(String diagnostic, String panic) {

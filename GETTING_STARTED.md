@@ -172,6 +172,11 @@ Other settings include `derandomize`, `database`/`noDatabase`, `suppressHealthCh
 `singleTestCase`, and `phases`. In CI (detected automatically) runs default to deterministic and the
 example database is disabled.
 
+If a health check fires — for example, your generators reject almost every input, or produce data
+that is too large or too slow — Hegel aborts the run and throws `HealthCheckFailure` (distinct from a
+property's own failure). Pass the relevant `HealthCheck` to `suppressHealthCheck` if the behaviour is
+intentional.
+
 `phases(Phase...)` enables only the listed phases (the default is all of `EXPLICIT`, `REUSE`,
 `GENERATE`, `TARGET`, `SHRINK`). For example, to see an unshrunk failure quickly:
 
