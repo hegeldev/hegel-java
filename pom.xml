@@ -26,6 +26,13 @@
     <junit.version>5.11.4</junit.version>
     <cbor.version>4.5.6</cbor.version>
     <jacoco.version>0.8.14</jacoco.version>
+    <!-- The libhegel/hegel-rust release whose native libraries are bundled into the jar.
+         Bump this and rebuild to ship a new engine; scripts/fetch_natives.py fetches the
+         matching shared objects at build time. -->
+    <libhegel.version>0.14.14</libhegel.version>
+    <!-- Set -Dhegel.natives.skip=true to skip the build-time native fetch (e.g. offline
+         local dev against a sibling hegel-rust checkout). -->
+    <hegel.natives.skip>false</hegel.natives.skip>
     <!-- FFM requires native access; surefire passes this to the test JVM. -->
     <hegel.argLine>--enable-native-access=ALL-UNNAMED</hegel.argLine>
   </properties>
@@ -68,6 +75,35 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.13.0</version>
+      </plugin>
+
+      <!-- Stage the libhegel native libraries into the build output so they are packaged
+           into the jar as classpath resources (native/<os>-<arch>/libhegel.<ext>). Runs
+           before compile/test so the test JVM resolves the bundled native too. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>fetch-natives</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <skip>${hegel.natives.skip}</skip>
+              <executable>python3</executable>
+              <arguments>
+                <argument>${project.basedir}/scripts/fetch_natives.py</argument>
+                <argument>--version</argument>
+                <argument>${libhegel.version}</argument>
+                <argument>--out</argument>
+                <argument>${project.build.outputDirectory}</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
 
       <plugin>

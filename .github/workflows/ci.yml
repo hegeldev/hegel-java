@@ -65,25 +65,12 @@ jobs:
         with:
           tools: just
 
-      - name: Stage libhegel from the matching GitHub release
-        id: libhegel
-        run: |
-          set -euo pipefail
-          VERSION=$(grep -oP 'LIBHEGEL_VERSION = "\K[^"]+' src/main/java/dev/hegel/LibraryLoader.java)
-          ASSET="libhegel-linux-amd64.so"
-          URL_BASE="https://github.com/hegeldev/hegel-rust/releases/download/v${VERSION}"
-          DEST="${RUNNER_TEMP}/libhegel.so"
-          curl -fsSL -o "${DEST}" "${URL_BASE}/${ASSET}"
-          curl -fsSL -o "${DEST}.sha256" "${URL_BASE}/${ASSET}.sha256"
-          # The published .sha256 file is GNU sha256sum style: <digest>  <asset>.
-          WANT=$(awk '{print $1}' "${DEST}.sha256")
-          echo "${WANT}  ${DEST}" | sha256sum -c -
-          echo "path=${DEST}" >> "$GITHUB_OUTPUT"
-
       - name: Test with 100% coverage enforcement
         env:
-          # An explicit path disables the auto-downloader; the engine runs in-process.
-          HEGEL_LIBHEGEL_PATH: ${{ steps.libhegel.outputs.path }}
+          # scripts/fetch_natives.py (run in Maven's generate-resources phase) bundles the
+          # matching libhegel natives into the jar; the host's native is then unpacked and run
+          # in-process. The token only raises the GitHub API rate limit for asset discovery.
+          GITHUB_TOKEN: ${{ github.token }}
         run: just coverage
 
   docs:

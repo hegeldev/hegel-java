@@ -2,11 +2,6 @@ package dev.hegel;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -16,31 +11,31 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
- * Resolves the path to libhegel, downloading it if necessary.
+ * Resolves the path to libhegel.
  *
  * <p>Resolution order (first hit wins):
  *
  * <ol>
  *   <li>{@code $HEGEL_LIBHEGEL_PATH} — explicit override, no fallback.
- *   <li>a sibling {@code ../hegel-rust/target/{release,debug}/} build.
- *   <li>an auto-downloaded release artifact cached per version.
+ *   <li>a sibling {@code ../hegel-rust/target/{release,debug}/} build (for local engine work).
+ *   <li>the native library bundled in the jar for this OS/arch, unpacked to a per-user cache.
  * </ol>
  *
- * <p>Configuration (environment, cache dir, project root, download base URL) is injected so the
- * resolver is fully unit-testable, including the download and checksum paths.
+ * <p>The bundled libraries are placed on the classpath at build time (see {@code
+ * scripts/fetch_natives.py}), so the shipped jar is self-contained and nothing is downloaded at
+ * runtime. Configuration (environment, cache dir, project root, OS/arch, and the resource opener)
+ * is injected so the resolver is fully unit-testable, including the unpack path.
  */
 final class LibraryLoader {
-  /** The libhegel version these bindings target; used for the download URL and cache key. */
-  static final String LIBHEGEL_VERSION = "0.14.14";
-
   private final Map<String, String> env;
   private final Path projectRoot;
   private final Path cacheDir;
   private final String goos;
   private final String goarch;
-  private final HttpClient httpClient;
+  private final Function<String, InputStream> resources;
 
   LibraryLoader(
       Map<String, String> env,
@@ -48,16 +43,18 @@ final class LibraryLoader {
       Path cacheDir,
       String goos,
       String goarch,
-      HttpClient httpClient) {
+      Function<String, InputStream> resources) {
     this.env = env;
     this.projectRoot = projectRoot;
     this.cacheDir = cacheDir;
     this.goos = goos;
     this.goarch = goarch;
-    this.httpClient = httpClient;
+    this.resources = resources;
   }
 
-  /** Build a loader from the real process environment. */
+  /**
+   * Build a loader from the real process environment, reading bundled natives off the classpath.
+   */
   static LibraryLoader fromEnvironment() {
     Map<String, String> env = System.getenv();
     Path root = detectProjectRoot(Path.of(System.getProperty("user.dir")));
@@ -68,7 +65,12 @@ final class LibraryLoader {
         cache,
         mapOs(System.getProperty("os.name")),
         mapArch(System.getProperty("os.arch")),
-        HttpClient.newHttpClient());
+        LibraryLoader::classpathResource);
+  }
+
+  /** Open a bundled native library resource from the classpath, or {@code null} if absent. */
+  static InputStream classpathResource(String name) {
+    return LibraryLoader.class.getClassLoader().getResourceAsStream(name);
   }
 
   static Path detectProjectRoot(Path start) {
@@ -120,7 +122,12 @@ final class LibraryLoader {
     return goos.equals("darwin") ? "dylib" : "so";
   }
 
-  /** Resolve a usable libhegel path, downloading if necessary. */
+  /** Classpath resource path of the native library bundled for this OS/arch. */
+  String resourcePath() {
+    return "native/" + goos + "-" + goarch + "/libhegel." + libExt();
+  }
+
+  /** Resolve a usable libhegel path, unpacking the bundled native if necessary. */
   Path resolve() {
     String override = env.get("HEGEL_LIBHEGEL_PATH");
     if (override != null && !override.isEmpty()) {
@@ -140,28 +147,21 @@ final class LibraryLoader {
       tried.add(candidate.toString());
     }
 
-    if (isDownloadDisabled()) {
-      throw new HegelException(
-          "Could not find libhegel and auto-download is disabled (HEGEL_LIBHEGEL_NO_DOWNLOAD)."
-              + " Tried: "
-              + String.join(", ", tried)
-              + ". Set HEGEL_LIBHEGEL_PATH to a prebuilt library.");
+    Path bundled = unpackBundled();
+    if (bundled != null) {
+      return bundled;
     }
 
-    try {
-      return downloadCached();
-    } catch (IOException | InterruptedException e) {
-      if (e instanceof InterruptedException) {
-        Thread.currentThread().interrupt();
-      }
-      throw new HegelException(
-          "Could not find or download libhegel. Tried: "
-              + String.join(", ", tried)
-              + ". Download failed: "
-              + e.getMessage()
-              + ". Set HEGEL_LIBHEGEL_PATH to a prebuilt library.",
-          e);
-    }
+    throw new HegelException(
+        "Could not find libhegel: no library bundled for "
+            + goos
+            + "-"
+            + goarch
+            + " (resource "
+            + resourcePath()
+            + "), and no sibling build at "
+            + String.join(", ", tried)
+            + ". Set HEGEL_LIBHEGEL_PATH to a prebuilt library.");
   }
 
   List<Path> siblingCandidates() {
@@ -175,66 +175,48 @@ final class LibraryLoader {
     return out;
   }
 
-  private boolean isDownloadDisabled() {
-    String v = env.get("HEGEL_LIBHEGEL_NO_DOWNLOAD");
-    return v != null && !v.isEmpty();
-  }
-
-  String baseUrl() {
-    String override = env.get("HEGEL_DOWNLOAD_BASE_URL");
-    if (override != null && !override.isEmpty()) {
-      return override.endsWith("/") ? override : override + "/";
+  /**
+   * Unpack the bundled native for this OS/arch to the cache and return its path, or {@code null} if
+   * no native is bundled for this platform. The cache entry is keyed by the library's content hash,
+   * so it is reused across runs and never collides between engine versions.
+   */
+  Path unpackBundled() {
+    InputStream in = resources.apply(resourcePath());
+    if (in == null) {
+      return null;
     }
-    return "https://github.com/hegeldev/hegel-rust/releases/download/v" + LIBHEGEL_VERSION + "/";
-  }
-
-  String assetName() {
-    return "libhegel-" + goos + "-" + goarch + "." + libExt();
-  }
-
-  Path downloadCached() throws IOException, InterruptedException {
-    Path versionDir = cacheDir.resolve(LIBHEGEL_VERSION);
-    Path target = versionDir.resolve(assetName());
-    if (Files.isRegularFile(target)) {
+    byte[] bytes;
+    try {
+      bytes = readAndClose(in);
+    } catch (IOException e) {
+      throw new HegelException("Failed to read bundled libhegel resource " + resourcePath(), e);
+    }
+    Path dir = cacheDir.resolve(sha256Hex(bytes));
+    Path target = dir.resolve("libhegel." + libExt());
+    if (Files.isRegularFile(target) && target.toFile().length() == bytes.length) {
       return target;
     }
-    Files.createDirectories(versionDir);
-
-    String base = baseUrl();
-    byte[] lib = fetch(base + assetName());
-    String expected = fetchString(base + assetName() + ".sha256").trim().split("\\s+")[0];
-    String actual = sha256Hex(lib);
-    if (!actual.equalsIgnoreCase(expected)) {
-      throw new IOException(
-          "checksum mismatch for " + assetName() + ": expected " + expected + ", got " + actual);
-    }
-
-    Path tmp = Files.createTempFile(versionDir, "libhegel", ".part");
     try {
-      Files.write(tmp, lib);
-      tmp.toFile().setExecutable(true, false);
-      Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-    } finally {
-      Files.deleteIfExists(tmp);
+      Files.createDirectories(dir);
+      Path tmp = Files.createTempFile(dir, "libhegel", ".part");
+      try {
+        Files.write(tmp, bytes);
+        tmp.toFile().setExecutable(true, false);
+        Files.move(
+            tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      } finally {
+        Files.deleteIfExists(tmp);
+      }
+    } catch (IOException e) {
+      throw new HegelException("Failed to unpack bundled libhegel to " + target, e);
     }
     return target;
   }
 
-  private byte[] fetch(String url) throws IOException, InterruptedException {
-    HttpRequest req = HttpRequest.newBuilder(URI.create(url)).GET().build();
-    HttpResponse<InputStream> resp =
-        httpClient.send(req, HttpResponse.BodyHandlers.ofInputStream());
-    if (resp.statusCode() != 200) {
-      resp.body().close();
-      throw new IOException("GET " + url + " returned HTTP " + resp.statusCode());
-    }
-    try (InputStream in = resp.body()) {
+  private static byte[] readAndClose(InputStream in) throws IOException {
+    try (in) {
       return in.readAllBytes();
     }
-  }
-
-  private String fetchString(String url) throws IOException, InterruptedException {
-    return new String(fetch(url), StandardCharsets.UTF_8);
   }
 
   static String sha256Hex(byte[] data) {

@@ -42,9 +42,10 @@ Hegel requires **Java 22+** (it uses the Foreign Function & Memory API). Pass
 </plugin>
 ```
 
-**Nothing else to install.** The library loads the native engine, `libhegel`, automatically. On
-first use it downloads the matching release into a per-user cache. For local engine development it
-picks up a sibling `hegel-rust` build, and `$HEGEL_LIBHEGEL_PATH` can point at an explicit library.
+**Nothing else to install.** The native engine, `libhegel`, is bundled inside the jar for every
+supported platform (Linux and macOS, x86-64 and ARM64); the right one is unpacked automatically on
+first use. Nothing is downloaded at runtime. For local engine development the library picks up a
+sibling `hegel-rust` build, and `$HEGEL_LIBHEGEL_PATH` can point at an explicit library.
 
 ## Quickstart
 

@@ -1,30 +1,35 @@
 package dev.hegel;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.http.HttpClient;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class LibraryLoaderTest {
 
-  private LibraryLoader loader(Map<String, String> env, Path root, Path cache, String base) {
-    Map<String, String> e = new HashMap<>(env);
-    if (base != null) {
-      e.put("HEGEL_DOWNLOAD_BASE_URL", base);
-    }
-    return new LibraryLoader(e, root, cache, "linux", "amd64", HttpClient.newHttpClient());
+  /** A resource opener that bundles a single library at {@code path}; everything else is absent. */
+  private static Function<String, InputStream> bundled(String path, byte[] bytes) {
+    return name -> name.equals(path) ? new ByteArrayInputStream(bytes) : null;
+  }
+
+  private static final Function<String, InputStream> NO_RESOURCES = name -> null;
+
+  private LibraryLoader loader(
+      Map<String, String> env, Path root, Path cache, Function<String, InputStream> resources) {
+    return new LibraryLoader(new HashMap<>(env), root, cache, "linux", "amd64", resources);
   }
 
   @Test
@@ -68,54 +73,6 @@ class LibraryLoaderTest {
   }
 
   @Test
-  void sha256AndAssetAndBaseUrl(@TempDir Path dir) {
-    LibraryLoader l = loader(Map.of(), dir, dir, null);
-    assertEquals("libhegel-linux-amd64.so", l.assetName());
-    assertTrue(l.baseUrl().contains("hegeldev/hegel-rust/releases"));
-
-    LibraryLoader l2 = loader(Map.of(), dir, dir, "http://x/y");
-    assertEquals("http://x/y/", l2.baseUrl());
-    LibraryLoader l3 = loader(Map.of(), dir, dir, "http://x/y/");
-    assertEquals("http://x/y/", l3.baseUrl());
-
-    assertEquals(
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        LibraryLoader.sha256Hex(new byte[0]));
-  }
-
-  @Test
-  void overrideUsesExactPath(@TempDir Path dir) throws IOException {
-    Path lib = dir.resolve("custom.so");
-    Files.writeString(lib, "x");
-    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", lib.toString()), dir, dir, null);
-    assertEquals(lib, l.resolve());
-  }
-
-  @Test
-  void overrideMissingFails(@TempDir Path dir) {
-    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", "/no/such.so"), dir, dir, null);
-    assertThrows(HegelException.class, l::resolve);
-  }
-
-  @Test
-  void siblingCheckoutIsFound(@TempDir Path dir) throws IOException {
-    Path root = dir.resolve("hegel-java");
-    Path release = dir.resolve("hegel-rust/target/release");
-    Files.createDirectories(release);
-    Files.createDirectories(root);
-    Path lib = release.resolve("libhegel.so");
-    Files.writeString(lib, "x");
-    LibraryLoader l = loader(Map.of(), root, dir, null);
-    assertEquals(lib, l.resolve());
-  }
-
-  @Test
-  void siblingCandidatesEmptyWhenNoParent() {
-    LibraryLoader l = loader(Map.of(), Path.of("/"), Path.of("/tmp/c"), null);
-    assertTrue(l.siblingCandidates().isEmpty());
-  }
-
-  @Test
   void detectProjectRootViaGitDirectory(@TempDir Path dir) throws IOException {
     Path nested = dir.resolve("x");
     Files.createDirectories(nested);
@@ -137,17 +94,37 @@ class LibraryLoaderTest {
   }
 
   @Test
-  void darwinUsesDylibExtension(@TempDir Path dir) {
-    LibraryLoader l =
-        new LibraryLoader(
-            Map.of(),
-            dir.resolve("hegel-java"),
-            dir,
-            "darwin",
-            "arm64",
-            HttpClient.newHttpClient());
-    assertTrue(l.siblingCandidates().get(0).toString().endsWith("libhegel.dylib"));
-    assertEquals("libhegel-darwin-arm64.dylib", l.assetName());
+  void sha256OfEmptyInput() {
+    assertEquals(
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        LibraryLoader.sha256Hex(new byte[0]));
+  }
+
+  @Test
+  void resourcePathPerPlatform(@TempDir Path dir) {
+    LibraryLoader linux = loader(Map.of(), dir, dir, NO_RESOURCES);
+    assertEquals("native/linux-amd64/libhegel.so", linux.resourcePath());
+    LibraryLoader darwin = new LibraryLoader(Map.of(), dir, dir, "darwin", "arm64", NO_RESOURCES);
+    assertEquals("native/darwin-arm64/libhegel.dylib", darwin.resourcePath());
+  }
+
+  @Test
+  void classpathResourceReturnsNullForMissing() {
+    assertNull(LibraryLoader.classpathResource("native/no-such/libhegel.so"));
+  }
+
+  @Test
+  void overrideUsesExactPath(@TempDir Path dir) throws IOException {
+    Path lib = dir.resolve("custom.so");
+    Files.writeString(lib, "x");
+    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", lib.toString()), dir, dir, NO_RESOURCES);
+    assertEquals(lib, l.resolve());
+  }
+
+  @Test
+  void overrideMissingFails(@TempDir Path dir) {
+    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", "/no/such.so"), dir, dir, NO_RESOURCES);
+    assertThrows(HegelException.class, l::resolve);
   }
 
   @Test
@@ -157,125 +134,104 @@ class LibraryLoaderTest {
     Files.createDirectories(release);
     Path lib = release.resolve("libhegel.so");
     Files.writeString(lib, "x");
-    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", ""), root, dir, null);
+    LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", ""), root, dir, NO_RESOURCES);
     assertEquals(lib, l.resolve()); // empty override is treated as unset
   }
 
   @Test
-  void emptyBaseUrlFallsBackToDefault(@TempDir Path dir) {
-    LibraryLoader l = loader(Map.of(), dir, dir, "");
-    assertTrue(l.baseUrl().contains("hegeldev/hegel-rust"));
+  void siblingCheckoutIsFound(@TempDir Path dir) throws IOException {
+    Path root = dir.resolve("hegel-java");
+    Path release = dir.resolve("hegel-rust/target/release");
+    Files.createDirectories(release);
+    Files.createDirectories(root);
+    Path lib = release.resolve("libhegel.so");
+    Files.writeString(lib, "x");
+    LibraryLoader l = loader(Map.of(), root, dir, NO_RESOURCES);
+    assertEquals(lib, l.resolve());
   }
 
   @Test
-  void interruptedDownloadSetsInterruptFlag(@TempDir Path dir) throws Exception {
-    byte[] payload = "x".getBytes(StandardCharsets.UTF_8);
-    HttpServer server = serve(payload, LibraryLoader.sha256Hex(payload));
-    try {
-      String base = "http://localhost:" + server.getAddress().getPort() + "/";
-      LibraryLoader l = loader(Map.of(), dir.resolve("hegel-java"), dir.resolve("cache"), base);
-      Thread.currentThread().interrupt();
-      assertThrows(HegelException.class, l::resolve);
-      assertTrue(Thread.interrupted()); // clears the flag; verifies it was set
-    } finally {
-      server.stop(0);
-    }
+  void siblingCandidatesEmptyWhenNoParent() {
+    LibraryLoader l = loader(Map.of(), Path.of("/"), Path.of("/tmp/c"), NO_RESOURCES);
+    assertTrue(l.siblingCandidates().isEmpty());
   }
 
   @Test
-  void downloadDisabledFails(@TempDir Path dir) {
+  void darwinUsesDylibExtension(@TempDir Path dir) {
     LibraryLoader l =
-        loader(Map.of("HEGEL_LIBHEGEL_NO_DOWNLOAD", "1"), dir.resolve("hegel-java"), dir, null);
-    HegelException e = assertThrows(HegelException.class, l::resolve);
-    assertTrue(e.getMessage().contains("auto-download is disabled"));
+        new LibraryLoader(
+            Map.of(), dir.resolve("hegel-java"), dir, "darwin", "arm64", NO_RESOURCES);
+    assertTrue(l.siblingCandidates().get(0).toString().endsWith("libhegel.dylib"));
+    assertEquals("native/darwin-arm64/libhegel.dylib", l.resourcePath());
   }
 
   @Test
-  void downloadSucceedsVerifiesChecksumAndCaches(@TempDir Path dir) throws Exception {
+  void bundledNativeUnpackedAndCached(@TempDir Path dir) throws IOException {
     byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
-    String sha = LibraryLoader.sha256Hex(payload);
-    HttpServer server = serve(payload, sha + "  libhegel-linux-amd64.so");
-    try {
-      String base = "http://localhost:" + server.getAddress().getPort() + "/";
-      // Empty NO_DOWNLOAD is treated as "not disabled".
-      LibraryLoader l =
-          loader(
-              Map.of("HEGEL_LIBHEGEL_NO_DOWNLOAD", ""),
-              dir.resolve("hegel-java"),
-              dir.resolve("cache"),
-              base);
-      Path got = l.resolve();
-      assertTrue(Files.exists(got));
-      assertArrayEqualsBytes(payload, Files.readAllBytes(got));
-      // Second resolve hits the cache (server can be stopped).
-      server.stop(0);
-      assertEquals(got, l.resolve());
-    } finally {
-      server.stop(0);
-    }
+    Path root = dir.resolve("hegel-java"); // no sibling hegel-rust under dir
+    Path cache = dir.resolve("cache");
+    LibraryLoader l =
+        loader(Map.of(), root, cache, bundled("native/linux-amd64/libhegel.so", payload));
+
+    Path got = l.resolve();
+    assertTrue(Files.exists(got));
+    assertArrayEquals(payload, Files.readAllBytes(got));
+    // Resolving again hits the cache and returns the same path.
+    assertEquals(got, l.resolve());
   }
 
   @Test
-  void downloadChecksumMismatchFails(@TempDir Path dir) throws Exception {
-    byte[] payload = "data".getBytes(StandardCharsets.UTF_8);
-    HttpServer server = serve(payload, "deadbeef");
-    try {
-      String base = "http://localhost:" + server.getAddress().getPort() + "/";
-      LibraryLoader l = loader(Map.of(), dir.resolve("hegel-java"), dir.resolve("cache"), base);
-      HegelException e = assertThrows(HegelException.class, l::resolve);
-      assertTrue(e.getMessage().contains("Download failed") || e.getMessage().contains("checksum"));
-    } finally {
-      server.stop(0);
-    }
+  void staleCacheEntryIsReplaced(@TempDir Path dir) throws IOException {
+    byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
+    LibraryLoader l =
+        loader(
+            Map.of(),
+            dir.resolve("hegel-java"),
+            dir.resolve("cache"),
+            bundled("native/linux-amd64/libhegel.so", payload));
+    Path got = l.resolve();
+    // A cached file of a different length is treated as stale and rewritten.
+    Files.writeString(got, "short");
+    Path again = l.resolve();
+    assertEquals(got, again);
+    assertArrayEquals(payload, Files.readAllBytes(again));
   }
 
   @Test
-  void downloadHttpErrorFails(@TempDir Path dir) throws Exception {
-    HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-    server.createContext(
-        "/",
-        ex -> {
-          ex.sendResponseHeaders(404, -1);
-          ex.close();
-        });
-    server.start();
-    try {
-      String base = "http://localhost:" + server.getAddress().getPort() + "/";
-      LibraryLoader l = loader(Map.of(), dir.resolve("hegel-java"), dir.resolve("cache"), base);
-      assertThrows(HegelException.class, l::resolve);
-    } finally {
-      server.stop(0);
-    }
+  void noBundledNativeFails(@TempDir Path dir) {
+    LibraryLoader l =
+        loader(Map.of(), dir.resolve("hegel-java"), dir.resolve("cache"), NO_RESOURCES);
+    HegelException e = assertThrows(HegelException.class, l::resolve);
+    assertTrue(e.getMessage().contains("native/linux-amd64/libhegel.so"));
   }
 
-  private static HttpServer serve(byte[] payload, String shaLine) throws IOException {
-    HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-    server.createContext(
-        "/libhegel-linux-amd64.so",
-        ex -> {
-          if (ex.getRequestURI().getPath().endsWith(".sha256")) {
-            byte[] b = shaLine.getBytes(StandardCharsets.UTF_8);
-            ex.sendResponseHeaders(200, b.length);
-            ex.getResponseBody().write(b);
-          } else {
-            ex.sendResponseHeaders(200, payload.length);
-            ex.getResponseBody().write(payload);
-          }
-          ex.close();
-        });
-    server.start();
-    return server;
+  @Test
+  void bundledResourceReadErrorFails(@TempDir Path dir) {
+    Function<String, InputStream> failing =
+        name ->
+            new InputStream() {
+              @Override
+              public int read() throws IOException {
+                throw new IOException("boom");
+              }
+            };
+    LibraryLoader l = loader(Map.of(), dir.resolve("hegel-java"), dir.resolve("cache"), failing);
+    HegelException e = assertThrows(HegelException.class, l::resolve);
+    assertTrue(e.getMessage().contains("Failed to read bundled libhegel"));
   }
 
-  private static void assertArrayEqualsBytes(byte[] a, byte[] b) {
-    assertEquals(List.of(toList(a)), List.of(toList(b)));
-  }
-
-  private static List<Byte> toList(byte[] a) {
-    List<Byte> l = new java.util.ArrayList<>();
-    for (byte x : a) {
-      l.add(x);
-    }
-    return l;
+  @Test
+  void unpackIoErrorFails(@TempDir Path dir) throws IOException {
+    byte[] payload = "x".getBytes(StandardCharsets.UTF_8);
+    Path cacheAsFile = dir.resolve("cache-is-a-file");
+    Files.writeString(cacheAsFile, "occupied"); // createDirectories under it must fail
+    LibraryLoader l =
+        loader(
+            Map.of(),
+            dir.resolve("hegel-java"),
+            cacheAsFile,
+            bundled("native/linux-amd64/libhegel.so", payload));
+    HegelException e = assertThrows(HegelException.class, l::resolve);
+    assertTrue(e.getMessage().contains("Failed to unpack bundled libhegel"));
   }
 }

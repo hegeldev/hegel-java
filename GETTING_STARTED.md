@@ -17,7 +17,8 @@ Add `hegel` to your build as a test dependency (Maven):
 ```
 
 Hegel needs Java 22+ and `--enable-native-access=ALL-UNNAMED` on the test JVM (see the
-[README](README.md)). Nothing else is required: the native engine is loaded automatically.
+[README](README.md)). Nothing else is required: the native engine is bundled in the jar and
+unpacked automatically.
 
 ## Write your first test
 
