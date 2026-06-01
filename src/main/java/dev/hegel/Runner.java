@@ -100,7 +100,10 @@ final class Runner {
     } catch (Throwable e) {
       status = Abi.STATUS_INTERESTING;
       origin = originOf(e);
-      panicByOrigin.putIfAbsent(origin, describe(e));
+      // Last write wins: the engine re-runs the minimal example last (the final replay),
+      // so its message is the one stitched into the failure report — not a larger example
+      // seen earlier in the search that happens to share this origin.
+      panicByOrigin.put(origin, describe(e));
       if (reporting) {
         out.println(describe(e));
       }

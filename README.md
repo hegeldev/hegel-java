@@ -83,12 +83,21 @@ class SortTest {
 }
 ```
 
-Run it with `mvn test`. Hegel finds the bug and shrinks it to the minimal failing input:
+Run it with `mvn test`. Hegel finds the bug and shrinks it to the minimal failing input. It prints
+the shrunk draws (each labelled `draw` shows as an assignment; here we named it `xs`):
 
 ```
 xs = [0, 0];
+```
 
-org.opentest4j.AssertionFailedError: expected: <2> but was: <1>
+and fails the test with:
+
+```
+java.lang.AssertionError: Hegel found 1 failing example:
+
+Failure reported by C caller: AssertionFailedError at SortTest.java:16
+
+  org.opentest4j.AssertionFailedError: expected: <2> but was: <1>
 ```
 
 `[0, 0]` is the simplest input that triggers the bug: two equal elements, which `mySort`

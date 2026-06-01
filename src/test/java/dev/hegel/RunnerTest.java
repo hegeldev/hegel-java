@@ -138,6 +138,34 @@ class RunnerTest {
   }
 
   @Test
+  void capturedPanicReflectsTheFinalReplayNotTheFirstFailure() {
+    // Two failing cases share an origin: a larger one seen first, then the minimal example
+    // re-run last (as the engine's final replay does). The message stitched into the report
+    // must be the minimal one, not the stale first failure.
+    FakeLibhegel fake = new FakeLibhegel();
+    fake.caseCount = 2;
+    fake.passed = false;
+    FakeLibhegel.Failure f = new FakeLibhegel.Failure();
+    f.diagnostic = "";
+    f.panic = "";
+    f.origin = Runner.originOf(new AssertionError());
+    fake.failures.add(f);
+    int[] n = {0};
+    AssertionError e =
+        assertThrows(
+            AssertionError.class,
+            () ->
+                run(
+                    fake,
+                    Settings.defaults().noDatabase(),
+                    tc -> {
+                      throw new AssertionError(n[0]++ == 0 ? "big: 8" : "min: 2");
+                    }));
+    assertTrue(e.getMessage().contains("min: 2"), e.getMessage());
+    assertTrue(!e.getMessage().contains("big: 8"), e.getMessage());
+  }
+
+  @Test
   void multipleFailuresUsePluralAndPanicFallback() {
     FakeLibhegel fake = new FakeLibhegel();
     fake.passed = false;
