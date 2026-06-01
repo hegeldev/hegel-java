@@ -20,7 +20,9 @@ final class Engine {
   static synchronized Libhegel get() {
     if (instance == null) {
       Path path = LibraryLoader.fromEnvironment().resolve();
-      instance = new RealLibhegel(path);
+      RealLibhegel lib = new RealLibhegel(path);
+      LibraryLoader.warnOnVersionMismatch(lib, LibraryLoader.targetEngineVersion(), System.err);
+      instance = lib;
     }
     return instance;
   }

@@ -6,8 +6,10 @@ import com.upokecenter.cbor.CBORObject;
  * Generates {@code double} values with full control over bounds and special values. Always basic
  * (one engine call). Validation of conflicting options happens at construction time.
  *
- * <p>Defaults mirror the engine: with no bounds, NaN and infinity are allowed; once a bound is set
- * they are excluded unless explicitly re-enabled.
+ * <p>Defaults mirror the engine. With no bounds, NaN and the infinities are allowed. Setting any
+ * bound excludes NaN; setting <em>both</em> bounds also excludes the infinities (a single bound
+ * still allows the infinity on the open side). {@code allowNan}/{@code allowInfinity} override
+ * these defaults where the combination is valid.
  */
 public final class FloatGenerator implements Generator<Double>, MaybeBasic<Double> {
   private final Double min;

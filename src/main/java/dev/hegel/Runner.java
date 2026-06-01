@@ -14,7 +14,10 @@ import java.util.function.Consumer;
 final class Runner {
   private Runner() {}
 
-  /** Stable origin for a failure surfaced after the body returned (none today; reserved). */
+  /**
+   * Package prefixes treated as Hegel/JDK/test-framework infrastructure: {@link #originOf} skips
+   * frames in these to find the user frame that owns a failure (used as the shrink-dedup origin).
+   */
   private static final String[] INFRA_PREFIXES = {
     "dev.hegel.", "org.junit.", "org.opentest4j.", "jdk.", "java.", "sun.", "com.sun."
   };

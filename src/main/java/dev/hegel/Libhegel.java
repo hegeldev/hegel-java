@@ -13,7 +13,7 @@ import java.lang.foreign.MemorySegment;
  * MemorySegment}; callers treat them as opaque and never dereference them.
  *
  * <p>Functions returning {@code int} return the raw libhegel return code; the caller translates it
- * (see {@link Translate}) and reads {@link #lastErrorMessage()} immediately on a non-OK code.
+ * (see {@link LiveDataSource}) and reads {@link #lastErrorMessage()} immediately on a non-OK code.
  * Strings the engine returns are copied out before this method returns, so they remain valid.
  */
 interface Libhegel {

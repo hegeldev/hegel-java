@@ -2,6 +2,7 @@ package dev.hegel;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -9,6 +10,7 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
 import java.util.function.Function;
 
 /**
@@ -176,6 +178,49 @@ final class LibraryLoader {
     try (in) {
       return in.readAllBytes();
     }
+  }
+
+  /** The engine version these bindings were built against, or {@code null} if unknown. */
+  static String targetEngineVersion() {
+    return parseEngineVersion(classpathResource("dev/hegel/version.properties"));
+  }
+
+  static String parseEngineVersion(InputStream in) {
+    if (in == null) {
+      return null;
+    }
+    Properties props = new Properties();
+    try {
+      loadAndClose(props, in);
+    } catch (IOException e) {
+      return null;
+    }
+    String v = props.getProperty("engine.version");
+    return (v == null || v.isEmpty()) ? null : v;
+  }
+
+  private static void loadAndClose(Properties props, InputStream in) throws IOException {
+    try (in) {
+      props.load(in);
+    }
+  }
+
+  /**
+   * Warn on {@code err} if a loaded engine reports a different version than the one these bindings
+   * target. Silent when the versions match or either is unknown.
+   */
+  static void warnOnVersionMismatch(Libhegel lib, String expected, PrintStream err) {
+    String loaded = lib.version();
+    if (expected == null || loaded == null || loaded.equals(expected)) {
+      return;
+    }
+    err.println(
+        "hegel: loaded libhegel "
+            + loaded
+            + " but these bindings were built for "
+            + expected
+            + "; behaviour may differ. Unset HEGEL_LIBHEGEL_PATH to use the bundled engine, or"
+            + " point it at a matching build.");
   }
 
   static String sha256Hex(byte[] data) {

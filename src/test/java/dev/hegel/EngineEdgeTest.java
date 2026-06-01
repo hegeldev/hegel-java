@@ -12,10 +12,16 @@ class EngineEdgeTest {
   void largeNonBasicCollectionOverrunsGracefully() {
     // A non-basic element (filter) forces the collection API; a large minimum size
     // exhausts the per-case choice budget, so the engine abandons cases (STOP_TEST
-    // from collection_more) and the run still completes.
+    // from collection_more) and the run still completes. Deliberately generating a lot
+    // is the point here, so suppress the health checks that would otherwise flag it —
+    // their thresholds are engine-version-specific and not what this test is about.
     Hegel.with()
         .testCases(10)
         .noDatabase()
+        .suppressHealthCheck(
+            HealthCheck.LARGE_INITIAL_TEST_CASE,
+            HealthCheck.TEST_CASES_TOO_LARGE,
+            HealthCheck.TOO_SLOW)
         .check(
             tc -> {
               // Many non-basic collections so the budget runs out across both element

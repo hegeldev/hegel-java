@@ -2,13 +2,16 @@ package dev.hegel;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -158,6 +161,58 @@ class LibraryLoaderTest {
     LibraryLoader l = loader(Map.of(), dir.resolve("cache"), failing);
     HegelException e = assertThrows(HegelException.class, l::resolve);
     assertTrue(e.getMessage().contains("Failed to read bundled libhegel"));
+  }
+
+  @Test
+  void targetEngineVersionIsBundled() {
+    // version.properties is filtered into the build output, so this resolves at test time.
+    String v = LibraryLoader.targetEngineVersion();
+    assertNotNull(v);
+    assertTrue(v.contains("."), v);
+  }
+
+  @Test
+  void parseEngineVersionHandlesAllShapes() {
+    assertNull(LibraryLoader.parseEngineVersion(null));
+    assertEquals(
+        "1.2.3",
+        LibraryLoader.parseEngineVersion(
+            new ByteArrayInputStream("engine.version=1.2.3\n".getBytes(StandardCharsets.UTF_8))));
+    assertNull(
+        LibraryLoader.parseEngineVersion(
+            new ByteArrayInputStream("other=x\n".getBytes(StandardCharsets.UTF_8))));
+    assertNull(
+        LibraryLoader.parseEngineVersion(
+            new ByteArrayInputStream("engine.version=\n".getBytes(StandardCharsets.UTF_8))));
+    assertNull(
+        LibraryLoader.parseEngineVersion(
+            new InputStream() {
+              @Override
+              public int read() throws IOException {
+                throw new IOException("boom");
+              }
+            }));
+  }
+
+  @Test
+  void warnOnVersionMismatchOnlyWarnsOnRealMismatch() {
+    FakeLibhegel fake = new FakeLibhegel();
+
+    fake.version = "9.9.9";
+    assertTrue(warnOutput(fake, "0.14.14").contains("9.9.9"));
+
+    fake.version = "0.14.14";
+    assertEquals("", warnOutput(fake, "0.14.14")); // matching: silent
+    assertEquals("", warnOutput(fake, null)); // expected unknown: silent
+
+    fake.version = null;
+    assertEquals("", warnOutput(fake, "0.14.14")); // loaded unknown: silent
+  }
+
+  private static String warnOutput(FakeLibhegel lib, String expected) {
+    ByteArrayOutputStream buf = new ByteArrayOutputStream();
+    LibraryLoader.warnOnVersionMismatch(lib, expected, new PrintStream(buf, true));
+    return buf.toString();
   }
 
   @Test

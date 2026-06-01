@@ -70,6 +70,24 @@
   </dependencies>
 
   <build>
+    <resources>
+      <!-- Filter version.properties (substitutes ${libhegel.version}); copy everything else
+           verbatim so any future binary resource is not corrupted by filtering. -->
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>**/version.properties</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>false</filtering>
+        <excludes>
+          <exclude>**/version.properties</exclude>
+        </excludes>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
