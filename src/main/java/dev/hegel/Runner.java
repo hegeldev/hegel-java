@@ -4,6 +4,7 @@ import java.io.PrintStream;
 import java.lang.foreign.MemorySegment;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -40,14 +41,45 @@ final class Runner {
         throw backend(lib, "hegel_run_start");
       }
       try {
-        Map<String, String> panicByOrigin = new HashMap<>();
-        loop(lib, run, settings, body, out, panicByOrigin);
+        // Default (report_multiple_failures off): keep the actual exception so we can rethrow it
+        // directly — best for debuggers and stack traces, and no origin tracking. Only the
+        // multiple-failures mode needs to stitch each captured message back onto a distinct,
+        // engine-deduped failure, so it alone builds the origin map.
+        Throwable[] captured = {null};
+        Map<String, String> panicByOrigin =
+            settings.reportMultipleFailures ? new HashMap<>() : null;
+        loop(
+            lib,
+            run,
+            settings.singleTestCase,
+            body,
+            out,
+            (origin, e) -> {
+              captured[0] = e;
+              if (panicByOrigin != null) {
+                String message = describe(e);
+                out.println(message);
+                panicByOrigin.put(origin, message);
+              }
+            });
         MemorySegment result = lib.runResult(run);
         if (isNull(result)) {
           throw backend(lib, "hegel_run_result");
         }
         if (!lib.resultPassed(result)) {
-          throw buildFailure(lib, result, panicByOrigin);
+          if (panicByOrigin != null) {
+            throw buildFailure(lib, result, panicByOrigin);
+          }
+          // Rethrow the body's own exception (always unchecked, from Consumer#accept) directly.
+          if (captured[0] instanceof Error error) {
+            throw error;
+          }
+          if (captured[0] instanceof RuntimeException re) {
+            throw re;
+          }
+          // No Java exception to rethrow (a health-check abort, or a failure found with the
+          // replay phase disabled): surface the engine's own diagnostic.
+          throw fallbackFailure(lib, result);
         }
       } finally {
         lib.runFree(run);
@@ -60,10 +92,10 @@ final class Runner {
   private static void loop(
       Libhegel lib,
       MemorySegment run,
-      Settings settings,
+      boolean single,
       Consumer<TestCase> body,
       PrintStream out,
-      Map<String, String> panicByOrigin) {
+      BiConsumer<String, Throwable> onReportedFailure) {
     while (true) {
       MemorySegment tc = lib.nextTestCase(run);
       if (isNull(tc)) {
@@ -73,7 +105,7 @@ final class Runner {
         }
         return;
       }
-      driveOneCase(lib, tc, settings.singleTestCase, body, out, panicByOrigin);
+      driveOneCase(lib, tc, single, body, out, onReportedFailure);
     }
   }
 
@@ -83,7 +115,7 @@ final class Runner {
       boolean single,
       Consumer<TestCase> body,
       PrintStream out,
-      Map<String, String> panicByOrigin) {
+      BiConsumer<String, Throwable> onReportedFailure) {
     boolean reporting = single || lib.isFinalReplay(tc);
     TestCase testCase = new TestCase(new LiveDataSource(lib, tc), reporting, out);
     int status;
@@ -100,17 +132,13 @@ final class Runner {
     } catch (Throwable e) {
       status = Abi.STATUS_INTERESTING;
       origin = originOf(e);
-      // The engine dedups failures by `origin` (a source location) and reports its own
-      // diagnostic, but it never sees the Java exception message. We capture that message and
-      // stitch it back in per origin in buildFailure. Do it only on the case the engine
-      // actually reports — the final replay of the minimal example — exactly as
-      // hegel_test_case_is_final_replay is meant to gate (single-test-case mode has no replay,
-      // so its one case reports directly). Capturing on every shrink probe would be wasted
-      // work and risks attaching a non-minimal message.
+      // Hand the failing exception to the run only on the case the engine actually reports —
+      // the final replay of the minimal example — exactly as hegel_test_case_is_final_replay
+      // is meant to gate (single-test-case mode has no replay, so its one case reports
+      // directly). The drawn values are printed separately by TestCase under this same flag, so
+      // the counterexample is shown whether or not the exception is rethrown.
       if (reporting) {
-        String message = describe(e);
-        panicByOrigin.put(origin, message);
-        out.println(message);
+        onReportedFailure.accept(origin, e);
       }
     }
     int rc = lib.markComplete(tc, status, origin);
@@ -128,9 +156,7 @@ final class Runner {
       lib.settingsSeed(s, st.seed, true);
     }
     lib.settingsDerandomize(s, st.derandomize != null ? st.derandomize : ci);
-    if (st.reportMultipleFailures != null) {
-      lib.settingsReportMultipleFailures(s, st.reportMultipleFailures);
-    }
+    lib.settingsReportMultipleFailures(s, st.reportMultipleFailures);
     if (st.singleTestCase) {
       lib.settingsMode(s, Abi.MODE_SINGLE_TEST_CASE);
     }
@@ -211,6 +237,13 @@ final class Runner {
       }
     }
     return new AssertionError(sb.toString());
+  }
+
+  /** Failure with no Java exception to rethrow: surface the engine's own diagnostic. */
+  private static AssertionError fallbackFailure(Libhegel lib, MemorySegment result) {
+    MemorySegment failure = lib.resultFailure(result, 0);
+    return new AssertionError(
+        pick(lib.failureDiagnostic(failure), lib.failurePanicMessage(failure)));
   }
 
   private static String pick(String diagnostic, String panic) {

@@ -116,13 +116,17 @@ class CoverageTest {
 
   @Test
   void describeHandlesNullMessage() {
+    // describe() is exercised only by the multiple-failures report path.
     FakeLibhegel fake = new FakeLibhegel();
     fake.finalReplay = true;
-    run(
+    Runner.run(
         fake,
+        Settings.defaults().noDatabase().reportMultipleFailures(true),
         tc -> {
           throw new IllegalStateException(); // null message
-        });
+        },
+        NO_CI,
+        new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
     assertEquals(Abi.STATUS_INTERESTING, fake.markedStatuses.get(0));
   }
 

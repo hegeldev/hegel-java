@@ -25,7 +25,18 @@ public final class Settings {
 
   private static final Settings DEFAULTS =
       new Settings(
-          100, false, 0L, null, DbMode.DEFAULT, null, 0, null, Verbosity.NORMAL, false, null, null);
+          100,
+          false,
+          0L,
+          null,
+          DbMode.DEFAULT,
+          null,
+          0,
+          null,
+          Verbosity.NORMAL,
+          false,
+          false,
+          null);
 
   final long testCases;
   final boolean hasSeed;
@@ -37,7 +48,9 @@ public final class Settings {
   final Integer phasesMask; // null = leave the engine default (all phases)
   final Verbosity verbosity;
   final boolean singleTestCase;
-  final Boolean reportMultipleFailures;
+  // Default false: a single, directly-rethrown failure is far friendlier to debuggers and stack
+  // traces than an aggregated report — and that matters more in Java than elsewhere.
+  final boolean reportMultipleFailures;
   final String name;
 
   private Settings(
@@ -51,7 +64,7 @@ public final class Settings {
       Integer phasesMask,
       Verbosity verbosity,
       boolean singleTestCase,
-      Boolean reportMultipleFailures,
+      boolean reportMultipleFailures,
       String name) {
     this.testCases = testCases;
     this.hasSeed = hasSeed;
@@ -87,7 +100,7 @@ public final class Settings {
       Integer phasesMask,
       Verbosity verbosity,
       boolean singleTestCase,
-      Boolean reportMultipleFailures,
+      boolean reportMultipleFailures,
       String name) {
     return new Settings(
         testCases,
@@ -315,6 +328,9 @@ public final class Settings {
 
   /**
    * Control whether the run keeps searching for additional distinct failures after the first.
+   * Defaults to {@code false}: a single failure is rethrown directly (preserving its type and stack
+   * trace, which is friendlier to debuggers); enabling this instead aggregates the distinct
+   * failures into one report.
    *
    * @param yes whether to report multiple failures
    * @return a new settings instance

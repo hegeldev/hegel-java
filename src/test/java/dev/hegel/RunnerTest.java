@@ -2,6 +2,7 @@ package dev.hegel;
 
 import static dev.hegel.Generators.integers;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -87,18 +88,14 @@ class RunnerTest {
   void assertionFailureMapsToInterestingAndRecordsOrigin() {
     FakeLibhegel fake = new FakeLibhegel();
     fake.finalReplay = true;
-    ByteArrayOutputStream buf = new ByteArrayOutputStream();
-    Runner.run(
+    run(
         fake,
         Settings.defaults().noDatabase(),
         tc -> {
           throw new AssertionError("nope");
-        },
-        NO_CI,
-        capture(buf));
+        });
     assertEquals(List.of(Abi.STATUS_INTERESTING), fake.markedStatuses);
     assertTrue(fake.markedOrigins.get(0) != null);
-    assertTrue(buf.toString(StandardCharsets.UTF_8).contains("nope"));
   }
 
   @Test
@@ -113,7 +110,69 @@ class RunnerTest {
   }
 
   @Test
-  void singleFailureProducesAssertionError() {
+  void defaultModeRethrowsTheOriginalExceptionDirectly() {
+    // The default (report_multiple_failures off) surfaces the body's own exception instance —
+    // no "Hegel found ..." wrapper — so the stack trace and type are the user's. Covers both an
+    // Error (e.g. an assertion failure) and a RuntimeException.
+    AssertionError err = new AssertionError("boom-error");
+    assertSame(
+        err,
+        assertThrows(
+            AssertionError.class,
+            () ->
+                runFailing(
+                    tc -> {
+                      throw err;
+                    })));
+    IllegalStateException rt = new IllegalStateException("boom-rt");
+    assertSame(
+        rt,
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                runFailing(
+                    tc -> {
+                      throw rt;
+                    })));
+  }
+
+  /** Drive a run that reports one failure (default mode), final-replaying {@code body}. */
+  private static void runFailing(Consumer<TestCase> body) {
+    FakeLibhegel fake = new FakeLibhegel();
+    fake.passed = false;
+    fake.finalReplay = true;
+    FakeLibhegel.Failure f = new FakeLibhegel.Failure();
+    f.origin = Runner.originOf(new AssertionError());
+    fake.failures.add(f);
+    run(fake, Settings.defaults().noDatabase(), body);
+  }
+
+  @Test
+  void failureWithoutAFinalReplayFallsBackToEngineDiagnostic() {
+    // In default mode a failure the engine surfaces without a final replay (e.g. a health-check
+    // abort, or the replay phase disabled) has no Java exception to rethrow, so the report uses
+    // the engine's own diagnostic.
+    FakeLibhegel fake = new FakeLibhegel();
+    fake.passed = false; // finalReplay defaults false: nothing captured
+    FakeLibhegel.Failure f = new FakeLibhegel.Failure();
+    f.diagnostic = "engine diagnostic";
+    f.origin = Runner.originOf(new AssertionError());
+    fake.failures.add(f);
+    AssertionError e =
+        assertThrows(
+            AssertionError.class,
+            () ->
+                run(
+                    fake,
+                    Settings.defaults().noDatabase(),
+                    tc -> {
+                      throw new AssertionError("search-only probe");
+                    }));
+    assertEquals("engine diagnostic", e.getMessage());
+  }
+
+  @Test
+  void reportMultipleFailuresStitchesEngineDiagnosticAndJavaMessage() {
     FakeLibhegel fake = new FakeLibhegel();
     fake.passed = false;
     fake.finalReplay = true; // the message is captured on the final replay
@@ -129,39 +188,13 @@ class RunnerTest {
             () ->
                 run(
                     fake,
-                    Settings.defaults().noDatabase(),
+                    Settings.defaults().noDatabase().reportMultipleFailures(true),
                     tc -> {
                       throw new AssertionError("boom");
                     }));
     assertTrue(e.getMessage().contains("1 failing example"));
     assertTrue(e.getMessage().contains("the bug"));
     assertTrue(e.getMessage().contains("boom"), e.getMessage());
-  }
-
-  @Test
-  void panicMessageCapturedOnlyOnTheFinalReplay() {
-    // Capture is gated on the final replay (the case the engine reports). A message thrown
-    // only during the search — not a final replay — is not stitched in; the report falls back
-    // to the engine's own diagnostic. This is why a non-minimal probe can never leak its
-    // message into the surfaced failure.
-    FakeLibhegel fake = new FakeLibhegel();
-    fake.passed = false; // finalReplay defaults false: this case is a search probe
-    FakeLibhegel.Failure f = new FakeLibhegel.Failure();
-    f.diagnostic = "engine diagnostic";
-    f.origin = Runner.originOf(new AssertionError());
-    fake.failures.add(f);
-    AssertionError e =
-        assertThrows(
-            AssertionError.class,
-            () ->
-                run(
-                    fake,
-                    Settings.defaults().noDatabase(),
-                    tc -> {
-                      throw new AssertionError("search-only probe");
-                    }));
-    assertTrue(e.getMessage().contains("engine diagnostic"), e.getMessage());
-    assertTrue(!e.getMessage().contains("search-only probe"), e.getMessage());
   }
 
   @Test
@@ -177,7 +210,9 @@ class RunnerTest {
     fake.failures.add(f2);
     AssertionError e =
         assertThrows(
-            AssertionError.class, () -> run(fake, Settings.defaults().noDatabase(), tc -> {}));
+            AssertionError.class,
+            () ->
+                run(fake, Settings.defaults().noDatabase().reportMultipleFailures(true), tc -> {}));
     assertTrue(e.getMessage().contains("2 distinct failing examples"));
     assertTrue(e.getMessage().contains("panic-1"));
     assertTrue(e.getMessage().contains("diag-2"));

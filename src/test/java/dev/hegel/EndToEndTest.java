@@ -39,6 +39,8 @@ class EndToEndTest {
 
   @Test
   void failingPropertyThrowsAssertionErrorWithCounterexample() {
+    // By default Hegel rethrows the property's own assertion failure directly (no wrapper), so
+    // the surfaced message is the user's, carrying the shrunk value (the engine shrinks to 11).
     AssertionError err =
         assertThrows(
             AssertionError.class,
@@ -50,6 +52,27 @@ class EndToEndTest {
                           int x = tc.draw(integers(0, 1000));
                           // Property is false for x > 10; engine should shrink toward 11.
                           assertTrue(x <= 10, "x was too big: " + x);
+                        }));
+    assertTrue(err.getMessage().contains("x was too big: 11"), err.getMessage());
+    assertTrue(!err.getMessage().contains("failing example"), err.getMessage());
+  }
+
+  @Test
+  void reportMultipleFailuresProducesAggregateReport() {
+    // Opt-in multi-failure mode wraps the result in an aggregate "Hegel found ..." report
+    // (rather than the default direct rethrow), exercising the engine's failure-enumeration API.
+    AssertionError err =
+        assertThrows(
+            AssertionError.class,
+            () ->
+                Hegel.with()
+                    .reportMultipleFailures(true)
+                    .seed(123)
+                    .noDatabase()
+                    .check(
+                        tc -> {
+                          int x = tc.draw(integers(0, 1000));
+                          assertTrue(x <= 10, "x too big: " + x);
                         }));
     assertTrue(err.getMessage().contains("failing example"), err.getMessage());
   }
