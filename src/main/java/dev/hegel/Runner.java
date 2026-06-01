@@ -100,12 +100,17 @@ final class Runner {
     } catch (Throwable e) {
       status = Abi.STATUS_INTERESTING;
       origin = originOf(e);
-      // Last write wins: the engine re-runs the minimal example last (the final replay),
-      // so its message is the one stitched into the failure report — not a larger example
-      // seen earlier in the search that happens to share this origin.
-      panicByOrigin.put(origin, describe(e));
+      // The engine dedups failures by `origin` (a source location) and reports its own
+      // diagnostic, but it never sees the Java exception message. We capture that message and
+      // stitch it back in per origin in buildFailure. Do it only on the case the engine
+      // actually reports — the final replay of the minimal example — exactly as
+      // hegel_test_case_is_final_replay is meant to gate (single-test-case mode has no replay,
+      // so its one case reports directly). Capturing on every shrink probe would be wasted
+      // work and risks attaching a non-minimal message.
       if (reporting) {
-        out.println(describe(e));
+        String message = describe(e);
+        panicByOrigin.put(origin, message);
+        out.println(message);
       }
     }
     int rc = lib.markComplete(tc, status, origin);

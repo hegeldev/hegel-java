@@ -116,6 +116,7 @@ class RunnerTest {
   void singleFailureProducesAssertionError() {
     FakeLibhegel fake = new FakeLibhegel();
     fake.passed = false;
+    fake.finalReplay = true; // the message is captured on the final replay
     FakeLibhegel.Failure f = new FakeLibhegel.Failure();
     f.diagnostic = "the bug";
     // Align the engine-reported origin with what the runner computes so the captured
@@ -138,19 +139,17 @@ class RunnerTest {
   }
 
   @Test
-  void capturedPanicReflectsTheFinalReplayNotTheFirstFailure() {
-    // Two failing cases share an origin: a larger one seen first, then the minimal example
-    // re-run last (as the engine's final replay does). The message stitched into the report
-    // must be the minimal one, not the stale first failure.
+  void panicMessageCapturedOnlyOnTheFinalReplay() {
+    // Capture is gated on the final replay (the case the engine reports). A message thrown
+    // only during the search — not a final replay — is not stitched in; the report falls back
+    // to the engine's own diagnostic. This is why a non-minimal probe can never leak its
+    // message into the surfaced failure.
     FakeLibhegel fake = new FakeLibhegel();
-    fake.caseCount = 2;
-    fake.passed = false;
+    fake.passed = false; // finalReplay defaults false: this case is a search probe
     FakeLibhegel.Failure f = new FakeLibhegel.Failure();
-    f.diagnostic = "";
-    f.panic = "";
+    f.diagnostic = "engine diagnostic";
     f.origin = Runner.originOf(new AssertionError());
     fake.failures.add(f);
-    int[] n = {0};
     AssertionError e =
         assertThrows(
             AssertionError.class,
@@ -159,10 +158,10 @@ class RunnerTest {
                     fake,
                     Settings.defaults().noDatabase(),
                     tc -> {
-                      throw new AssertionError(n[0]++ == 0 ? "big: 8" : "min: 2");
+                      throw new AssertionError("search-only probe");
                     }));
-    assertTrue(e.getMessage().contains("min: 2"), e.getMessage());
-    assertTrue(!e.getMessage().contains("big: 8"), e.getMessage());
+    assertTrue(e.getMessage().contains("engine diagnostic"), e.getMessage());
+    assertTrue(!e.getMessage().contains("search-only probe"), e.getMessage());
   }
 
   @Test
