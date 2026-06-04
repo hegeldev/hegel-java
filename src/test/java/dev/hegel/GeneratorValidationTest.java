@@ -12,6 +12,7 @@ import static dev.hegel.Generators.oneOf;
 import static dev.hegel.Generators.sampledFrom;
 import static dev.hegel.Generators.sets;
 import static dev.hegel.Generators.text;
+import static dev.hegel.Generators.zoneOffsets;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
@@ -67,6 +68,16 @@ class GeneratorValidationTest {
             durations().min(java.time.Duration.ofSeconds(2)).max(java.time.Duration.ofSeconds(1)));
     assertThrows(
         IllegalArgumentException.class, () -> durations().min(java.time.Duration.ofSeconds(-1)));
+  }
+
+  @Test
+  void zoneOffsetBounds() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            zoneOffsets()
+                .min(java.time.ZoneOffset.ofHours(2))
+                .max(java.time.ZoneOffset.ofHours(1)));
   }
 
   @Test

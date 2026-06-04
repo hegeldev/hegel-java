@@ -32,11 +32,13 @@ import static dev.hegel.Generators.times;
 import static dev.hegel.Generators.tuples;
 import static dev.hegel.Generators.urls;
 import static dev.hegel.Generators.uuids;
+import static dev.hegel.Generators.zoneOffsets;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
+import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -190,6 +192,21 @@ class ConformanceTest {
     assertAllExamples(
         durations().min(Duration.ofSeconds(1)).max(Duration.ofSeconds(60)),
         d -> d.compareTo(Duration.ofSeconds(1)) >= 0 && d.compareTo(Duration.ofSeconds(60)) <= 0);
+  }
+
+  @Test
+  void timezoneAwareDatetimes() {
+    // Bare offsets stay within the legal ZoneOffset range.
+    assertAllExamples(
+        zoneOffsets(), o -> o.getTotalSeconds() >= -64800 && o.getTotalSeconds() <= 64800);
+    assertAllExamples(
+        zoneOffsets().min(ZoneOffset.ofHours(-2)).max(ZoneOffset.ofHours(2)),
+        o -> o.getTotalSeconds() >= -7200 && o.getTotalSeconds() <= 7200);
+    // datetimes().timezones(...) attaches the drawn offset to the wall-clock time.
+    assertAllExamples(
+        datetimes().timezones(zoneOffsets()), odt -> odt.toLocalDate().getYear() >= 1);
+    assertAllExamples(
+        datetimes().timezones(just(ZoneOffset.UTC)), odt -> odt.getOffset().equals(ZoneOffset.UTC));
   }
 
   @Test

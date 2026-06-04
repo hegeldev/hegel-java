@@ -77,6 +77,12 @@ final class Derive {
     if (cls == java.time.LocalDateTime.class) {
       return Generators.datetimes();
     }
+    if (cls == java.time.OffsetDateTime.class) {
+      return Generators.datetimes().timezones(Generators.zoneOffsets());
+    }
+    if (cls == java.time.ZoneOffset.class) {
+      return Generators.zoneOffsets();
+    }
     return null;
   }
 

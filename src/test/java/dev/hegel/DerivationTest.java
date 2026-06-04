@@ -106,13 +106,21 @@ class DerivationTest {
       java.time.Duration d,
       java.time.LocalDate date,
       java.time.LocalTime time,
-      java.time.LocalDateTime dt) {}
+      java.time.LocalDateTime dt,
+      java.time.OffsetDateTime odt,
+      java.time.ZoneOffset off) {}
 
   @Test
   void derivesTemporalScalars() {
     assertAllExamples(
         forType(Temporal.class),
-        t -> t.d() != null && t.date() != null && t.time() != null && t.dt() != null);
+        t ->
+            t.d() != null
+                && t.date() != null
+                && t.time() != null
+                && t.dt() != null
+                && t.odt() != null
+                && t.off() != null);
   }
 
   record Floaty(float f, Float boxed) {}

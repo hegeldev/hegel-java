@@ -78,6 +78,12 @@
 /// `datetimes` (which produce `java.time.LocalDate`/`LocalTime`/`LocalDateTime`), plus format
 /// generators (`emails`, `urls`, `ipv4`, `uuids`, `fromRegex`, …).
 ///
+/// For timezone-aware datetimes, attach an offset with
+/// {@link dev.hegel.DateTimeGenerator#timezones}: `datetimes().timezones(zoneOffsets())` produces
+/// `java.time.OffsetDateTime` values (the wall-clock time interpreted at the drawn
+/// {@link dev.hegel.Generators#zoneOffsets() ZoneOffset}), or pin one zone with
+/// `datetimes().timezones(just(ZoneOffset.UTC))`.
+///
 /// The bound- and size-bearing generators are fluent builders that *are* the generator:
 ///
 /// ```java

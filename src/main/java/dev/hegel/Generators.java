@@ -3,8 +3,8 @@ package dev.hegel;
 import com.upokecenter.cbor.CBORObject;
 import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -421,13 +421,26 @@ public final class Generators {
   }
 
   /**
-   * @return a generator of {@link LocalDateTime} values (the engine's offset-free {@code
-   *     YYYY-MM-DDTHH:MM:SS[.ffffff]} output)
+   * Generates {@link java.time.LocalDateTime} values (the engine's offset-free {@code
+   * YYYY-MM-DDTHH:MM:SS[.ffffff]} output). Call {@link DateTimeGenerator#timezones} to produce
+   * offset-aware {@link java.time.OffsetDateTime} values instead.
+   *
+   * @return a datetime generator
    */
-  public static Generator<LocalDateTime> datetimes() {
-    return new BasicGenerator<>(
-        CBORObject.NewMap().Add("type", "datetime"),
-        raw -> LocalDateTime.parse(Cbor.asString(raw)));
+  public static DateTimeGenerator datetimes() {
+    return new DateTimeGenerator();
+  }
+
+  /**
+   * Generates {@link ZoneOffset} values (fixed UTC offsets). Configure with the fluent methods on
+   * {@link ZoneOffsetGenerator}. Pair with {@link DateTimeGenerator#timezones} to build
+   * offset-aware datetimes.
+   *
+   * @return a zone-offset generator
+   */
+  public static ZoneOffsetGenerator zoneOffsets() {
+    return new ZoneOffsetGenerator(
+        ZoneOffset.MIN.getTotalSeconds(), ZoneOffset.MAX.getTotalSeconds());
   }
 
   /**
