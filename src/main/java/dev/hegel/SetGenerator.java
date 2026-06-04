@@ -8,8 +8,11 @@ import java.util.Set;
  * Generates sets of distinct elements. Basic (one engine call, {@code unique:true} schema) when the
  * element generator is basic; otherwise drives the collection API and rejects duplicates so the
  * engine keeps producing until the set reaches its size.
+ *
+ * <p>The size range defaults to any size; narrow it with the fluent {@link #minSize(int)} / {@link
+ * #maxSize(int)} methods. {@code sets(e, a, b)} is exactly {@code sets(e).minSize(a).maxSize(b)}.
  */
-final class SetGenerator<T> implements Generator<Set<T>>, MaybeBasic<Set<T>> {
+public final class SetGenerator<T> implements Generator<Set<T>>, MaybeBasic<Set<T>> {
   private final Generator<T> element;
   private final long minSize;
   private final long maxSize;
@@ -19,6 +22,22 @@ final class SetGenerator<T> implements Generator<Set<T>>, MaybeBasic<Set<T>> {
     this.element = element;
     this.minSize = minSize;
     this.maxSize = maxSize;
+  }
+
+  /**
+   * @param minSize the minimum size (inclusive)
+   * @return a copy with the minimum size set
+   */
+  public SetGenerator<T> minSize(int minSize) {
+    return new SetGenerator<>(element, minSize, maxSize);
+  }
+
+  /**
+   * @param maxSize the maximum size (inclusive)
+   * @return a copy with the maximum size set
+   */
+  public SetGenerator<T> maxSize(int maxSize) {
+    return new SetGenerator<>(element, minSize, maxSize);
   }
 
   @Override

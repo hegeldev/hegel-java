@@ -8,8 +8,12 @@ import java.util.List;
  * Generates lists. Basic (single engine call) when the element generator is basic; otherwise drives
  * the engine's collection API element by element. The element generator opens its own spans, so no
  * per-element span is needed here (matching the engine's canonical client).
+ *
+ * <p>The length range defaults to any size; narrow it with the fluent {@link #minSize(int)} /
+ * {@link #maxSize(int)} methods. {@code lists(e, a, b)} is exactly {@code
+ * lists(e).minSize(a).maxSize(b)}.
  */
-final class ListGenerator<T> implements Generator<List<T>>, MaybeBasic<List<T>> {
+public final class ListGenerator<T> implements Generator<List<T>>, MaybeBasic<List<T>> {
   private final Generator<T> element;
   private final long minSize;
   private final long maxSize;
@@ -19,6 +23,22 @@ final class ListGenerator<T> implements Generator<List<T>>, MaybeBasic<List<T>> 
     this.element = element;
     this.minSize = minSize;
     this.maxSize = maxSize;
+  }
+
+  /**
+   * @param minSize the minimum length (inclusive)
+   * @return a copy with the minimum size set
+   */
+  public ListGenerator<T> minSize(int minSize) {
+    return new ListGenerator<>(element, minSize, maxSize);
+  }
+
+  /**
+   * @param maxSize the maximum length (inclusive)
+   * @return a copy with the maximum size set
+   */
+  public ListGenerator<T> maxSize(int maxSize) {
+    return new ListGenerator<>(element, minSize, maxSize);
   }
 
   @Override

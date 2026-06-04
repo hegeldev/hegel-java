@@ -3,9 +3,7 @@ package dev.hegel;
 import com.upokecenter.cbor.CBORObject;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -23,24 +21,20 @@ public final class Generators {
    *
    * @return an integer generator
    */
-  public static Generator<Integer> integers() {
-    return integers(Integer.MIN_VALUE, Integer.MAX_VALUE);
+  public static IntegerGenerator integers() {
+    return new IntegerGenerator(Integer.MIN_VALUE, Integer.MAX_VALUE);
   }
 
   /**
-   * Generates {@code int} values in {@code [min, max]} (inclusive).
+   * Generates {@code int} values in {@code [min, max]} (inclusive). Equivalent to {@code
+   * integers().min(min).max(max)}.
    *
    * @param min lower bound (inclusive)
    * @param max upper bound (inclusive)
    * @return an integer generator
    */
-  public static Generator<Integer> integers(int min, int max) {
-    if (min > max) {
-      throw new IllegalArgumentException("integers: min (" + min + ") > max (" + max + ")");
-    }
-    CBORObject schema =
-        CBORObject.NewMap().Add("type", "integer").Add("min_value", min).Add("max_value", max);
-    return new BasicGenerator<>(schema, Cbor::asIndex);
+  public static IntegerGenerator integers(int min, int max) {
+    return new IntegerGenerator(min, max);
   }
 
   /**
@@ -48,24 +42,20 @@ public final class Generators {
    *
    * @return a long generator
    */
-  public static Generator<Long> longs() {
-    return longs(Long.MIN_VALUE, Long.MAX_VALUE);
+  public static LongGenerator longs() {
+    return new LongGenerator(Long.MIN_VALUE, Long.MAX_VALUE);
   }
 
   /**
-   * Generates {@code long} values in {@code [min, max]} (inclusive).
+   * Generates {@code long} values in {@code [min, max]} (inclusive). Equivalent to {@code
+   * longs().min(min).max(max)}.
    *
    * @param min lower bound (inclusive)
    * @param max upper bound (inclusive)
    * @return a long generator
    */
-  public static Generator<Long> longs(long min, long max) {
-    if (min > max) {
-      throw new IllegalArgumentException("longs: min (" + min + ") > max (" + max + ")");
-    }
-    CBORObject schema =
-        CBORObject.NewMap().Add("type", "integer").Add("min_value", min).Add("max_value", max);
-    return new BasicGenerator<>(schema, Cbor::asLong);
+  public static LongGenerator longs(long min, long max) {
+    return new LongGenerator(min, max);
   }
 
   // --- floats ---
@@ -115,26 +105,21 @@ public final class Generators {
    *
    * @return a binary generator
    */
-  public static Generator<byte[]> binary() {
-    return binary(0, -1);
+  public static BinaryGenerator binary() {
+    return new BinaryGenerator(0, Abi.UNBOUNDED);
   }
 
   /**
    * Generates byte arrays with length in {@code [minSize, maxSize]} ({@code maxSize < 0} =
-   * unbounded).
+   * unbounded). Equivalent to {@code binary().minSize(minSize).maxSize(maxSize)} (with a negative
+   * {@code maxSize} meaning unbounded).
    *
    * @param minSize minimum length (inclusive)
    * @param maxSize maximum length (inclusive), or negative for unbounded
    * @return a binary generator
    */
-  public static Generator<byte[]> binary(int minSize, int maxSize) {
-    long max = maxSize < 0 ? Abi.UNBOUNDED : maxSize;
-    Sizes.validate(minSize, max, "binary");
-    CBORObject schema = CBORObject.NewMap().Add("type", "binary").Add("min_size", minSize);
-    if (max != Abi.UNBOUNDED) {
-      schema.Add("max_size", max);
-    }
-    return new BasicGenerator<>(schema, Cbor::asBytes);
+  public static BinaryGenerator binary(int minSize, int maxSize) {
+    return new BinaryGenerator(minSize, maxSize < 0 ? Abi.UNBOUNDED : maxSize);
   }
 
   // --- selection ---
@@ -220,7 +205,7 @@ public final class Generators {
    * @param <T> the element type
    * @return a list generator
    */
-  public static <T> Generator<List<T>> lists(Generator<T> element) {
+  public static <T> ListGenerator<T> lists(Generator<T> element) {
     return new ListGenerator<>(element, 0, Abi.UNBOUNDED);
   }
 
@@ -233,7 +218,7 @@ public final class Generators {
    * @param <T> the element type
    * @return a list generator
    */
-  public static <T> Generator<List<T>> lists(Generator<T> element, int minSize, int maxSize) {
+  public static <T> ListGenerator<T> lists(Generator<T> element, int minSize, int maxSize) {
     return new ListGenerator<>(element, minSize, maxSize);
   }
 
@@ -244,7 +229,7 @@ public final class Generators {
    * @param <T> the element type
    * @return a set generator
    */
-  public static <T> Generator<Set<T>> sets(Generator<T> element) {
+  public static <T> SetGenerator<T> sets(Generator<T> element) {
     return new SetGenerator<>(element, 0, Abi.UNBOUNDED);
   }
 
@@ -257,7 +242,7 @@ public final class Generators {
    * @param <T> the element type
    * @return a set generator
    */
-  public static <T> Generator<Set<T>> sets(Generator<T> element, int minSize, int maxSize) {
+  public static <T> SetGenerator<T> sets(Generator<T> element, int minSize, int maxSize) {
     return new SetGenerator<>(element, minSize, maxSize);
   }
 
@@ -270,8 +255,8 @@ public final class Generators {
    * @param <V> the value type
    * @return a map generator
    */
-  public static <K, V> Generator<Map<K, V>> maps(Generator<K> keys, Generator<V> values) {
-    return new DictGenerator<>(keys, values, 0, Abi.UNBOUNDED);
+  public static <K, V> MapGenerator<K, V> maps(Generator<K> keys, Generator<V> values) {
+    return new MapGenerator<>(keys, values, 0, Abi.UNBOUNDED);
   }
 
   /**
@@ -285,9 +270,9 @@ public final class Generators {
    * @param <V> the value type
    * @return a map generator
    */
-  public static <K, V> Generator<Map<K, V>> maps(
+  public static <K, V> MapGenerator<K, V> maps(
       Generator<K> keys, Generator<V> values, int minSize, int maxSize) {
-    return new DictGenerator<>(keys, values, minSize, maxSize);
+    return new MapGenerator<>(keys, values, minSize, maxSize);
   }
 
   /**
