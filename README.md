@@ -122,8 +122,9 @@ class CommutativityTest {
 }
 ```
 
-See [GETTING_STARTED.md](GETTING_STARTED.md) for a full tour of generators, combinators, control
-functions, and settings.
+See the [API documentation](https://javadoc.io/doc/dev.hegel/hegel) for a full tour of generators,
+combinators, control functions, and settings — the `dev.hegel` package overview is the getting-started
+guide.
 
 ## License
 
