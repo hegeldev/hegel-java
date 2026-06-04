@@ -4,6 +4,7 @@ import com.upokecenter.cbor.CBORObject;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -433,8 +434,8 @@ public final class Generators {
 
   /**
    * Generates {@link ZoneOffset} values (fixed UTC offsets). Configure with the fluent methods on
-   * {@link ZoneOffsetGenerator}. Pair with {@link DateTimeGenerator#timezones} to build
-   * offset-aware datetimes.
+   * {@link ZoneOffsetGenerator}. Pair with {@link DateTimeGenerator#offsets} to build offset-aware
+   * datetimes.
    *
    * @return a zone-offset generator
    */
@@ -442,6 +443,20 @@ public final class Generators {
     return new ZoneOffsetGenerator(
         ZoneOffset.MIN.getTotalSeconds(), ZoneOffset.MAX.getTotalSeconds());
   }
+
+  /**
+   * Generates {@link ZoneId} values spanning the full range of region zones the JVM supports
+   * ({@link ZoneId#getAvailableZoneIds()}). Pair with {@link DateTimeGenerator#timezones} to build
+   * DST-aware datetimes.
+   *
+   * @return a zone-id generator
+   */
+  public static Generator<ZoneId> zoneIds() {
+    return sampledFrom(AVAILABLE_ZONE_IDS);
+  }
+
+  private static final List<ZoneId> AVAILABLE_ZONE_IDS =
+      ZoneId.getAvailableZoneIds().stream().sorted().map(ZoneId::of).toList();
 
   /**
    * Generates {@link Duration} values across the representable nanosecond range. Configure with the

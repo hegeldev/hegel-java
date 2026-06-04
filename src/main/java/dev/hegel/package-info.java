@@ -78,11 +78,15 @@
 /// `datetimes` (which produce `java.time.LocalDate`/`LocalTime`/`LocalDateTime`), plus format
 /// generators (`emails`, `urls`, `ipv4`, `uuids`, `fromRegex`, …).
 ///
-/// For timezone-aware datetimes, attach an offset with
-/// {@link dev.hegel.DateTimeGenerator#timezones}: `datetimes().timezones(zoneOffsets())` produces
-/// `java.time.OffsetDateTime` values (the wall-clock time interpreted at the drawn
-/// {@link dev.hegel.Generators#zoneOffsets() ZoneOffset}), or pin one zone with
-/// `datetimes().timezones(just(ZoneOffset.UTC))`.
+/// For zone-aware datetimes, attach a timezone to a `datetimes()` generator:
+///
+/// - {@link dev.hegel.DateTimeGenerator#timezones timezones}: `datetimes().timezones(zoneIds())`
+///   produces DST-aware `java.time.ZonedDateTime` values over the full range of zones the JVM
+///   supports (see {@link dev.hegel.Generators#zoneIds()}); pin one with
+///   `datetimes().timezones(just(ZoneId.of("Europe/London")))`.
+/// - {@link dev.hegel.DateTimeGenerator#offsets offsets}: `datetimes().offsets(zoneOffsets())`
+///   produces fixed-offset `java.time.OffsetDateTime` values (see
+///   {@link dev.hegel.Generators#zoneOffsets()}).
 ///
 /// The bound- and size-bearing generators are fluent builders that *are* the generator:
 ///

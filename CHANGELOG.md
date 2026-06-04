@@ -17,9 +17,11 @@ Initial release.
   `characters`, `binary`, `just`, `sampledFrom`, `oneOf`, `optional`, `lists`, `sets`, `maps`,
   `tuples`, `durations` (`java.time.Duration`), the temporal generators `dates`, `times`,
   `datetimes` (`java.time.LocalDate`/`LocalTime`/`LocalDateTime`), `zoneOffsets`
-  (`java.time.ZoneOffset`), and the format generators `emails`, `urls`, `domains`, `ipv4`, `ipv6`,
-  `uuids`, `fromRegex`.
-- `datetimes().timezones(...)` produces timezone-aware `java.time.OffsetDateTime` values.
+  (`java.time.ZoneOffset`), `zoneIds` (`java.time.ZoneId`, the full range of zones the JVM
+  supports), and the format generators `emails`, `urls`, `domains`, `ipv4`, `ipv6`, `uuids`,
+  `fromRegex`.
+- `datetimes().timezones(...)` produces DST-aware `java.time.ZonedDateTime` values, and
+  `datetimes().offsets(...)` produces fixed-offset `java.time.OffsetDateTime` values.
 - `deferred()` builds self-recursive and mutually recursive generators via a forward reference.
 - The bound/size-bearing generators are fluent builders: numeric generators take `min`/`max`
   (`integers().min(0).max(9)`), and `binary`/`lists`/`sets`/`maps` take `minSize`/`maxSize`. The

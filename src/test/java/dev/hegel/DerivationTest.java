@@ -108,7 +108,9 @@ class DerivationTest {
       java.time.LocalTime time,
       java.time.LocalDateTime dt,
       java.time.OffsetDateTime odt,
-      java.time.ZoneOffset off) {}
+      java.time.ZonedDateTime zdt,
+      java.time.ZoneOffset off,
+      java.time.ZoneId zone) {}
 
   @Test
   void derivesTemporalScalars() {
@@ -120,7 +122,9 @@ class DerivationTest {
                 && t.time() != null
                 && t.dt() != null
                 && t.odt() != null
-                && t.off() != null);
+                && t.zdt() != null
+                && t.off() != null
+                && t.zone() != null);
   }
 
   record Floaty(float f, Float boxed) {}

@@ -78,10 +78,16 @@ final class Derive {
       return Generators.datetimes();
     }
     if (cls == java.time.OffsetDateTime.class) {
-      return Generators.datetimes().timezones(Generators.zoneOffsets());
+      return Generators.datetimes().offsets(Generators.zoneOffsets());
+    }
+    if (cls == java.time.ZonedDateTime.class) {
+      return Generators.datetimes().timezones(Generators.zoneIds());
     }
     if (cls == java.time.ZoneOffset.class) {
       return Generators.zoneOffsets();
+    }
+    if (cls == java.time.ZoneId.class) {
+      return Generators.zoneIds();
     }
     return null;
   }
