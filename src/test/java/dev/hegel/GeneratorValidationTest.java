@@ -2,6 +2,7 @@ package dev.hegel;
 
 import static dev.hegel.Generators.binary;
 import static dev.hegel.Generators.doubles;
+import static dev.hegel.Generators.durations;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.integers;
 import static dev.hegel.Generators.lists;
@@ -56,6 +57,16 @@ class GeneratorValidationTest {
     assertThrows(IllegalArgumentException.class, () -> text().codepoints(10, 1));
     assertThrows(IllegalArgumentException.class, () -> text().categories("Cs").asBasic());
     assertThrows(IllegalArgumentException.class, () -> text().categories("C").asBasic());
+  }
+
+  @Test
+  void durationBounds() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            durations().min(java.time.Duration.ofSeconds(2)).max(java.time.Duration.ofSeconds(1)));
+    assertThrows(
+        IllegalArgumentException.class, () -> durations().min(java.time.Duration.ofSeconds(-1)));
   }
 
   @Test

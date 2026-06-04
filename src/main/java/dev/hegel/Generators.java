@@ -1,6 +1,10 @@
 package dev.hegel;
 
 import com.upokecenter.cbor.CBORObject;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -309,6 +313,18 @@ public final class Generators {
     return new Gen.Composite<>(Abi.LABEL_COMPOSITE, body);
   }
 
+  /**
+   * Creates a forward reference for building self-recursive or mutually recursive generators. Pass
+   * the returned {@link Deferred} into other generators, then call {@link Deferred#set} once with
+   * the real implementation.
+   *
+   * @param <T> the value type
+   * @return a deferred generator reference
+   */
+  public static <T> Deferred<T> deferred() {
+    return new Deferred<>();
+  }
+
   // --- type-directed derivation ---
 
   /**
@@ -389,24 +405,39 @@ public final class Generators {
   }
 
   /**
-   * @return a generator of ISO-8601 date strings
+   * @return a generator of {@link LocalDate} values (the engine's {@code YYYY-MM-DD} output)
    */
-  public static Generator<String> dates() {
-    return format("date");
+  public static Generator<LocalDate> dates() {
+    return new BasicGenerator<>(
+        CBORObject.NewMap().Add("type", "date"), raw -> LocalDate.parse(Cbor.asString(raw)));
   }
 
   /**
-   * @return a generator of time-of-day strings
+   * @return a generator of {@link LocalTime} values (the engine's {@code HH:MM:SS[.ffffff]} output)
    */
-  public static Generator<String> times() {
-    return format("time");
+  public static Generator<LocalTime> times() {
+    return new BasicGenerator<>(
+        CBORObject.NewMap().Add("type", "time"), raw -> LocalTime.parse(Cbor.asString(raw)));
   }
 
   /**
-   * @return a generator of ISO-8601 datetime strings
+   * @return a generator of {@link LocalDateTime} values (the engine's offset-free {@code
+   *     YYYY-MM-DDTHH:MM:SS[.ffffff]} output)
    */
-  public static Generator<String> datetimes() {
-    return format("datetime");
+  public static Generator<LocalDateTime> datetimes() {
+    return new BasicGenerator<>(
+        CBORObject.NewMap().Add("type", "datetime"),
+        raw -> LocalDateTime.parse(Cbor.asString(raw)));
+  }
+
+  /**
+   * Generates {@link Duration} values across the representable nanosecond range. Configure with the
+   * fluent methods on {@link DurationGenerator}.
+   *
+   * @return a duration generator
+   */
+  public static DurationGenerator durations() {
+    return new DurationGenerator(0, Long.MAX_VALUE);
   }
 
   /**

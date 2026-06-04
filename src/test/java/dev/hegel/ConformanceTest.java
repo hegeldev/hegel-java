@@ -1,6 +1,7 @@
 package dev.hegel;
 
 import static dev.hegel.Checks.assertAllExamples;
+import static dev.hegel.Checks.findAny;
 import static dev.hegel.Checks.minimal;
 import static dev.hegel.Generators.binary;
 import static dev.hegel.Generators.booleans;
@@ -8,8 +9,10 @@ import static dev.hegel.Generators.characters;
 import static dev.hegel.Generators.compose;
 import static dev.hegel.Generators.dates;
 import static dev.hegel.Generators.datetimes;
+import static dev.hegel.Generators.deferred;
 import static dev.hegel.Generators.domains;
 import static dev.hegel.Generators.doubles;
+import static dev.hegel.Generators.durations;
 import static dev.hegel.Generators.emails;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.fromRegex;
@@ -30,8 +33,10 @@ import static dev.hegel.Generators.tuples;
 import static dev.hegel.Generators.urls;
 import static dev.hegel.Generators.uuids;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -170,11 +175,63 @@ class ConformanceTest {
     assertAllExamples(domains(), s -> !s.isEmpty());
     assertAllExamples(ipv4(), s -> s.chars().filter(c -> c == '.').count() == 3);
     assertAllExamples(ipv6(), s -> !s.isEmpty());
-    assertAllExamples(dates(), s -> s.contains("-"));
-    assertAllExamples(times(), s -> !s.isEmpty());
-    assertAllExamples(datetimes(), s -> !s.isEmpty());
     assertAllExamples(uuids(), s -> s.contains("-"));
     assertAllExamples(fromRegex("[0-9]{3}"), s -> s.matches(".*[0-9]{3}.*"));
+  }
+
+  @Test
+  void temporalGeneratorsProduceJavaTimeTypes() {
+    // Typed (not strings): the engine's offset-free output parses into java.time values, so a draw
+    // arriving here at all means it round-tripped through the type's parser.
+    assertAllExamples(dates(), d -> d.getYear() >= 1 && d.getYear() <= 9999);
+    assertAllExamples(times(), t -> t.getHour() >= 0 && t.getHour() <= 23);
+    assertAllExamples(datetimes(), dt -> dt.getDayOfMonth() >= 1 && dt.getDayOfMonth() <= 31);
+    assertAllExamples(durations(), d -> !d.isNegative() && d.toNanos() <= Long.MAX_VALUE);
+    assertAllExamples(
+        durations().min(Duration.ofSeconds(1)).max(Duration.ofSeconds(60)),
+        d -> d.compareTo(Duration.ofSeconds(1)) >= 0 && d.compareTo(Duration.ofSeconds(60)) <= 0);
+  }
+
+  @Test
+  void deferredBuildsRecursiveGenerators() {
+    // A binary tree: a leaf integer, or a branch holding two subtrees.
+    Deferred<Object> tree = deferred();
+    Generator<Object> leaf = integers(0, 9).map(i -> (Object) i);
+    Generator<Object> branch = tuples(tree, tree).map(pair -> (Object) pair);
+    tree.set(oneOf(leaf, branch));
+
+    // Every draw is a finite, well-formed tree.
+    assertAllExamples(tree, ConformanceTest::isTree);
+    // Recursion actually nests: a tree deeper than one level is reachable.
+    assertTrue(depth(findAny(tree, t -> depth(t) >= 2)) >= 2);
+  }
+
+  private static boolean isTree(Object t) {
+    if (t instanceof Integer) {
+      return true;
+    }
+    if (t instanceof List<?> l) {
+      return l.size() == 2 && isTree(l.get(0)) && isTree(l.get(1));
+    }
+    return false;
+  }
+
+  private static int depth(Object t) {
+    if (t instanceof List<?> l) {
+      return 1 + Math.max(depth(l.get(0)), depth(l.get(1)));
+    }
+    return 0;
+  }
+
+  @Test
+  void deferredFailsBeforeSet() {
+    Deferred<Integer> d = deferred();
+    assertThrows(
+        IllegalStateException.class,
+        () -> Hegel.with().testCases(1).noDatabase().check(tc -> tc.draw(d)));
+    Deferred<Integer> once = deferred();
+    once.set(integers());
+    assertThrows(IllegalStateException.class, () -> once.set(integers()));
   }
 
   @Test

@@ -15,8 +15,10 @@ Initial release.
   callback runner.
 - Generators: `integers`, `longs`, `floats` (32-bit) and `doubles` (64-bit), `booleans`, `text`,
   `characters`, `binary`, `just`, `sampledFrom`, `oneOf`, `optional`, `lists`, `sets`, `maps`,
-  `tuples`, and the format generators `emails`, `urls`, `domains`, `ipv4`, `ipv6`, `uuids`,
-  `dates`, `times`, `datetimes`, `fromRegex`.
+  `tuples`, `durations` (`java.time.Duration`), the temporal generators `dates`, `times`,
+  `datetimes` (`java.time.LocalDate`/`LocalTime`/`LocalDateTime`), and the format generators
+  `emails`, `urls`, `domains`, `ipv4`, `ipv6`, `uuids`, `fromRegex`.
+- `deferred()` builds self-recursive and mutually recursive generators via a forward reference.
 - The bound/size-bearing generators are fluent builders: numeric generators take `min`/`max`
   (`integers().min(0).max(9)`), and `binary`/`lists`/`sets`/`maps` take `minSize`/`maxSize`. The
   two-argument factory overloads are exactly equivalent to the fluent form.

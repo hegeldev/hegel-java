@@ -6,6 +6,7 @@ import static dev.hegel.Generators.dates;
 import static dev.hegel.Generators.datetimes;
 import static dev.hegel.Generators.domains;
 import static dev.hegel.Generators.doubles;
+import static dev.hegel.Generators.durations;
 import static dev.hegel.Generators.emails;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.fromRegex;
@@ -168,9 +169,10 @@ class GeneratorSmokeTest {
               assertTrue(tc.draw(domains()).length() > 0);
               assertTrue(tc.draw(ipv4()).contains("."));
               assertTrue(tc.draw(ipv6()).length() > 0);
-              assertTrue(tc.draw(dates()).length() > 0);
-              assertTrue(tc.draw(times()).length() > 0);
-              assertTrue(tc.draw(datetimes()).length() > 0);
+              assertTrue(tc.draw(dates()).getYear() >= 1);
+              assertTrue(tc.draw(times()).getHour() >= 0);
+              assertTrue(tc.draw(datetimes()).getYear() >= 1);
+              assertTrue(!tc.draw(durations()).isNegative());
               assertTrue(tc.draw(fromRegex("[a-z]{3}")).length() >= 0);
             });
   }

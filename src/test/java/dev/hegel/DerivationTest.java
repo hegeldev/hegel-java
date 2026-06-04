@@ -102,6 +102,19 @@ class DerivationTest {
         w -> w.l() != null && w.b() != null && w.d() != null && w.data() != null && w.i() != null);
   }
 
+  record Temporal(
+      java.time.Duration d,
+      java.time.LocalDate date,
+      java.time.LocalTime time,
+      java.time.LocalDateTime dt) {}
+
+  @Test
+  void derivesTemporalScalars() {
+    assertAllExamples(
+        forType(Temporal.class),
+        t -> t.d() != null && t.date() != null && t.time() != null && t.dt() != null);
+  }
+
   record Floaty(float f, Float boxed) {}
 
   @Test

@@ -74,7 +74,9 @@
 /// {@link dev.hegel.Generators} provides a rich set of generators. Primitives include `integers`,
 /// `longs`, `floats` (32-bit) and `doubles` (64-bit), `booleans`, `text`, and `binary`; collections
 /// include `lists`, `sets`, and `maps`; and there are `tuples`, `oneOf`, `optional`, `sampledFrom`,
-/// `just`, plus format generators (`emails`, `urls`, `ipv4`, `dates`, `fromRegex`, …).
+/// `just`, `durations` (`java.time.Duration`), and the temporal generators `dates`, `times`, and
+/// `datetimes` (which produce `java.time.LocalDate`/`LocalTime`/`LocalDateTime`), plus format
+/// generators (`emails`, `urls`, `ipv4`, `uuids`, `fromRegex`, …).
 ///
 /// The bound- and size-bearing generators are fluent builders that *are* the generator:
 ///
@@ -111,6 +113,25 @@
 ///       tc.draw(integers()), tc.draw(integers())
 ///   });
 ///   ```
+///
+/// ## Recursive generators
+///
+/// {@link dev.hegel.Generators#deferred() deferred} creates a forward reference so a generator can
+/// refer to itself, enabling self-recursive (and mutually recursive) data such as trees:
+///
+/// ```java
+/// record Tree(Integer leaf, Tree left, Tree right) {} // leaf != null XOR children != null
+///
+/// Deferred<Tree> tree = Generators.deferred();
+/// Generator<Tree> leaf = integers().map(n -> new Tree(n, null, null));
+/// Generator<Tree> branch =
+///     tuples(tree, tree).map(t -> new Tree(null, (Tree) t.get(0), (Tree) t.get(1)));
+/// tree.set(oneOf(leaf, branch)); // wire up the self-reference
+/// Tree t = tc.draw(tree);
+/// ```
+///
+/// The engine's size control keeps generated structures finite. Drawing before
+/// {@link dev.hegel.Deferred#set set} is called fails.
 ///
 /// ## Control functions
 ///
