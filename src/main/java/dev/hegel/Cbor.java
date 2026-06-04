@@ -93,6 +93,12 @@ final class Cbor {
     return ((Number) raw).doubleValue();
   }
 
+  static float asFloat(Object raw) {
+    // The engine emits f32 draws as an f64 already rounded to f32 precision, so this cast is
+    // lossless and the same bit pattern round-trips.
+    return (float) ((Number) raw).doubleValue();
+  }
+
   static boolean asBoolean(Object raw) {
     return (Boolean) raw;
   }

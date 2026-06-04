@@ -5,6 +5,7 @@ import static dev.hegel.Generators.compose;
 import static dev.hegel.Generators.dates;
 import static dev.hegel.Generators.datetimes;
 import static dev.hegel.Generators.domains;
+import static dev.hegel.Generators.doubles;
 import static dev.hegel.Generators.emails;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.fromRegex;
@@ -35,7 +36,9 @@ class GeneratorSmokeTest {
         .testCases(50)
         .check(
             tc -> {
-              double d = tc.draw(floats().min(0.0).max(1.0));
+              float f = tc.draw(floats().min(0.0f).max(1.0f));
+              assertTrue(f >= 0.0f && f <= 1.0f, "out of range: " + f);
+              double d = tc.draw(doubles().min(0.0).max(1.0));
               assertTrue(d >= 0.0 && d <= 1.0, "out of range: " + d);
             });
   }

@@ -9,6 +9,7 @@ import static dev.hegel.Generators.compose;
 import static dev.hegel.Generators.dates;
 import static dev.hegel.Generators.datetimes;
 import static dev.hegel.Generators.domains;
+import static dev.hegel.Generators.doubles;
 import static dev.hegel.Generators.emails;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.fromRegex;
@@ -50,15 +51,29 @@ class ConformanceTest {
   }
 
   @Test
-  void floatsRespectBoundsAndSpecials() {
-    assertAllExamples(floats().min(0).max(1), d -> d >= 0 && d <= 1 && !Double.isNaN(d));
-    assertAllExamples(floats(), d -> true);
+  void doublesRespectBoundsAndSpecials() {
+    assertAllExamples(doubles().min(0).max(1), d -> d >= 0 && d <= 1 && !Double.isNaN(d));
+    assertAllExamples(doubles(), d -> true);
     assertAllExamples(
-        floats().allowNan(false).allowInfinity(false),
+        doubles().allowNan(false).allowInfinity(false),
         d -> !Double.isNaN(d) && !Double.isInfinite(d));
     assertAllExamples(
-        floats().min(0).max(1).excludeMin(true).excludeMax(true), d -> d > 0 && d < 1);
-    assertAllExamples(floats().min(-2), d -> d >= -2);
+        doubles().min(0).max(1).excludeMin(true).excludeMax(true), d -> d > 0 && d < 1);
+    assertAllExamples(doubles().min(-2), d -> d >= -2);
+  }
+
+  @Test
+  void floatsRespectBoundsAndSpecials() {
+    assertAllExamples(floats().min(0).max(1), f -> f >= 0 && f <= 1 && !Float.isNaN(f));
+    assertAllExamples(floats(), f -> true);
+    assertAllExamples(
+        floats().allowNan(false).allowInfinity(false),
+        f -> !Float.isNaN(f) && !Float.isInfinite(f));
+    assertAllExamples(
+        floats().min(0).max(1).excludeMin(true).excludeMax(true), f -> f > 0 && f < 1);
+    assertAllExamples(floats().min(-2), f -> f >= -2);
+    // Every drawn value is genuinely f32: re-narrowing its f64 widening is a no-op.
+    assertAllExamples(floats(), f -> (float) (double) f == f || Float.isNaN(f));
   }
 
   @Test

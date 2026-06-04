@@ -86,9 +86,9 @@ n = 50;
 ## Use generators
 
 `dev.hegel.Generators` provides a rich set of generators. Primitives include `integers`,
-`longs`, `floats`, `booleans`, `text`, and `binary`; collections include `lists`, `sets`, and
-`maps`; and there are `tuples`, `oneOf`, `optional`, `sampledFrom`, `just`, plus format
-generators (`emails`, `urls`, `ipv4`, `dates`, `fromRegex`, …).
+`longs`, `floats` (32-bit) and `doubles` (64-bit), `booleans`, `text`, and `binary`; collections
+include `lists`, `sets`, and `maps`; and there are `tuples`, `oneOf`, `optional`, `sampledFrom`,
+`just`, plus format generators (`emails`, `urls`, `ipv4`, `dates`, `fromRegex`, …).
 
 For example, generate a list of integers:
 
@@ -106,8 +106,10 @@ Generators with several options use fluent builders that *are* the generator:
 
 ```java
 tc.draw(integers(0, 100));                 // bounded ints
+tc.draw(integers().min(0).max(100));       // the same, written fluently
 tc.draw(text().minSize(1).maxSize(10));    // short strings
-tc.draw(floats().min(0).max(1));           // a probability
+tc.draw(doubles().min(0).max(1));          // a probability (64-bit)
+tc.draw(floats().min(0).max(1));           // a 32-bit float in [0, 1]
 tc.draw(lists(integers(), 1, 5));          // 1–5 element lists
 ```
 

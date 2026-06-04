@@ -1,5 +1,6 @@
 package dev.hegel;
 
+import static dev.hegel.Generators.doubles;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.integers;
 import static dev.hegel.Generators.maps;
@@ -35,7 +36,7 @@ class CoverageTest {
     assertFalse(Settings.isCi(Map.of("CI", "")));
   }
 
-  // --- FloatGenerator schema branches (no engine needed) ---
+  // --- FloatGenerator / DoubleGenerator schema branches (no engine needed) ---
   @Test
   void floatSchemaVariants() {
     assertNotNull(floats().asBasic());
@@ -45,6 +46,17 @@ class CoverageTest {
     assertNotNull(floats().min(0).max(1).asBasic());
     assertNotNull(floats().min(-2).asBasic());
     assertNotNull(floats().max(2).excludeMin(true).excludeMax(true).asBasic());
+  }
+
+  @Test
+  void doubleSchemaVariants() {
+    assertNotNull(doubles().asBasic());
+    assertNotNull(doubles().allowNan(true).asBasic());
+    assertNotNull(doubles().allowInfinity(true).asBasic());
+    assertNotNull(doubles().allowNan(false).allowInfinity(false).asBasic());
+    assertNotNull(doubles().min(0).max(1).asBasic());
+    assertNotNull(doubles().min(-2).asBasic());
+    assertNotNull(doubles().max(2).excludeMin(true).excludeMax(true).asBasic());
   }
 
   // --- Collection schema basicness branches ---

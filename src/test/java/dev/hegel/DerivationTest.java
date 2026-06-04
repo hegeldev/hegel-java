@@ -102,6 +102,19 @@ class DerivationTest {
         w -> w.l() != null && w.b() != null && w.d() != null && w.data() != null && w.i() != null);
   }
 
+  record Floaty(float f, Float boxed) {}
+
+  @Test
+  void derivesFloatScalars() {
+    assertAllExamples(
+        forType(Floaty.class),
+        // Both components are genuine 32-bit floats: re-narrowing the widened value is a no-op.
+        x ->
+            x.boxed() != null
+                && ((float) (double) x.f() == x.f() || Float.isNaN(x.f()))
+                && ((float) (double) x.boxed() == x.boxed() || Float.isNaN(x.boxed())));
+  }
+
   @Test
   void unsupportedReflectiveTypeFails() {
     java.lang.reflect.Type weird = new java.lang.reflect.Type() {};

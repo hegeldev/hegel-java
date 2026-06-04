@@ -11,9 +11,13 @@ Initial release.
   Function & Memory API (no JNI, no manual install).
 - JUnit 5 integration via the `@HegelTest` annotation, plus a framework-agnostic `Hegel.check`
   callback runner.
-- Generators: `integers`, `longs`, `floats`, `booleans`, `text`, `characters`, `binary`, `just`,
-  `sampledFrom`, `oneOf`, `optional`, `lists`, `sets`, `maps`, `tuples`, and the format generators
-  `emails`, `urls`, `domains`, `ipv4`, `ipv6`, `uuids`, `dates`, `times`, `datetimes`, `fromRegex`.
+- Generators: `integers`, `longs`, `floats` (32-bit) and `doubles` (64-bit), `booleans`, `text`,
+  `characters`, `binary`, `just`, `sampledFrom`, `oneOf`, `optional`, `lists`, `sets`, `maps`,
+  `tuples`, and the format generators `emails`, `urls`, `domains`, `ipv4`, `ipv6`, `uuids`,
+  `dates`, `times`, `datetimes`, `fromRegex`.
+- The bound/size-bearing generators are fluent builders: numeric generators take `min`/`max`
+  (`integers().min(0).max(9)`), and `binary`/`lists`/`sets`/`maps` take `minSize`/`maxSize`. The
+  two-argument factory overloads are exactly equivalent to the fluent form.
 - Combinators `map`, `filter`, `flatMap`, and `compose`, with the basic/composite dual path so
   `map` preserves single-call generation and shrink quality.
 - Control functions `assume`, `note`, and `target`; minimal-counterexample reporting with labelled

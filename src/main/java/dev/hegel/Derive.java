@@ -53,8 +53,11 @@ final class Derive {
     if (cls == boolean.class || cls == Boolean.class) {
       return Generators.booleans();
     }
-    if (cls == double.class || cls == Double.class) {
+    if (cls == float.class || cls == Float.class) {
       return Generators.floats();
+    }
+    if (cls == double.class || cls == Double.class) {
+      return Generators.doubles();
     }
     if (cls == String.class) {
       return Generators.text();

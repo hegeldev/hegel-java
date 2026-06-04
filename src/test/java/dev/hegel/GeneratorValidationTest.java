@@ -1,6 +1,7 @@
 package dev.hegel;
 
 import static dev.hegel.Generators.binary;
+import static dev.hegel.Generators.doubles;
 import static dev.hegel.Generators.floats;
 import static dev.hegel.Generators.integers;
 import static dev.hegel.Generators.lists;
@@ -25,14 +26,27 @@ class GeneratorValidationTest {
   @Test
   void floatConflicts() {
     assertThrows(IllegalArgumentException.class, () -> floats().min(1).max(0));
-    assertThrows(IllegalArgumentException.class, () -> floats().min(Double.NaN));
-    assertThrows(IllegalArgumentException.class, () -> floats().max(Double.NaN));
+    assertThrows(IllegalArgumentException.class, () -> floats().min(Float.NaN));
+    assertThrows(IllegalArgumentException.class, () -> floats().max(Float.NaN));
     assertThrows(IllegalArgumentException.class, () -> floats().min(0).allowNan(true));
     assertThrows(IllegalArgumentException.class, () -> floats().max(0).allowNan(true));
     assertThrows(IllegalArgumentException.class, () -> floats().min(0).max(1).allowInfinity(true));
     // allowInfinity with only one bound is permitted.
     floats().min(0).allowInfinity(true);
     floats().max(0).allowInfinity(true);
+  }
+
+  @Test
+  void doubleConflicts() {
+    assertThrows(IllegalArgumentException.class, () -> doubles().min(1).max(0));
+    assertThrows(IllegalArgumentException.class, () -> doubles().min(Double.NaN));
+    assertThrows(IllegalArgumentException.class, () -> doubles().max(Double.NaN));
+    assertThrows(IllegalArgumentException.class, () -> doubles().min(0).allowNan(true));
+    assertThrows(IllegalArgumentException.class, () -> doubles().max(0).allowNan(true));
+    assertThrows(IllegalArgumentException.class, () -> doubles().min(0).max(1).allowInfinity(true));
+    // allowInfinity with only one bound is permitted.
+    doubles().min(0).allowInfinity(true);
+    doubles().max(0).allowInfinity(true);
   }
 
   @Test

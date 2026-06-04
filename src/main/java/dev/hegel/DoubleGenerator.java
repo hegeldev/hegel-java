@@ -1,17 +1,17 @@
 package dev.hegel;
 
 /**
- * Generates 32-bit {@code float} values with full control over bounds and special values. Always
- * basic (one engine call). For 64-bit {@code double} values use {@link DoubleGenerator} ({@link
- * Generators#doubles()}).
+ * Generates 64-bit {@code double} values with full control over bounds and special values. Always
+ * basic (one engine call). For 32-bit {@code float} values use {@link FloatGenerator} ({@link
+ * Generators#floats()}).
  *
  * <p>Defaults mirror the engine. With no bounds, NaN and the infinities are allowed. Setting any
  * bound excludes NaN; setting <em>both</em> bounds also excludes the infinities (a single bound
  * still allows the infinity on the open side). {@code allowNan}/{@code allowInfinity} override
- * these defaults where the combination is valid. Bounds are {@code float}-precision and validation
- * of conflicting options happens at construction time.
+ * these defaults where the combination is valid. Validation of conflicting options happens at
+ * construction time.
  */
-public final class FloatGenerator implements Generator<Float>, MaybeBasic<Float> {
+public final class DoubleGenerator implements Generator<Double>, MaybeBasic<Double> {
   private final Double min;
   private final Double max;
   private final Boolean allowNan;
@@ -19,14 +19,14 @@ public final class FloatGenerator implements Generator<Float>, MaybeBasic<Float>
   private final boolean excludeMin;
   private final boolean excludeMax;
 
-  FloatGenerator(
+  DoubleGenerator(
       Double min,
       Double max,
       Boolean allowNan,
       Boolean allowInfinity,
       boolean excludeMin,
       boolean excludeMax) {
-    Floats.validate("floats", min, max, allowNan, allowInfinity);
+    Floats.validate("doubles", min, max, allowNan, allowInfinity);
     this.min = min;
     this.max = max;
     this.allowNan = allowNan;
@@ -39,59 +39,59 @@ public final class FloatGenerator implements Generator<Float>, MaybeBasic<Float>
    * @param min the inclusive lower bound
    * @return a copy with the lower bound set
    */
-  public FloatGenerator min(float min) {
-    return new FloatGenerator((double) min, max, allowNan, allowInfinity, excludeMin, excludeMax);
+  public DoubleGenerator min(double min) {
+    return new DoubleGenerator(min, max, allowNan, allowInfinity, excludeMin, excludeMax);
   }
 
   /**
    * @param max the inclusive upper bound
    * @return a copy with the upper bound set
    */
-  public FloatGenerator max(float max) {
-    return new FloatGenerator(min, (double) max, allowNan, allowInfinity, excludeMin, excludeMax);
+  public DoubleGenerator max(double max) {
+    return new DoubleGenerator(min, max, allowNan, allowInfinity, excludeMin, excludeMax);
   }
 
   /**
    * @param allow whether NaN may be generated
    * @return a copy with the NaN policy set
    */
-  public FloatGenerator allowNan(boolean allow) {
-    return new FloatGenerator(min, max, allow, allowInfinity, excludeMin, excludeMax);
+  public DoubleGenerator allowNan(boolean allow) {
+    return new DoubleGenerator(min, max, allow, allowInfinity, excludeMin, excludeMax);
   }
 
   /**
    * @param allow whether infinities may be generated
    * @return a copy with the infinity policy set
    */
-  public FloatGenerator allowInfinity(boolean allow) {
-    return new FloatGenerator(min, max, allowNan, allow, excludeMin, excludeMax);
+  public DoubleGenerator allowInfinity(boolean allow) {
+    return new DoubleGenerator(min, max, allowNan, allow, excludeMin, excludeMax);
   }
 
   /**
    * @param exclude whether the lower bound itself is excluded
    * @return a copy with the exclude-min policy set
    */
-  public FloatGenerator excludeMin(boolean exclude) {
-    return new FloatGenerator(min, max, allowNan, allowInfinity, exclude, excludeMax);
+  public DoubleGenerator excludeMin(boolean exclude) {
+    return new DoubleGenerator(min, max, allowNan, allowInfinity, exclude, excludeMax);
   }
 
   /**
    * @param exclude whether the upper bound itself is excluded
    * @return a copy with the exclude-max policy set
    */
-  public FloatGenerator excludeMax(boolean exclude) {
-    return new FloatGenerator(min, max, allowNan, allowInfinity, excludeMin, exclude);
+  public DoubleGenerator excludeMax(boolean exclude) {
+    return new DoubleGenerator(min, max, allowNan, allowInfinity, excludeMin, exclude);
   }
 
   @Override
-  public BasicGenerator<Float> asBasic() {
+  public BasicGenerator<Double> asBasic() {
     return new BasicGenerator<>(
-        Floats.schema(32, min, max, allowNan, allowInfinity, excludeMin, excludeMax),
-        Cbor::asFloat);
+        Floats.schema(64, min, max, allowNan, allowInfinity, excludeMin, excludeMax),
+        Cbor::asDouble);
   }
 
   @Override
-  public Float generate(TestCase tc) {
+  public Double generate(TestCase tc) {
     return asBasic().generate(tc);
   }
 }

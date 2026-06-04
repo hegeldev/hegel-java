@@ -58,15 +58,26 @@ public final class Generators {
     return new LongGenerator(min, max);
   }
 
-  // --- floats ---
+  // --- floats & doubles ---
 
   /**
-   * Generates {@code double} values. Configure with the fluent methods on {@link FloatGenerator}.
+   * Generates 32-bit {@code float} values. Configure with the fluent methods on {@link
+   * FloatGenerator}.
    *
    * @return a float generator
    */
   public static FloatGenerator floats() {
     return new FloatGenerator(null, null, null, null, false, false);
+  }
+
+  /**
+   * Generates 64-bit {@code double} values. Configure with the fluent methods on {@link
+   * DoubleGenerator}.
+   *
+   * @return a double generator
+   */
+  public static DoubleGenerator doubles() {
+    return new DoubleGenerator(null, null, null, null, false, false);
   }
 
   // --- booleans ---
@@ -303,9 +314,9 @@ public final class Generators {
   /**
    * Derive a generator for {@code type} by reflection.
    *
-   * <p>Supports scalar types ({@code int}, {@code long}, {@code boolean}, {@code double}, {@code
-   * String}, {@code byte[]} and their wrappers), enums, records (recursively), and {@code List},
-   * {@code Set}, {@code Optional} and {@code Map} of supported element types.
+   * <p>Supports scalar types ({@code int}, {@code long}, {@code boolean}, {@code float}, {@code
+   * double}, {@code String}, {@code byte[]} and their wrappers), enums, records (recursively), and
+   * {@code List}, {@code Set}, {@code Optional} and {@code Map} of supported element types.
    *
    * @param type the type to derive a generator for
    * @param <T> the type
