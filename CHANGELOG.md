@@ -8,7 +8,9 @@ convention: a short, user-facing entry per release.
 Initial release.
 
 - Property-based testing for Java powered by the Hegel engine, loaded in-process over the Foreign
-  Function & Memory API (no JNI, no manual install).
+  Function & Memory API (no JNI, no manual install). `libhegel` is resolved from
+  `$HEGEL_LIBHEGEL_PATH`, then the OS library search path (`LD_LIBRARY_PATH` /
+  `DYLD_LIBRARY_PATH`), then the bundled native.
 - JUnit 5 integration via the `@HegelTest` annotation, plus a framework-agnostic `Hegel.check`
   callback runner.
 - Generators: `integers`, `longs`, `floats` (32-bit) and `doubles` (64-bit), `booleans`, `text`,

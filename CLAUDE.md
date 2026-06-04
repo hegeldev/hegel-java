@@ -15,8 +15,9 @@ authoritative references are hegel-rust (the engine and canonical client) and it
 - `just build-libhegel` — build `libhegel` from a sibling `../hegel-rust` checkout.
 - `just format` / `just lint` — google-java-format via fmt-maven-plugin.
 
-`libhegel` resolves from `$HEGEL_LIBHEGEL_PATH`, else the native bundled in the jar for the host
-OS/arch (unpacked to a per-user cache). The bundled libraries are fetched at build time by
+`libhegel` resolves from `$HEGEL_LIBHEGEL_PATH` (explicit override), else the OS's standard
+shared-library search path (`LD_LIBRARY_PATH` on Linux, `DYLD_LIBRARY_PATH` on macOS), else the
+native bundled in the jar for the host OS/arch (unpacked to a per-user cache). The bundled libraries are fetched at build time by
 `scripts/fetch_natives.py` (wired into Maven's `generate-resources` phase), which discovers whatever
 shared objects the pinned `<libhegel.version>` release publishes — no runtime download. For local
 engine work, build a `libhegel` and point `$HEGEL_LIBHEGEL_PATH` at it (`just build-libhegel` builds
@@ -31,7 +32,7 @@ never see CBOR or schemas.
 Layers (all in package `dev.hegel`):
 
 - **FFI binding** — `Libhegel` (a fakeable interface) and `RealLibhegel` (FFM). `LibraryLoader`
-  resolves the library (override / sibling / jar-bundled native unpacked to a cache); `Engine` is
+  resolves the library (override / OS library path / jar-bundled native unpacked to a cache); `Engine` is
   the process-wide lazy holder of the loaded shared object (with a test hook) — it caches only the
   immutable, thread-safe library, never per-test state.
   `Cbor` encodes schemas and decodes values (Tag 91 / WTF-8, BigInteger ints, float widths). `Abi`

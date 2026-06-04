@@ -118,6 +118,65 @@ class LibraryLoaderTest {
   }
 
   @Test
+  void libraryPathFoundUsedBeforeBundled(@TempDir Path dir) throws IOException {
+    byte[] onPath = "from-ld-library-path".getBytes(StandardCharsets.UTF_8);
+    Path libDir = Files.createDirectories(dir.resolve("libs"));
+    Path lib = libDir.resolve("libhegel.so");
+    Files.write(lib, onPath);
+    // A leading empty entry exercises the skip; the bundled native is present but must be ignored.
+    Map<String, String> env = Map.of("LD_LIBRARY_PATH", java.io.File.pathSeparator + libDir);
+    LibraryLoader l =
+        loader(
+            env,
+            dir.resolve("cache"),
+            bundled(LINUX_RESOURCE, "bundled".getBytes(StandardCharsets.UTF_8)));
+    Path got = l.resolve();
+    assertEquals(lib, got);
+    assertArrayEquals(onPath, Files.readAllBytes(got));
+  }
+
+  @Test
+  void libraryPathMissFallsThroughToBundled(@TempDir Path dir) throws IOException {
+    byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
+    Path emptyDir = Files.createDirectories(dir.resolve("nolib"));
+    Map<String, String> env = Map.of("LD_LIBRARY_PATH", emptyDir.toString());
+    LibraryLoader l = loader(env, dir.resolve("cache"), bundled(LINUX_RESOURCE, payload));
+    assertArrayEquals(payload, Files.readAllBytes(l.resolve()));
+  }
+
+  @Test
+  void emptyLibraryPathFallsThroughToBundled(@TempDir Path dir) throws IOException {
+    byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
+    Map<String, String> env = Map.of("LD_LIBRARY_PATH", "");
+    LibraryLoader l = loader(env, dir.resolve("cache"), bundled(LINUX_RESOURCE, payload));
+    assertArrayEquals(payload, Files.readAllBytes(l.resolve()));
+  }
+
+  @Test
+  void overrideTakesPrecedenceOverLibraryPath(@TempDir Path dir) throws IOException {
+    Path override = dir.resolve("override.so");
+    Files.writeString(override, "override");
+    Path libDir = Files.createDirectories(dir.resolve("libs"));
+    Files.writeString(libDir.resolve("libhegel.so"), "on-path");
+    Map<String, String> env =
+        Map.of("HEGEL_LIBHEGEL_PATH", override.toString(), "LD_LIBRARY_PATH", libDir.toString());
+    LibraryLoader l = loader(env, dir.resolve("cache"), NO_RESOURCES);
+    assertEquals(override, l.resolve());
+  }
+
+  @Test
+  void darwinSearchesDyldLibraryPath(@TempDir Path dir) throws IOException {
+    Path libDir = Files.createDirectories(dir.resolve("libs"));
+    Path lib = libDir.resolve("libhegel.dylib");
+    Files.writeString(lib, "mac-lib");
+    Map<String, String> env = Map.of("DYLD_LIBRARY_PATH", libDir.toString());
+    LibraryLoader l =
+        new LibraryLoader(
+            new HashMap<>(env), dir.resolve("cache"), "darwin", "arm64", NO_RESOURCES);
+    assertEquals(lib, l.resolve());
+  }
+
+  @Test
   void bundledNativeUnpackedAndCached(@TempDir Path dir) throws IOException {
     byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
     LibraryLoader l = loader(Map.of(), dir.resolve("cache"), bundled(LINUX_RESOURCE, payload));

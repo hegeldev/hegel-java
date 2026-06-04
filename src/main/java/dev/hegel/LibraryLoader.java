@@ -19,7 +19,10 @@ import java.util.function.Function;
  * <p>Resolution order (first hit wins):
  *
  * <ol>
- *   <li>{@code $HEGEL_LIBHEGEL_PATH} — explicit override (e.g. for local engine development).
+ *   <li>{@code $HEGEL_LIBHEGEL_PATH} — explicit override (e.g. for local engine development); if
+ *       set it must point at an existing file, otherwise resolution fails.
+ *   <li>the OS's standard shared-library search path ({@code LD_LIBRARY_PATH} on Linux, {@code
+ *       DYLD_LIBRARY_PATH} on macOS): the first directory containing the library file is used.
  *   <li>the native library bundled in the jar for this OS/arch, unpacked to a per-user cache.
  * </ol>
  *
@@ -104,9 +107,19 @@ final class LibraryLoader {
     return goos.equals("darwin") ? "dylib" : "so";
   }
 
+  /** The shared-library file name for this OS (e.g. {@code libhegel.so}). */
+  private String libFileName() {
+    return "libhegel." + libExt();
+  }
+
+  /** The OS's conventional shared-library search-path environment variable. */
+  private String libraryPathVar() {
+    return goos.equals("darwin") ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
+  }
+
   /** Classpath resource path of the native library bundled for this OS/arch. */
   String resourcePath() {
-    return "native/" + goos + "-" + goarch + "/libhegel." + libExt();
+    return "native/" + goos + "-" + goarch + "/" + libFileName();
   }
 
   /** Resolve a usable libhegel path, unpacking the bundled native if necessary. */
@@ -119,6 +132,11 @@ final class LibraryLoader {
       }
       throw new HegelException(
           "HEGEL_LIBHEGEL_PATH is set to '" + override + "' but no file exists there.");
+    }
+
+    Path onPath = searchLibraryPath();
+    if (onPath != null) {
+      return onPath;
     }
 
     Path bundled = unpackBundled();
@@ -134,6 +152,28 @@ final class LibraryLoader {
             + " (resource "
             + resourcePath()
             + "). Set HEGEL_LIBHEGEL_PATH to a prebuilt library.");
+  }
+
+  /**
+   * Search the OS's shared-library path variable ({@code LD_LIBRARY_PATH} / {@code
+   * DYLD_LIBRARY_PATH}) for the library file, returning the first match, or {@code null} if the
+   * variable is unset/empty or no directory on it contains the library.
+   */
+  Path searchLibraryPath() {
+    String raw = env.get(libraryPathVar());
+    if (raw == null || raw.isEmpty()) {
+      return null;
+    }
+    for (String entry : raw.split(java.io.File.pathSeparator)) {
+      if (entry.isEmpty()) {
+        continue;
+      }
+      Path candidate = Path.of(entry).resolve(libFileName());
+      if (Files.isRegularFile(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
   }
 
   /**
@@ -153,7 +193,7 @@ final class LibraryLoader {
       throw new HegelException("Failed to read bundled libhegel resource " + resourcePath(), e);
     }
     Path dir = cacheDir.resolve(sha256Hex(bytes));
-    Path target = dir.resolve("libhegel." + libExt());
+    Path target = dir.resolve(libFileName());
     if (Files.isRegularFile(target) && target.toFile().length() == bytes.length) {
       return target;
     }
