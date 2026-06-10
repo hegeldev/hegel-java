@@ -7,7 +7,7 @@ package dev.hegel;
  * check with {@link Settings#suppressHealthCheck}.
  */
 public final class HealthCheckFailure extends HegelException {
-  HealthCheckFailure(String message) {
-    super(message);
-  }
+    HealthCheckFailure(String message) {
+        super(message);
+    }
 }

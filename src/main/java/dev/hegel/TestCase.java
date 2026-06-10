@@ -17,156 +17,163 @@ import java.util.Map;
  * printed as an assignment (for example {@code x = 42;}) so the counterexample is readable.
  */
 public final class TestCase {
-  private final DataSource source;
-  private final boolean reporting;
-  private final PrintStream out;
-  private int drawDepth;
-  private int drawCounter;
+    private final DataSource source;
+    private final boolean reporting;
+    private final PrintStream out;
+    private int drawDepth;
+    private int drawCounter;
 
-  TestCase(DataSource source, boolean reporting, PrintStream out) {
-    this.source = source;
-    this.reporting = reporting;
-    this.out = out;
-  }
-
-  /**
-   * Draw a value from {@code generator}.
-   *
-   * @param generator the generator to draw from
-   * @param <T> the value type
-   * @return the generated value
-   */
-  public <T> T draw(Generator<T> generator) {
-    return draw(generator, null);
-  }
-
-  /**
-   * Draw a value, naming it {@code label} in the falsifying-example output.
-   *
-   * @param generator the generator to draw from
-   * @param label the variable name to show in counterexample output
-   * @param <T> the value type
-   * @return the generated value
-   */
-  public <T> T draw(Generator<T> generator, String label) {
-    boolean top = drawDepth == 0;
-    drawDepth++;
-    T value;
-    try {
-      value = generator.generate(this);
-    } finally {
-      drawDepth--;
+    TestCase(DataSource source, boolean reporting, PrintStream out) {
+        this.source = source;
+        this.reporting = reporting;
+        this.out = out;
     }
-    if (top) {
-      drawCounter++;
-      if (reporting) {
-        String name = (label != null) ? label : "draw_" + drawCounter;
-        out.println(name + " = " + repr(value) + ";");
-      }
+
+    /**
+     * Draw a value from {@code generator}.
+     *
+     * @param generator the generator to draw from
+     * @param <T> the value type
+     * @return the generated value
+     */
+    public <T> T draw(Generator<T> generator) {
+        return draw(generator, null);
     }
-    return value;
-  }
 
-  /**
-   * Reject the current test case unless {@code condition} holds. The engine discards it without
-   * counting it against the test-case budget and tries another input.
-   *
-   * @param condition the precondition that must hold
-   */
-  public void assume(boolean condition) {
-    if (!condition) {
-      throw new AssumeRejected();
-    }
-  }
-
-  /**
-   * Record a debug message, shown only on the final replay of a failing case.
-   *
-   * @param message the message to record
-   */
-  public void note(String message) {
-    if (reporting) {
-      out.println(message);
-    }
-  }
-
-  /**
-   * Provide a score for the coverage-guided search; higher is treated as more interesting.
-   *
-   * @param value the observation
-   */
-  public void target(double value) {
-    target(value, "");
-  }
-
-  /**
-   * Provide a labelled score for the coverage-guided search.
-   *
-   * @param value the observation
-   * @param label groups observations for multi-objective search
-   */
-  public void target(double value, String label) {
-    source.target(value, label);
-  }
-
-  // --- package-private primitives used by generators ---
-
-  Object generateFromSchema(CBORObject schema) {
-    return source.generate(schema);
-  }
-
-  void startSpan(long label) {
-    source.startSpan(label);
-  }
-
-  void stopSpan(boolean discard) {
-    source.stopSpan(discard);
-  }
-
-  long newCollection(long minSize, long maxSize) {
-    return source.newCollection(minSize, maxSize);
-  }
-
-  boolean collectionMore(long id) {
-    return source.collectionMore(id);
-  }
-
-  void collectionReject(long id, String why) {
-    source.collectionReject(id, why);
-  }
-
-  static String repr(Object value) {
-    if (value == null) {
-      return "null";
-    }
-    if (value instanceof String s) {
-      return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-    }
-    if (value instanceof byte[] b) {
-      return Arrays.toString(b);
-    }
-    if (value instanceof List<?> list) {
-      StringBuilder sb = new StringBuilder("[");
-      for (int i = 0; i < list.size(); i++) {
-        if (i > 0) {
-          sb.append(", ");
+    /**
+     * Draw a value, naming it {@code label} in the falsifying-example output.
+     *
+     * @param generator the generator to draw from
+     * @param label the variable name to show in counterexample output
+     * @param <T> the value type
+     * @return the generated value
+     */
+    public <T> T draw(Generator<T> generator, String label) {
+        boolean top = drawDepth == 0;
+        drawDepth++;
+        T value;
+        try {
+            value = generator.doDraw(this);
+        } finally {
+            drawDepth--;
         }
-        sb.append(repr(list.get(i)));
-      }
-      return sb.append("]").toString();
-    }
-    if (value instanceof Map<?, ?> map) {
-      StringBuilder sb = new StringBuilder("{");
-      boolean first = true;
-      for (Map.Entry<?, ?> e : map.entrySet()) {
-        if (!first) {
-          sb.append(", ");
+        if (top) {
+            drawCounter++;
+            if (reporting) {
+                String name = (label != null) ? label : "draw_" + drawCounter;
+                out.println(name + " = " + repr(value) + ";");
+            }
         }
-        first = false;
-        sb.append(repr(e.getKey())).append(": ").append(repr(e.getValue()));
-      }
-      return sb.append("}").toString();
+        return value;
     }
-    return String.valueOf(value);
-  }
+
+    /**
+     * Reject the current test case unless {@code condition} holds. The engine discards it without
+     * counting it against the test-case budget and tries another input.
+     *
+     * @param condition the precondition that must hold
+     */
+    public void assume(boolean condition) {
+        if (!condition) {
+            throw new AssumeRejected();
+        }
+    }
+
+    /**
+     * Record a debug message, shown only on the final replay of a failing case.
+     *
+     * @param message the message to record
+     */
+    public void note(String message) {
+        if (reporting) {
+            out.println(message);
+        }
+    }
+
+    /**
+     * Provide a score for the coverage-guided search; higher is treated as more interesting.
+     *
+     * @param value the observation
+     */
+    public void target(double value) {
+        target(value, "");
+    }
+
+    /**
+     * Provide a labelled score for the coverage-guided search.
+     *
+     * @param value the observation
+     * @param label groups observations for multi-objective search
+     */
+    public void target(double value, String label) {
+        source.target(value, label);
+    }
+
+    // --- engine primitives used by generators in dev.hegel.generators (public for cross-package
+    // access; not part of the user-facing API) ---
+
+    /** @hidden */
+    public Object generateFromSchema(CBORObject schema) {
+        return source.generate(schema);
+    }
+
+    /** @hidden */
+    public void startSpan(long label) {
+        source.startSpan(label);
+    }
+
+    /** @hidden */
+    public void stopSpan(boolean discard) {
+        source.stopSpan(discard);
+    }
+
+    /** @hidden */
+    public long newCollection(long minSize, long maxSize) {
+        return source.newCollection(minSize, maxSize);
+    }
+
+    /** @hidden */
+    public boolean collectionMore(long id) {
+        return source.collectionMore(id);
+    }
+
+    /** @hidden */
+    public void collectionReject(long id, String why) {
+        source.collectionReject(id, why);
+    }
+
+    static String repr(Object value) {
+        if (value == null) {
+            return "null";
+        }
+        if (value instanceof String s) {
+            return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        }
+        if (value instanceof byte[] b) {
+            return Arrays.toString(b);
+        }
+        if (value instanceof List<?> list) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(repr(list.get(i)));
+            }
+            return sb.append("]").toString();
+        }
+        if (value instanceof Map<?, ?> map) {
+            StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
+            for (Map.Entry<?, ?> e : map.entrySet()) {
+                if (!first) {
+                    sb.append(", ");
+                }
+                first = false;
+                sb.append(repr(e.getKey())).append(": ").append(repr(e.getValue()));
+            }
+            return sb.append("}").toString();
+        }
+        return String.valueOf(value);
+    }
 }

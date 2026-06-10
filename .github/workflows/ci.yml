@@ -95,3 +95,73 @@ jobs:
 
       - name: Build Javadoc
         run: just docs
+
+  release:
+    name: release
+    if: github.event_name == 'push' && github.repository == 'hegeldev/hegel-java'
+    needs: [lint, test, docs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Check for RELEASE.md
+        id: check
+        run: |
+          if [ ! -f RELEASE.md ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate app token
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/create-github-app-token@f8d387b68d61c58ab83c6c016672934102569859 # v3.0.0
+        id: app-token
+        with:
+          app-id: ${{ vars.HEGEL_RELEASE_APP_ID }}
+          private-key: ${{ secrets.HEGEL_RELEASE_APP_PRIVATE_KEY }}
+          repositories: hegel-java
+
+      - name: Re-checkout with app token # zizmor: ignore[artipacked]
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Java and signing
+        if: steps.check.outputs.skip != 'true'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: "22"
+          cache: maven
+          # Templates ~/.m2/settings.xml with a <server id="central"> entry whose
+          # username/password read from the env vars of the same name at deploy time.
+          server-id: central
+          server-username: CENTRAL_TOKEN_USER
+          server-password: CENTRAL_TOKEN_PASS
+          # Imports the release key into the runner's keyring for the gpg plugin.
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+
+      - name: Release
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          HEGEL_RELEASE_APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          CENTRAL_TOKEN_USER: ${{ secrets.CENTRAL_TOKEN_USER }}
+          CENTRAL_TOKEN_PASS: ${{ secrets.CENTRAL_TOKEN_PASS }}
+          # Fingerprint of the Hegel release signing key (public). Pins which key signs the
+          # release so a wrong/missing key fails the build instead of signing with gpg's default.
+          # If the key is ever rotated, update this alongside the GPG_PRIVATE_KEY secret.
+          GPG_KEYNAME: C186BF0E8891449F3B1C17A9A73C7B80C255320A
+          # Raises the GitHub API rate limit for fetch_natives.py asset discovery.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python .github/scripts/release.py release
+
+      - name: Push to main or open PR
+        if: steps.check.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: python .github/scripts/release.py push-or-pr

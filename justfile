@@ -1,13 +1,3 @@
-# hegel-java task runner.
-#
-# `just coverage` enforces 100% instruction + branch coverage and exits
-# non-zero otherwise (it delegates to JaCoCo's check goal, configured in pom.xml).
-
-# List available recipes.
-default:
-    @just --list
-
-# Build libhegel from a sibling hegel-rust checkout (no-op if absent).
 build-libhegel:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -19,37 +9,32 @@ build-libhegel:
         echo "No sibling ../hegel-rust checkout; tests use the libhegel bundled in the jar."
     fi
 
-# Compile the library and tests.
 build:
     mvn -B -q compile test-compile
 
-# Run the full test suite (no coverage gate).
 test:
     mvn -B test
 
-# Run tests with 100% coverage enforcement. Fails if coverage < 100%.
 coverage:
     mvn -B verify
 
-# Run the conformance/behaviour suite against the real libhegel.
 conformance:
     mvn -B test -Dtest='*Conformance*,*Behaviour*'
 
-# Auto-format sources.
 format:
-    mvn -B com.spotify.fmt:fmt-maven-plugin:format
+    mvn -B spotless:apply
 
-# Check formatting (fails if not formatted).
 lint:
-    mvn -B com.spotify.fmt:fmt-maven-plugin:check
+    mvn -B spotless:check
 
-# Build Javadoc.
-docs:
+check-docs:
     mvn -B -q javadoc:javadoc
 
-# Full CI check: lint + coverage + docs.
-check: lint coverage docs
+docs:
+    mvn -B -q javadoc:javadoc
+    open target/reports/apidocs/index.html
 
-# Remove build artifacts.
 clean:
     mvn -B -q clean
+
+check: lint coverage check-docs

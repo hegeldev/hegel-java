@@ -17,52 +17,49 @@ import org.junit.jupiter.api.Test;
 /** Covers {@link RealLibhegel} edge branches that the normal engine path does not reach. */
 class RealLibhegelTest {
 
-  static void throwsError() {
-    throw new AssertionError("boom"); // an Error (Throwable, not RuntimeException)
-  }
-
-  static void throwsRuntime() {
-    throw new IllegalStateException("rt");
-  }
-
-  @Test
-  void invokeWrapsNonRuntimeThrowable() throws Exception {
-    MethodHandle h =
-        MethodHandles.lookup()
-            .findStatic(RealLibhegelTest.class, "throwsError", MethodType.methodType(void.class));
-    assertThrows(HegelException.class, () -> RealLibhegel.invoke(h));
-  }
-
-  @Test
-  void invokeRethrowsRuntimeException() throws Exception {
-    MethodHandle h =
-        MethodHandles.lookup()
-            .findStatic(RealLibhegelTest.class, "throwsRuntime", MethodType.methodType(void.class));
-    assertThrows(IllegalStateException.class, () -> RealLibhegel.invoke(h));
-  }
-
-  @Test
-  void readCStringHandlesNullAndValue() {
-    assertNull(RealLibhegel.readCString(null));
-    assertNull(RealLibhegel.readCString(MemorySegment.NULL));
-    try (Arena a = Arena.ofConfined()) {
-      assertEquals("hello", RealLibhegel.readCString(a.allocateFrom("hello")));
+    static void throwsError() {
+        throw new AssertionError("boom"); // an Error (Throwable, not RuntimeException)
     }
-  }
 
-  @Test
-  void findSymbolReturnsPresentAndThrowsOnMissing() {
-    Path lib = LibraryLoader.fromEnvironment().resolve();
-    try (Arena a = Arena.ofShared()) {
-      SymbolLookup lookup = SymbolLookup.libraryLookup(lib, a);
-      assertNotNull(RealLibhegel.findSymbol(lookup, "hegel_version"));
-      assertThrows(
-          HegelException.class, () -> RealLibhegel.findSymbol(lookup, "no_such_symbol_xyz"));
+    static void throwsRuntime() {
+        throw new IllegalStateException("rt");
     }
-  }
 
-  @Test
-  void constructorRejectsBadPath() {
-    assertThrows(HegelException.class, () -> new RealLibhegel(Path.of("/nonexistent/libhegel.so")));
-  }
+    @Test
+    void invokeWrapsNonRuntimeThrowable() throws Exception {
+        MethodHandle h = MethodHandles.lookup()
+                .findStatic(RealLibhegelTest.class, "throwsError", MethodType.methodType(void.class));
+        assertThrows(HegelException.class, () -> RealLibhegel.invoke(h));
+    }
+
+    @Test
+    void invokeRethrowsRuntimeException() throws Exception {
+        MethodHandle h = MethodHandles.lookup()
+                .findStatic(RealLibhegelTest.class, "throwsRuntime", MethodType.methodType(void.class));
+        assertThrows(IllegalStateException.class, () -> RealLibhegel.invoke(h));
+    }
+
+    @Test
+    void readCStringHandlesNullAndValue() {
+        assertNull(RealLibhegel.readCString(null));
+        assertNull(RealLibhegel.readCString(MemorySegment.NULL));
+        try (Arena a = Arena.ofConfined()) {
+            assertEquals("hello", RealLibhegel.readCString(a.allocateFrom("hello")));
+        }
+    }
+
+    @Test
+    void findSymbolReturnsPresentAndThrowsOnMissing() {
+        Path lib = LibraryLoader.fromEnvironment().resolve();
+        try (Arena a = Arena.ofShared()) {
+            SymbolLookup lookup = SymbolLookup.libraryLookup(lib, a);
+            assertNotNull(RealLibhegel.findSymbol(lookup, "hegel_version"));
+            assertThrows(HegelException.class, () -> RealLibhegel.findSymbol(lookup, "no_such_symbol_xyz"));
+        }
+    }
+
+    @Test
+    void constructorRejectsBadPath() {
+        assertThrows(HegelException.class, () -> new RealLibhegel(Path.of("/nonexistent/libhegel.so")));
+    }
 }

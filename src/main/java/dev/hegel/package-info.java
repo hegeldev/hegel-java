@@ -33,7 +33,10 @@
 /// {@link dev.hegel.TestCase}, whose {@link dev.hegel.TestCase#draw(dev.hegel.Generator) draw}
 /// method produces a value from a generator.
 ///
-/// You can also drive a property from any plain `@Test` with {@link dev.hegel.Hegel#check}:
+/// When you need a setting that can't be a compile-time constant, or want to run a property outside
+/// a JUnit method, drive it programmatically with
+/// {@link dev.hegel.Hegel#test(java.util.function.Consumer)} — the body comes first, with optional
+/// {@link dev.hegel.Settings}:
 ///
 /// ```java
 /// import static dev.hegel.Generators.integers;
@@ -45,7 +48,7 @@
 /// class CommutativityTest {
 ///   @Test
 ///   void additionCommutes() {
-///     Hegel.check(tc -> {
+///     Hegel.test(tc -> {
 ///       int x = tc.draw(integers());
 ///       int y = tc.draw(integers());
 ///       assertEquals(x + y, y + x);
@@ -76,27 +79,26 @@
 /// include `lists`, `sets`, and `maps`; and there are `tuples`, `oneOf`, `optional`, `sampledFrom`,
 /// `just`, `durations` (`java.time.Duration`), and the temporal generators `dates`, `times`, and
 /// `datetimes` (which produce `java.time.LocalDate`/`LocalTime`/`LocalDateTime`), plus format
-/// generators (`emails`, `urls`, `ipv4`, `uuids`, `fromRegex`, …).
+/// generators (`emails`, `urls`, `ipAddresses`, `uuids`, `fromRegex`, …).
 ///
 /// For zone-aware datetimes, attach a timezone to a `datetimes()` generator:
 ///
-/// - {@link dev.hegel.DateTimeGenerator#timezones timezones}: `datetimes().timezones(zoneIds())`
+/// - {@link dev.hegel.generators.DateTimeGenerator#timezones timezones}: `datetimes().timezones(zoneIds())`
 ///   produces DST-aware `java.time.ZonedDateTime` values over the full range of zones the JVM
 ///   supports (see {@link dev.hegel.Generators#zoneIds()}); pin one with
 ///   `datetimes().timezones(just(ZoneId.of("Europe/London")))`.
-/// - {@link dev.hegel.DateTimeGenerator#offsets offsets}: `datetimes().offsets(zoneOffsets())`
+/// - {@link dev.hegel.generators.DateTimeGenerator#offsets offsets}: `datetimes().offsets(zoneOffsets())`
 ///   produces fixed-offset `java.time.OffsetDateTime` values (see
 ///   {@link dev.hegel.Generators#zoneOffsets()}).
 ///
 /// The bound- and size-bearing generators are fluent builders that *are* the generator:
 ///
 /// ```java
-/// tc.draw(integers(0, 100));                 // bounded ints
-/// tc.draw(integers().min(0).max(100));       // the same, written fluently
+/// tc.draw(integers().min(0).max(100));       // bounded ints
 /// tc.draw(text().minSize(1).maxSize(10));    // short strings
 /// tc.draw(doubles().min(0).max(1));          // a probability (64-bit)
 /// tc.draw(floats().min(0).max(1));           // a 32-bit float in [0, 1]
-/// tc.draw(lists(integers(), 1, 5));          // 1–5 element lists
+/// tc.draw(lists(integers()).minSize(1).maxSize(5));          // 1–5 element lists
 /// ```
 ///
 /// ## Combinators
@@ -106,7 +108,7 @@
 /// - {@link dev.hegel.Generator#map map} transforms each value (and keeps the efficient
 ///   single-draw path when possible):
 ///   ```java
-///   Generator<Integer> evens = integers(0, 50).map(x -> x * 2);
+///   Generator<Integer> evens = integers().min(0).max(50).map(x -> x * 2);
 ///   ```
 /// - {@link dev.hegel.Generator#filter filter} keeps values matching a predicate (prefer
 ///   constraining over filtering when you can):
@@ -115,11 +117,12 @@
 ///   ```
 /// - {@link dev.hegel.Generator#flatMap flatMap} makes one draw depend on another:
 ///   ```java
-///   Generator<List<Boolean>> sized = integers(0, 10).flatMap(n -> lists(booleans(), n, n));
+///   Generator<List<Boolean>> sized = integers().min(0).max(10).flatMap(n -> lists(booleans()).minSize(n).maxSize(n));
 ///   ```
-/// - {@link dev.hegel.Generators#compose compose} builds a value imperatively from several draws:
+/// - {@link dev.hegel.Generators#composite composite} builds a value imperatively from several
+///   draws:
 ///   ```java
-///   Generator<int[]> pair = Generators.compose(tc -> new int[] {
+///   Generator<int[]> pair = Generators.composite(tc -> new int[] {
 ///       tc.draw(integers()), tc.draw(integers())
 ///   });
 ///   ```
@@ -135,13 +138,13 @@
 /// Deferred<Tree> tree = Generators.deferred();
 /// Generator<Tree> leaf = integers().map(n -> new Tree(n, null, null));
 /// Generator<Tree> branch =
-///     tuples(tree, tree).map(t -> new Tree(null, (Tree) t.get(0), (Tree) t.get(1)));
+///     tuples(tree, tree).map(t -> new Tree(null, t.value1(), t.value2()));
 /// tree.set(oneOf(leaf, branch)); // wire up the self-reference
 /// Tree t = tc.draw(tree);
 /// ```
 ///
 /// The engine's size control keeps generated structures finite. Drawing before
-/// {@link dev.hegel.Deferred#set set} is called fails.
+/// {@link dev.hegel.generators.Deferred#set set} is called fails.
 ///
 /// ## Control functions
 ///
@@ -157,8 +160,8 @@
 /// ```java
 /// @HegelTest
 /// void divisionRoundTrips(TestCase tc) {
-///   int x = tc.draw(integers(1, 1000));
-///   int y = tc.draw(integers(1, 1000));
+///   int x = tc.draw(integers().min(1).max(1000));
+///   int y = tc.draw(integers().min(1).max(1000));
 ///   tc.assume(y != 0);
 ///   tc.note("testing " + x + " * " + y + " / " + y);
 ///   assertEquals(x, (x * y) / y);
@@ -167,21 +170,25 @@
 ///
 /// ## Settings
 ///
-/// Configure a run with {@link dev.hegel.Hegel#with()} and the fluent setters on
-/// {@link dev.hegel.Settings}, or with attributes on {@link dev.hegel.HegelTest @HegelTest}:
+/// Configure a run by passing a {@link dev.hegel.Settings} value (built with {@code new Settings()}
+/// and the fluent setters) to
+/// {@link dev.hegel.Hegel#test(java.util.function.Consumer, dev.hegel.Settings)}, or with attributes
+/// on {@link dev.hegel.HegelTest @HegelTest}:
 ///
 /// ```java
-/// Hegel.with()
-///     .testCases(500)        // run more inputs
-///     .seed(42)              // reproducible run
-///     .check(tc -> { /* ... */ });
+/// Hegel.test(
+///     tc -> { /* ... */ },
+///     new Settings()
+///         .testCases(500)    // run more inputs
+///         .seed(42));        // reproducible run
 ///
 /// @HegelTest(testCases = 1000, seed = 42)
 /// void thorough(TestCase tc) { /* ... */ }
 /// ```
 ///
-/// Other settings include `derandomize`, `database`/`noDatabase`, `suppressHealthCheck`,
-/// `verbosity`, `singleTestCase`, and {@link dev.hegel.Settings#phases(dev.hegel.Phase...) phases}.
+/// Other settings include `derandomize`, {@link dev.hegel.Settings#database(dev.hegel.Database)
+/// database}, `suppressHealthCheck`,
+/// `verbosity`, `mode`, and {@link dev.hegel.Settings#phases(dev.hegel.Phase...) phases}.
 /// In CI (detected automatically) runs default to deterministic and the example database is
 /// disabled. If a health check fires — for example, your generators reject almost every input —
 /// Hegel aborts the run and throws {@link dev.hegel.HealthCheckFailure} (distinct from a property's
@@ -203,7 +210,7 @@
 ///   Point p = tc.draw(Generators.forType(Point.class));
 ///   Color c = tc.draw(Generators.forType(Color.class));
 ///   // Override a single component:
-///   Point bounded = tc.draw(Generators.records(Point.class).with("x", integers(0, 9)));
+///   Point bounded = tc.draw(Generators.records(Point.class).with("x", integers().min(0).max(9)));
 /// }
 /// ```
 package dev.hegel;

@@ -2,36 +2,3 @@
 
 All notable changes to hegel-java are documented here. The format follows the hegeldev
 convention: a short, user-facing entry per release.
-
-## 0.1.0
-
-Initial release.
-
-- Property-based testing for Java powered by the Hegel engine, loaded in-process over the Foreign
-  Function & Memory API (no JNI, no manual install). `libhegel` is resolved from
-  `$HEGEL_LIBHEGEL_PATH`, then the OS library search path (`LD_LIBRARY_PATH` /
-  `DYLD_LIBRARY_PATH`), then the bundled native.
-- JUnit 5 integration via the `@HegelTest` annotation, plus a framework-agnostic `Hegel.check`
-  callback runner.
-- Generators: `integers`, `longs`, `floats` (32-bit) and `doubles` (64-bit), `booleans`, `text`,
-  `characters`, `binary`, `just`, `sampledFrom`, `oneOf`, `optional`, `lists`, `sets`, `maps`,
-  `tuples`, `durations` (`java.time.Duration`), the temporal generators `dates`, `times`,
-  `datetimes` (`java.time.LocalDate`/`LocalTime`/`LocalDateTime`), `zoneOffsets`
-  (`java.time.ZoneOffset`), `zoneIds` (`java.time.ZoneId`, the full range of zones the JVM
-  supports), and the format generators `emails`, `urls`, `domains`, `ipv4`, `ipv6`, `uuids`,
-  `fromRegex`.
-- `datetimes().timezones(...)` produces DST-aware `java.time.ZonedDateTime` values, and
-  `datetimes().offsets(...)` produces fixed-offset `java.time.OffsetDateTime` values.
-- `deferred()` builds self-recursive and mutually recursive generators via a forward reference.
-- The bound/size-bearing generators are fluent builders: numeric generators take `min`/`max`
-  (`integers().min(0).max(9)`), and `binary`/`lists`/`sets`/`maps` take `minSize`/`maxSize`. The
-  two-argument factory overloads are exactly equivalent to the fluent form.
-- Combinators `map`, `filter`, `flatMap`, and `compose`, with the basic/composite dual path so
-  `map` preserves single-call generation and shrink quality.
-- Control functions `assume`, `note`, and `target`; minimal-counterexample reporting with labelled
-  draws.
-- Settings: test-case count, seed, derandomize, verbosity, single-test-case mode, health-check
-  suppression, run phases (`phases(Phase...)` — e.g. disable shrinking), and the persistent example
-  database (with CI-aware defaults).
-- Type-directed derivation via `Generators.forType` and `Generators.records` for records, enums,
-  scalars, and `List`/`Set`/`Optional`/`Map`.

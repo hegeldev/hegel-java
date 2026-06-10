@@ -13,27 +13,27 @@ import java.nio.file.Path;
  * #reset}.
  */
 final class Engine {
-  private Engine() {}
+    private Engine() {}
 
-  private static Libhegel instance;
+    private static Libhegel instance;
 
-  static synchronized Libhegel get() {
-    if (instance == null) {
-      Path path = LibraryLoader.fromEnvironment().resolve();
-      RealLibhegel lib = new RealLibhegel(path);
-      LibraryLoader.warnOnVersionMismatch(lib, LibraryLoader.targetEngineVersion(), System.err);
-      instance = lib;
+    static synchronized Libhegel get() {
+        if (instance == null) {
+            Path path = LibraryLoader.fromEnvironment().resolve();
+            RealLibhegel lib = new RealLibhegel(path);
+            LibraryLoader.warnOnVersionMismatch(lib, LibraryLoader.targetEngineVersion(), System.err);
+            instance = lib;
+        }
+        return instance;
     }
-    return instance;
-  }
 
-  /** Install a binding (real or fake) for the rest of the process or until {@link #reset}. */
-  static synchronized void setForTesting(Libhegel binding) {
-    instance = binding;
-  }
+    /** Install a binding (real or fake) for the rest of the process or until {@link #reset}. */
+    static synchronized void setForTesting(Libhegel binding) {
+        instance = binding;
+    }
 
-  /** Forget the current binding so the next {@link #get()} re-resolves it. */
-  static synchronized void reset() {
-    instance = null;
-  }
+    /** Forget the current binding so the next {@link #get()} re-resolves it. */
+    static synchronized void reset() {
+        instance = null;
+    }
 }
