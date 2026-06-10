@@ -94,7 +94,7 @@ jobs:
           tools: just
 
       - name: Build Javadoc
-        run: just docs
+        run: just check-docs
 
   release:
     name: release
