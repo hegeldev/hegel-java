@@ -73,6 +73,36 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: just coverage
 
+  test-os:
+    name: "test (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - uses: ./.github/actions/install-tools
+        with:
+          tools: just
+
+      - name: Test
+        env:
+          # Raises the GitHub API rate limit for fetch_natives.py asset discovery.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: just test
+
   docs:
     name: docs
     runs-on: ubuntu-latest
@@ -99,7 +129,7 @@ jobs:
   release:
     name: release
     if: github.event_name == 'push' && github.repository == 'hegeldev/hegel-java'
-    needs: [lint, test, docs]
+    needs: [lint, test, test-os, docs]
     runs-on: ubuntu-latest
     permissions:
       contents: write
