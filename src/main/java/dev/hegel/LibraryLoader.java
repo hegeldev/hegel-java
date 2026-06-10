@@ -10,7 +10,6 @@ import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Properties;
 import java.util.function.Function;
 
 /**
@@ -32,247 +31,219 @@ import java.util.function.Function;
  * the resolver is fully unit-testable, including the unpack path.
  */
 final class LibraryLoader {
-  private final Map<String, String> env;
-  private final Path cacheDir;
-  private final String goos;
-  private final String goarch;
-  private final Function<String, InputStream> resources;
+    private final Map<String, String> env;
+    private final Path cacheDir;
+    private final String os;
+    private final String arch;
+    private final Function<String, InputStream> resources;
 
-  LibraryLoader(
-      Map<String, String> env,
-      Path cacheDir,
-      String goos,
-      String goarch,
-      Function<String, InputStream> resources) {
-    this.env = env;
-    this.cacheDir = cacheDir;
-    this.goos = goos;
-    this.goarch = goarch;
-    this.resources = resources;
-  }
-
-  /**
-   * Build a loader from the real process environment, reading bundled natives off the classpath.
-   */
-  static LibraryLoader fromEnvironment() {
-    Map<String, String> env = System.getenv();
-    return new LibraryLoader(
-        env,
-        defaultCacheDir(env),
-        mapOs(System.getProperty("os.name")),
-        mapArch(System.getProperty("os.arch")),
-        LibraryLoader::classpathResource);
-  }
-
-  /** Open a bundled native library resource from the classpath, or {@code null} if absent. */
-  static InputStream classpathResource(String name) {
-    return LibraryLoader.class.getClassLoader().getResourceAsStream(name);
-  }
-
-  static Path defaultCacheDir(Map<String, String> env) {
-    String xdg = env.get("XDG_CACHE_HOME");
-    Path base = (xdg != null && !xdg.isEmpty()) ? Path.of(xdg) : Path.of(home(env), ".cache");
-    return base.resolve("hegel-java").resolve("libhegel");
-  }
-
-  private static String home(Map<String, String> env) {
-    String h = env.get("HOME");
-    return (h != null && !h.isEmpty()) ? h : System.getProperty("user.home");
-  }
-
-  static String mapOs(String osName) {
-    String os = osName.toLowerCase(Locale.ROOT);
-    if (os.contains("mac") || os.contains("darwin")) {
-      return "darwin";
-    }
-    if (os.contains("linux")) {
-      return "linux";
-    }
-    throw new HegelException(
-        "libhegel does not support this operating system: '" + osName + "' (linux/macOS only).");
-  }
-
-  static String mapArch(String osArch) {
-    String a = osArch.toLowerCase(Locale.ROOT);
-    return switch (a) {
-      case "amd64", "x86_64" -> "amd64";
-      case "aarch64", "arm64" -> "arm64";
-      default ->
-          throw new HegelException(
-              "libhegel does not support this architecture: '" + osArch + "' (amd64/arm64 only).");
-    };
-  }
-
-  private String libExt() {
-    return goos.equals("darwin") ? "dylib" : "so";
-  }
-
-  /** The shared-library file name for this OS (e.g. {@code libhegel.so}). */
-  private String libFileName() {
-    return "libhegel." + libExt();
-  }
-
-  /** The OS's conventional shared-library search-path environment variable. */
-  private String libraryPathVar() {
-    return goos.equals("darwin") ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
-  }
-
-  /** Classpath resource path of the native library bundled for this OS/arch. */
-  String resourcePath() {
-    return "native/" + goos + "-" + goarch + "/" + libFileName();
-  }
-
-  /** Resolve a usable libhegel path, unpacking the bundled native if necessary. */
-  Path resolve() {
-    String override = env.get("HEGEL_LIBHEGEL_PATH");
-    if (override != null && !override.isEmpty()) {
-      Path p = Path.of(override);
-      if (Files.isRegularFile(p)) {
-        return p;
-      }
-      throw new HegelException(
-          "HEGEL_LIBHEGEL_PATH is set to '" + override + "' but no file exists there.");
+    LibraryLoader(
+            Map<String, String> env, Path cacheDir, String os, String arch, Function<String, InputStream> resources) {
+        this.env = env;
+        this.cacheDir = cacheDir;
+        this.os = os;
+        this.arch = arch;
+        this.resources = resources;
     }
 
-    Path onPath = searchLibraryPath();
-    if (onPath != null) {
-      return onPath;
+    /**
+     * Build a loader from the real process environment, reading bundled natives off the classpath.
+     */
+    static LibraryLoader fromEnvironment() {
+        Map<String, String> env = System.getenv();
+        return new LibraryLoader(
+                env,
+                defaultCacheDir(env),
+                mapOs(System.getProperty("os.name")),
+                mapArch(System.getProperty("os.arch")),
+                LibraryLoader::classpathResource);
     }
 
-    Path bundled = unpackBundled();
-    if (bundled != null) {
-      return bundled;
+    /** Open a bundled native library resource from the classpath, or {@code null} if absent. */
+    static InputStream classpathResource(String name) {
+        return LibraryLoader.class.getClassLoader().getResourceAsStream(name);
     }
 
-    throw new HegelException(
-        "Could not find libhegel: no library bundled for "
-            + goos
-            + "-"
-            + goarch
-            + " (resource "
-            + resourcePath()
-            + "). Set HEGEL_LIBHEGEL_PATH to a prebuilt library.");
-  }
+    static Path defaultCacheDir(Map<String, String> env) {
+        String xdg = env.get("XDG_CACHE_HOME");
+        Path base = (xdg != null && !xdg.isEmpty()) ? Path.of(xdg) : Path.of(home(env), ".cache");
+        return base.resolve("hegel-java").resolve("libhegel");
+    }
 
-  /**
-   * Search the OS's shared-library path variable ({@code LD_LIBRARY_PATH} / {@code
-   * DYLD_LIBRARY_PATH}) for the library file, returning the first match, or {@code null} if the
-   * variable is unset/empty or no directory on it contains the library.
-   */
-  Path searchLibraryPath() {
-    String raw = env.get(libraryPathVar());
-    if (raw == null || raw.isEmpty()) {
-      return null;
+    private static String home(Map<String, String> env) {
+        String h = env.get("HOME");
+        return (h != null && !h.isEmpty()) ? h : System.getProperty("user.home");
     }
-    for (String entry : raw.split(java.io.File.pathSeparator)) {
-      if (entry.isEmpty()) {
-        continue;
-      }
-      Path candidate = Path.of(entry).resolve(libFileName());
-      if (Files.isRegularFile(candidate)) {
-        return candidate;
-      }
-    }
-    return null;
-  }
 
-  /**
-   * Unpack the bundled native for this OS/arch to the cache and return its path, or {@code null} if
-   * no native is bundled for this platform. The cache entry is keyed by the library's content hash,
-   * so it is reused across runs and never collides between engine versions.
-   */
-  Path unpackBundled() {
-    InputStream in = resources.apply(resourcePath());
-    if (in == null) {
-      return null;
+    static String mapOs(String osName) {
+        String os = osName.toLowerCase(Locale.ROOT);
+        if (os.contains("mac") || os.contains("darwin")) {
+            return "darwin";
+        }
+        if (os.contains("linux")) {
+            return "linux";
+        }
+        throw new HegelException(
+                "libhegel does not support this operating system: '" + osName + "' (linux/macOS only).");
     }
-    byte[] bytes;
-    try {
-      bytes = readAndClose(in);
-    } catch (IOException e) {
-      throw new HegelException("Failed to read bundled libhegel resource " + resourcePath(), e);
-    }
-    Path dir = cacheDir.resolve(sha256Hex(bytes));
-    Path target = dir.resolve(libFileName());
-    if (Files.isRegularFile(target) && target.toFile().length() == bytes.length) {
-      return target;
-    }
-    try {
-      Files.createDirectories(dir);
-      Path tmp = Files.createTempFile(dir, "libhegel", ".part");
-      try {
-        Files.write(tmp, bytes);
-        tmp.toFile().setExecutable(true, false);
-        Files.move(
-            tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-      } finally {
-        Files.deleteIfExists(tmp);
-      }
-    } catch (IOException e) {
-      throw new HegelException("Failed to unpack bundled libhegel to " + target, e);
-    }
-    return target;
-  }
 
-  private static byte[] readAndClose(InputStream in) throws IOException {
-    try (in) {
-      return in.readAllBytes();
+    static String mapArch(String osArch) {
+        String a = osArch.toLowerCase(Locale.ROOT);
+        return switch (a) {
+            case "amd64", "x86_64" -> "amd64";
+            case "aarch64", "arm64" -> "arm64";
+            default ->
+                throw new HegelException(
+                        "libhegel does not support this architecture: '" + osArch + "' (amd64/arm64 only).");
+        };
     }
-  }
 
-  /** The engine version these bindings were built against, or {@code null} if unknown. */
-  static String targetEngineVersion() {
-    return parseEngineVersion(classpathResource("dev/hegel/version.properties"));
-  }
-
-  static String parseEngineVersion(InputStream in) {
-    if (in == null) {
-      return null;
+    private String libExt() {
+        return os.equals("darwin") ? "dylib" : "so";
     }
-    Properties props = new Properties();
-    try {
-      loadAndClose(props, in);
-    } catch (IOException e) {
-      return null;
-    }
-    String v = props.getProperty("engine.version");
-    return (v == null || v.isEmpty()) ? null : v;
-  }
 
-  private static void loadAndClose(Properties props, InputStream in) throws IOException {
-    try (in) {
-      props.load(in);
+    /** The shared-library file name for this OS (e.g. {@code libhegel.so}). */
+    private String libFileName() {
+        return "libhegel." + libExt();
     }
-  }
 
-  /**
-   * Warn on {@code err} if a loaded engine reports a different version than the one these bindings
-   * target. Silent when the versions match or either is unknown.
-   */
-  static void warnOnVersionMismatch(Libhegel lib, String expected, PrintStream err) {
-    String loaded = lib.version();
-    if (expected == null || loaded == null || loaded.equals(expected)) {
-      return;
+    /** The OS's conventional shared-library search-path environment variable. */
+    private String libraryPathVar() {
+        return os.equals("darwin") ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
     }
-    err.println(
-        "hegel: loaded libhegel "
-            + loaded
-            + " but these bindings were built for "
-            + expected
-            + "; behaviour may differ. Unset HEGEL_LIBHEGEL_PATH to use the bundled engine, or"
-            + " point it at a matching build.");
-  }
 
-  static String sha256Hex(byte[] data) {
-    return HexFormat.of().formatHex(sha256Digest().digest(data));
-  }
-
-  @Generated // SHA-256 is mandated by the JLS; the catch is unreachable.
-  private static MessageDigest sha256Digest() {
-    try {
-      return MessageDigest.getInstance("SHA-256");
-    } catch (java.security.NoSuchAlgorithmException e) {
-      throw new HegelException("SHA-256 unavailable", e);
+    /** Classpath resource path of the native library bundled for this OS/arch. */
+    String resourcePath() {
+        return "native/" + os + "-" + arch + "/" + libFileName();
     }
-  }
+
+    /** Resolve a usable libhegel path, unpacking the bundled native if necessary. */
+    Path resolve() {
+        String override = env.get("HEGEL_LIBHEGEL_PATH");
+        if (override != null && !override.isEmpty()) {
+            Path p = Path.of(override);
+            if (Files.isRegularFile(p)) {
+                return p;
+            }
+            throw new HegelException("HEGEL_LIBHEGEL_PATH is set to '" + override + "' but no file exists there.");
+        }
+
+        Path onPath = searchLibraryPath();
+        if (onPath != null) {
+            return onPath;
+        }
+
+        Path bundled = unpackBundled();
+        if (bundled != null) {
+            return bundled;
+        }
+
+        throw new HegelException("Could not find libhegel: no library bundled for "
+                + os
+                + "-"
+                + arch
+                + " (resource "
+                + resourcePath()
+                + "). Set HEGEL_LIBHEGEL_PATH to a prebuilt library.");
+    }
+
+    /**
+     * Search the OS's shared-library path variable ({@code LD_LIBRARY_PATH} / {@code
+     * DYLD_LIBRARY_PATH}) for the library file, returning the first match, or {@code null} if the
+     * variable is unset/empty or no directory on it contains the library.
+     */
+    Path searchLibraryPath() {
+        String raw = env.get(libraryPathVar());
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        for (String entry : raw.split(java.io.File.pathSeparator)) {
+            if (entry.isEmpty()) {
+                continue;
+            }
+            Path candidate = Path.of(entry).resolve(libFileName());
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Unpack the bundled native for this OS/arch to the cache and return its path, or {@code null} if
+     * no native is bundled for this platform. The cache entry is keyed by the library's content hash,
+     * so it is reused across runs and never collides between engine versions.
+     */
+    Path unpackBundled() {
+        InputStream in = resources.apply(resourcePath());
+        if (in == null) {
+            return null;
+        }
+        byte[] bytes;
+        try {
+            bytes = readAndClose(in);
+        } catch (IOException e) {
+            throw new HegelException("Failed to read bundled libhegel resource " + resourcePath(), e);
+        }
+        Path dir = cacheDir.resolve(sha256Hex(bytes));
+        Path target = dir.resolve(libFileName());
+        if (Files.isRegularFile(target) && target.toFile().length() == bytes.length) {
+            return target;
+        }
+        try {
+            Files.createDirectories(dir);
+            Path tmp = Files.createTempFile(dir, "libhegel", ".part");
+            try {
+                Files.write(tmp, bytes);
+                tmp.toFile().setExecutable(true, false);
+                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } finally {
+                Files.deleteIfExists(tmp);
+            }
+        } catch (IOException e) {
+            throw new HegelException("Failed to unpack bundled libhegel to " + target, e);
+        }
+        return target;
+    }
+
+    private static byte[] readAndClose(InputStream in) throws IOException {
+        try (in) {
+            return in.readAllBytes();
+        }
+    }
+
+    /** The engine version these bindings were built against. */
+    static String targetEngineVersion() {
+        return BuildInfo.ENGINE_VERSION;
+    }
+
+    /**
+     * Warn on {@code err} if a loaded engine reports a different version than the one these bindings
+     * target. Silent when the versions match or either is unknown.
+     */
+    static void warnOnVersionMismatch(Libhegel lib, String expected, PrintStream err) {
+        String loaded = lib.version();
+        if (expected == null || loaded == null || loaded.equals(expected)) {
+            return;
+        }
+        err.println("hegel: loaded libhegel "
+                + loaded
+                + " but these bindings were built for "
+                + expected
+                + "; behaviour may differ. Unset HEGEL_LIBHEGEL_PATH to use the bundled engine, or"
+                + " point it at a matching build.");
+    }
+
+    static String sha256Hex(byte[] data) {
+        return HexFormat.of().formatHex(sha256Digest().digest(data));
+    }
+
+    @Generated // SHA-256 is mandated by the JLS; the catch is unreachable.
+    private static MessageDigest sha256Digest() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new HegelException("SHA-256 unavailable", e);
+        }
+    }
 }

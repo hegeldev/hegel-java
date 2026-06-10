@@ -1,3 +1,4 @@
 target/
 .hegel/
 *.class
+*.pyc

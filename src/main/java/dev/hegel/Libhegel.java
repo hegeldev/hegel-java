@@ -17,82 +17,82 @@ import java.lang.foreign.MemorySegment;
  * Strings the engine returns are copied out before this method returns, so they remain valid.
  */
 interface Libhegel {
-  // Settings.
-  MemorySegment settingsNew();
+    // Settings.
+    MemorySegment settingsNew();
 
-  void settingsFree(MemorySegment s);
+    void settingsFree(MemorySegment s);
 
-  void settingsMode(MemorySegment s, int mode);
+    void settingsMode(MemorySegment s, int mode);
 
-  void settingsTestCases(MemorySegment s, long n);
+    void settingsTestCases(MemorySegment s, long n);
 
-  void settingsVerbosity(MemorySegment s, int v);
+    void settingsVerbosity(MemorySegment s, int v);
 
-  void settingsSeed(MemorySegment s, long seed, boolean hasSeed);
+    void settingsSeed(MemorySegment s, long seed, boolean hasSeed);
 
-  void settingsDerandomize(MemorySegment s, boolean derandomize);
+    void settingsDerandomize(MemorySegment s, boolean derandomize);
 
-  void settingsReportMultipleFailures(MemorySegment s, boolean yes);
+    void settingsReportMultipleFailures(MemorySegment s, boolean yes);
 
-  /**
-   * {@code path == null} leaves the engine default; {@code ""} disables; otherwise sets the dir.
-   */
-  void settingsDatabase(MemorySegment s, String path);
+    /**
+     * {@code path == null} leaves the engine default; {@code ""} disables; otherwise sets the dir.
+     */
+    void settingsDatabase(MemorySegment s, String path);
 
-  void settingsDatabaseKey(MemorySegment s, String key);
+    void settingsDatabaseKey(MemorySegment s, String key);
 
-  void settingsPhases(MemorySegment s, int mask);
+    void settingsPhases(MemorySegment s, int mask);
 
-  void settingsSuppressHealthCheck(MemorySegment s, int mask);
+    void settingsSuppressHealthCheck(MemorySegment s, int mask);
 
-  // Run lifecycle.
-  MemorySegment runStart(MemorySegment settings);
+    // Run lifecycle.
+    MemorySegment runStart(MemorySegment settings);
 
-  MemorySegment nextTestCase(MemorySegment run);
+    MemorySegment nextTestCase(MemorySegment run);
 
-  MemorySegment runResult(MemorySegment run);
+    MemorySegment runResult(MemorySegment run);
 
-  void runFree(MemorySegment run);
+    void runFree(MemorySegment run);
 
-  // Per-test-case primitives. Each returns the raw rc.
+    // Per-test-case primitives. Each returns the raw rc.
 
-  /**
-   * Draw a value. On {@link Abi#OK} the decoded value bytes are copied into {@code out[0]}. On any
-   * non-OK code {@code out[0]} is left untouched.
-   */
-  int generate(MemorySegment tc, byte[] schema, byte[][] out);
+    /**
+     * Draw a value. On {@link Abi#OK} the decoded value bytes are copied into {@code out[0]}. On any
+     * non-OK code {@code out[0]} is left untouched.
+     */
+    int generate(MemorySegment tc, byte[] schema, byte[][] out);
 
-  int startSpan(MemorySegment tc, long label);
+    int startSpan(MemorySegment tc, long label);
 
-  int stopSpan(MemorySegment tc, boolean discard);
+    int stopSpan(MemorySegment tc, boolean discard);
 
-  int newCollection(MemorySegment tc, long minSize, long maxSize, long[] outId);
+    int newCollection(MemorySegment tc, long minSize, long maxSize, long[] outId);
 
-  int collectionMore(MemorySegment tc, long id, boolean[] outMore);
+    int collectionMore(MemorySegment tc, long id, boolean[] outMore);
 
-  int collectionReject(MemorySegment tc, long id, String why);
+    int collectionReject(MemorySegment tc, long id, String why);
 
-  int target(MemorySegment tc, double value, String label);
+    int target(MemorySegment tc, double value, String label);
 
-  int markComplete(MemorySegment tc, int status, String origin);
+    int markComplete(MemorySegment tc, int status, String origin);
 
-  boolean isFinalReplay(MemorySegment tc);
+    boolean isFinalReplay(MemorySegment tc);
 
-  // Results.
-  boolean resultPassed(MemorySegment result);
+    // Results.
+    boolean resultPassed(MemorySegment result);
 
-  long resultFailureCount(MemorySegment result);
+    long resultFailureCount(MemorySegment result);
 
-  MemorySegment resultFailure(MemorySegment result, long index);
+    MemorySegment resultFailure(MemorySegment result, long index);
 
-  String failurePanicMessage(MemorySegment failure);
+    String failurePanicMessage(MemorySegment failure);
 
-  String failureDiagnostic(MemorySegment failure);
+    String failureDiagnostic(MemorySegment failure);
 
-  String failureOrigin(MemorySegment failure);
+    String failureOrigin(MemorySegment failure);
 
-  // Diagnostics.
-  String lastErrorMessage();
+    // Diagnostics.
+    String lastErrorMessage();
 
-  String version();
+    String version();
 }

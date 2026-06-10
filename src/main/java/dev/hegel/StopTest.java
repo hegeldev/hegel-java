@@ -5,7 +5,7 @@ package dev.hegel;
  * budget). Unwinds the test body; the runner marks the case OVERRUN. Never a property failure.
  */
 final class StopTest extends RuntimeException {
-  StopTest() {
-    super(null, null, false, false);
-  }
+    StopTest() {
+        super(null, null, false, false);
+    }
 }

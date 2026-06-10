@@ -6,11 +6,11 @@
 
   <groupId>dev.hegel</groupId>
   <artifactId>hegel</artifactId>
-  <version>0.1.0</version>
+  <version>0.0.0</version>
   <packaging>jar</packaging>
 
   <name>hegel-java</name>
-  <description>Property-based testing for Java, powered by the Hegel engine.</description>
+  <description>Property-based testing for Java, built on Hypothesis</description>
   <url>https://github.com/hegeldev/hegel-java</url>
 
   <licenses>
@@ -19,6 +19,28 @@
       <url>https://opensource.org/licenses/MIT</url>
     </license>
   </licenses>
+
+  <developers>
+    <developer>
+      <name>Liam DeVoe</name>
+      <email>orionldevoe@gmail.com</email>
+    </developer>
+    <developer>
+      <name>David R. MacIver</name>
+      <email>david@drmaciver.com</email>
+    </developer>
+  </developers>
+
+  <scm>
+    <connection>scm:git:https://github.com/hegeldev/hegel-java.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/hegeldev/hegel-java.git</developerConnection>
+    <url>https://github.com/hegeldev/hegel-java</url>
+  </scm>
+
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/hegeldev/hegel-java/issues</url>
+  </issueManagement>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -70,29 +92,58 @@
   </dependencies>
 
   <build>
-    <resources>
-      <!-- Filter version.properties (substitutes ${libhegel.version}); copy everything else
-           verbatim so any future binary resource is not corrupted by filtering. -->
-      <resource>
-        <directory>src/main/resources</directory>
-        <filtering>true</filtering>
-        <includes>
-          <include>**/version.properties</include>
-        </includes>
-      </resource>
-      <resource>
-        <directory>src/main/resources</directory>
-        <filtering>false</filtering>
-        <excludes>
-          <exclude>**/version.properties</exclude>
-        </excludes>
-      </resource>
-    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.13.0</version>
+      </plugin>
+
+      <!-- Filter src/main/java-templates into generated-sources, substituting ${libhegel.version}
+           into BuildInfo.ENGINE_VERSION. build-helper (below) adds the output to the compile path. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>filter-java-templates</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/generated-sources/java-templates</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>src/main/java-templates</directory>
+                  <filtering>true</filtering>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Register the filtered templates as a compile source root. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <id>add-generated-sources</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${project.build.directory}/generated-sources/java-templates</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
 
       <!-- Stage the libhegel native libraries into the build output so they are packaged
@@ -134,11 +185,15 @@
       </plugin>
 
       <plugin>
-        <groupId>com.spotify.fmt</groupId>
-        <artifactId>fmt-maven-plugin</artifactId>
-        <version>2.29</version>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>2.46.1</version>
         <configuration>
-          <googleJavaFormatVersion>1.35.0</googleJavaFormatVersion>
+          <java>
+            <palantirJavaFormat>
+              <version>2.91.0</version>
+            </palantirJavaFormat>
+          </java>
         </configuration>
       </plugin>
 
@@ -200,4 +255,79 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Activated for publishing to Maven Central, via `mvn deploy -P release`. -->
+    <profile>
+      <id>release</id>
+      <build>
+        <plugins>
+          <!-- Sources jar -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <goals>
+                  <goal>jar-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <!-- Javadoc jar -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <!-- sign all artifacts with our GPG key -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.7</version>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+                <configuration>
+                  <gpgArguments>
+                    <!--  don't ask for passphrase. might not be required-->
+                    <arg>--pinentry-mode</arg>
+                    <arg>loopback</arg>
+                  </gpgArguments>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+
+          <!-- Upload to and publish on the Central Portal. -->
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.9.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>true</autoPublish>
+              <waitUntil>published</waitUntil>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

@@ -11,25 +11,41 @@ authoritative references are hegel-rust (the engine and canonical client) and it
 
 - `just coverage` / `mvn verify` — runs all tests and enforces **100% instruction + branch
   coverage** (JaCoCo). This is a hard gate.
+- `just test` / `mvn test` — full suite, no coverage gate.
+- `mvn test -Dtest=CborTest` / `-Dtest=CborTest#decodesTag91` — one class / one method.
+  `-Dtest='*Conformance*,*Behaviour*'` is what `just conformance` runs.
 - `just conformance` — the behaviour suite against the real engine.
 - `just build-libhegel` — build `libhegel` from a sibling `../hegel-rust` checkout.
-- `just format` / `just lint` — google-java-format via fmt-maven-plugin.
+- `just format` / `just lint` — palantir-java-format via spotless-maven-plugin.
+- `just check` — full CI gate: lint + coverage + docs.
+
+Java 22 (`maven.compiler.release`) for the FFM API; tests run with
+`--enable-native-access=ALL-UNNAMED` (the `hegel.argLine` property). The pinned engine version
+(`<libhegel.version>` in `pom.xml`) is filtered into `BuildInfo.ENGINE_VERSION` from
+`src/main/java-templates/dev/hegel/BuildInfo.java` (maven templating-plugin → generated-sources);
+bump that property to ship a new engine. A user-supplied `$HEGEL_LIBHEGEL_PATH` of a different
+version triggers a warning against `BuildInfo.ENGINE_VERSION`.
 
 `libhegel` resolves from `$HEGEL_LIBHEGEL_PATH` (explicit override), else the OS's standard
 shared-library search path (`LD_LIBRARY_PATH` on Linux, `DYLD_LIBRARY_PATH` on macOS), else the
 native bundled in the jar for the host OS/arch (unpacked to a per-user cache). The bundled libraries are fetched at build time by
 `scripts/fetch_natives.py` (wired into Maven's `generate-resources` phase), which discovers whatever
-shared objects the pinned `<libhegel.version>` release publishes — no runtime download. For local
+shared objects the pinned `<libhegel.version>` release publishes — no runtime download. The fetch is **strict** —
+because the bundled native is the only way end users get the engine (no runtime-download
+fallback), it fails the build rather than silently producing a jar without natives. For local
 engine work, build a `libhegel` and point `$HEGEL_LIBHEGEL_PATH` at it (`just build-libhegel` builds
-one from a sibling `../hegel-rust`), or pass `-Dhegel.natives.skip=true` to skip the build-time
-fetch.
+one from a sibling `../hegel-rust`), and pass `-Dhegel.natives.skip=true` to skip the build-time
+fetch (required when offline, since the fetch is otherwise a hard error).
 
 ## Architecture
 
 Data crosses the FFI boundary as **CBOR**: generator *schemas* in, generated *values* out. Users
 never see CBOR or schemas.
 
-Layers (all in package `dev.hegel`):
+Layers live in `dev.hegel`; the concrete generator implementations are in the `dev.hegel.generators`
+subpackage (one class per generator: `IntegerGenerator`, `TextGenerator`, `ListGenerator`,
+`RegexGenerator`, `EmailGenerator`, `DateTimeGenerator`, `Derive`/`RecordGenerator`, etc.). The
+public `Generator`/`TestCase`/`Generators`/`Hegel` surface stays in `dev.hegel`.
 
 - **FFI binding** — `Libhegel` (a fakeable interface) and `RealLibhegel` (FFM). `LibraryLoader`
   resolves the library (override / OS library path / jar-bundled native unpacked to a cache); `Engine` is
@@ -42,17 +58,24 @@ Layers (all in package `dev.hegel`):
   other negatives → `HegelException`) and short-circuiting once a case is aborted.
 - **Run loop** — `Runner` builds the settings handle, drives `hegel_run_start` →
   `hegel_next_test_case` → `hegel_mark_complete`, and turns the result into a pass or an
-  `AssertionError` carrying the minimal counterexample. `Settings` is the immutable config.
-- **Generators** — `Generator<T>` (public) with `map`/`filter`/`flatMap`. `BasicGenerator`
-  (schema + parse) and the `MaybeBasic` marker drive the basic/composite dual path: `map` on a
-  basic generator composes the parse over the same schema (one engine call); otherwise it falls
-  back to a span. `Generators` is the factory facade. Collection/`oneOf`/tuple generators choose
-  the basic schema path when their elements are basic and the engine collection API otherwise.
+  `AssertionError` carrying the minimal counterexample. `Settings` is the immutable config; its
+  closed-state setting types live alongside it — `Mode` (`TEST_RUN` / `SINGLE_TEST_CASE`),
+  `Database` (unset / disabled / path), `OptBoolean` (default / true / false, for annotation
+  attributes whose underlying default is environment-dependent, e.g. `derandomize`).
+- **Generators** — `Generator<T>` (public) with `map`/`filter`/`flatMap`. The basic/composite dual
+  path is driven by `Generator.asBasic()`: a schema-describable generator returns a `BasicGenerator`
+  (CBOR schema + a client-side `parse` function) and gets the default single-call `doDraw`;
+  everything else returns `null` and overrides `doDraw`. `map` on a basic generator composes the
+  parse over the same schema (`mapBasic`, one engine call, shrinks as well as the original);
+  otherwise (`MappedGenerator`/`FilteredGenerator`/`FlatMappedGenerator`/`CompositeGenerator`) it
+  brackets the draw in a span. `Generators` is the factory facade. Collection/`oneOf`/tuple
+  generators return a basic schema from `asBasic()` only when their elements are basic, and fall
+  back to the engine collection API otherwise.
 - **Public API** — `Hegel.check` / `Hegel.with`, `TestCase` (`draw`/`assume`/`note`/`target`),
   the `@HegelTest` annotation + `HegelTestExtension` (a JUnit 5 `TestTemplateInvocationContextProvider`
   that drives the engine loop and invokes the user method per case).
-- **Derivation** — `Derive` + `RecordGenerator` build generators from records, enums, scalars, and
-  generic `List`/`Set`/`Optional`/`Map` by reflection.
+- **Derivation** — `dev.hegel.generators.Derive` + `RecordGenerator` build generators from records,
+  enums, scalars, and generic `List`/`Set`/`Optional`/`Map` by reflection.
 
 ## Coverage notes
 

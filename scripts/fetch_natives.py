@@ -8,11 +8,14 @@ code change. The fetched libraries are copied into the build output as classpath
 under ``native/<os>-<arch>/libhegel.<ext>``; at runtime ``LibraryLoader`` unpacks the one
 matching the host from the jar. No network access is needed by end users.
 
-Downloads are cached per version under the user cache dir, so repeated builds (and builds
-after ``mvn clean``) reuse them without hitting the network. If the network is unavailable
-and nothing is cached, this prints a warning and exits 0: the build still succeeds, and the
-runtime falls back to ``$HEGEL_LIBHEGEL_PATH`` or a sibling ``hegel-rust`` checkout. A real
-release build runs in CI with network, so the published jar is always complete.
+The bundled native is the *only* way end users get the engine — hegel-java has no
+runtime-download fallback — so this step is **strict**: if it runs and cannot produce any
+natives (e.g. offline with a cold cache), it fails the build rather than silently shipping a
+jar without the engine. Downloads are cached per version under the user cache dir, so repeated
+builds (and builds after ``mvn clean``) reuse them without hitting the network.
+
+To build offline against a locally built libhegel, set ``-Dhegel.natives.skip=true`` (which
+skips this step entirely at the Maven layer) and point ``$HEGEL_LIBHEGEL_PATH`` at it.
 """
 
 from __future__ import annotations
@@ -117,20 +120,20 @@ def main() -> int:
         try:
             populate_cache(args.repo, args.version, cache)
         except (urllib.error.URLError, TimeoutError, OSError) as e:
-            if cached_libs(cache):
-                log(f"network error ({e}); using cached libraries")
-            else:
+            if not cached_libs(cache):
                 log(
-                    f"could not fetch libhegel natives ({e}) and none are cached; "
-                    "the jar will not bundle natives. The runtime can still use "
-                    "$HEGEL_LIBHEGEL_PATH or a sibling hegel-rust checkout."
+                    f"could not fetch libhegel natives ({e}) and none are cached. The bundled "
+                    "native is the only engine end users get, so this is a hard error. To build "
+                    "offline against a local libhegel, pass -Dhegel.natives.skip=true and set "
+                    "$HEGEL_LIBHEGEL_PATH."
                 )
-                return 0
+                return 1
+            log(f"network error ({e}); using cached libraries")
 
     libs = cached_libs(cache)
     if not libs:
-        log("no native libraries to stage")
-        return 0
+        log(f"release v{args.version} of {args.repo} staged no libhegel shared objects")
+        return 1
     stage(libs, args.out)
     return 0
 

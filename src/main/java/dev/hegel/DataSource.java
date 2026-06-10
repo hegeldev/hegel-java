@@ -11,18 +11,18 @@ import com.upokecenter.cbor.CBORObject;
  * non-OK code becomes a {@link HegelException} carrying the engine's diagnostic.
  */
 interface DataSource {
-  /** Draw one value described by {@code schema}, returning the decoded native value. */
-  Object generate(CBORObject schema);
+    /** Draw one value described by {@code schema}, returning the decoded native value. */
+    Object generate(CBORObject schema);
 
-  void startSpan(long label);
+    void startSpan(long label);
 
-  void stopSpan(boolean discard);
+    void stopSpan(boolean discard);
 
-  long newCollection(long minSize, long maxSize);
+    long newCollection(long minSize, long maxSize);
 
-  boolean collectionMore(long id);
+    boolean collectionMore(long id);
 
-  void collectionReject(long id, String why);
+    void collectionReject(long id, String why);
 
-  void target(double value, String label);
+    void target(double value, String label);
 }
