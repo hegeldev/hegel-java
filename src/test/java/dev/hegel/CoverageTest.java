@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,6 +35,13 @@ class CoverageTest {
         assertTrue(Settings.isCi(Map.of("BUILDKITE", "true")));
         assertTrue(Settings.isCi(Map.of("CIRCLECI", "true")));
         assertFalse(Settings.isCi(Map.of("CI", "")));
+    }
+
+    // --- BasicGenerator is its own basic representation ---
+    @Test
+    void basicGeneratorAsBasicIsIdentity() {
+        var basic = integers().asBasic();
+        assertSame(basic, basic.asBasic());
     }
 
     // --- FloatGenerator / DoubleGenerator schema branches (no engine needed) ---
