@@ -304,6 +304,15 @@
                   <goal>sign</goal>
                 </goals>
                 <configuration>
+                  <!-- Never read a passphrase from settings.xml. Our release key has no
+                       passphrase, but actions/setup-java templates a gpg.passphrase server
+                       entry into the runner's settings.xml whenever gpg-private-key is
+                       supplied (even with no gpg-passphrase input), and resolving it dumps
+                       a harmless-but-noisy SecDispatcherException stacktrace (no
+                       ~/.m2/settings-security.xml) into the release logs. If the key ever
+                       gains a passphrase, supply it via the MAVEN_GPG_PASSPHRASE
+                       environment variable. -->
+                  <bestPractices>true</bestPractices>
                   <gpgArguments>
                     <!--  don't ask for passphrase. might not be required-->
                     <arg>--pinentry-mode</arg>
