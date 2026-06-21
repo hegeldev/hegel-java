@@ -28,6 +28,7 @@ import dev.hegel.generators.TimeGenerator;
 import dev.hegel.generators.TupleGenerator;
 import dev.hegel.generators.UrlGenerator;
 import dev.hegel.generators.UuidGenerator;
+import dev.hegel.generators.UuidStringGenerator;
 import dev.hegel.generators.ZoneOffsetGenerator;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -37,6 +38,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 
 /**
@@ -463,8 +465,9 @@ public final class Generators {
      * Derive a generator for {@code type} by reflection.
      *
      * <p>Supports scalar types ({@code int}, {@code long}, {@code boolean}, {@code float}, {@code
-     * double}, {@code String}, {@code byte[]} and their wrappers), enums, records (recursively), and
-     * {@code List}, {@code Set}, {@code Optional} and {@code Map} of supported element types.
+     * double}, {@code String}, {@code byte[]}, {@link UUID}, and their wrappers), enums, records
+     * (recursively), and {@code List}, {@code Set}, {@code Optional} and {@code Map} of supported
+     * element types.
      *
      * @param type the type to derive a generator for
      * @param <T> the type
@@ -519,10 +522,23 @@ public final class Generators {
     }
 
     /**
+     * Generates version-4 {@link UUID} values by default. Use {@link UuidGenerator#version(int)}
+     * to override the RFC 4122 version.
+     *
+     * @return a UUID generator
+     */
+    public static UuidGenerator uuids() {
+        return new UuidGenerator();
+    }
+
+    /**
+     * Generates version-4 UUID strings by default. Use {@link UuidStringGenerator#version(int)} to
+     * override the RFC 4122 version.
+     *
      * @return a generator of UUID strings
      */
-    public static Generator<String> uuids() {
-        return new UuidGenerator();
+    public static UuidStringGenerator uuidStrings() {
+        return new UuidStringGenerator();
     }
 
     /**

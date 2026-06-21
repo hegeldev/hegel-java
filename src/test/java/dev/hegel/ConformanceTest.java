@@ -27,6 +27,7 @@ import static dev.hegel.Generators.text;
 import static dev.hegel.Generators.times;
 import static dev.hegel.Generators.tuples;
 import static dev.hegel.Generators.urls;
+import static dev.hegel.Generators.uuidStrings;
 import static dev.hegel.Generators.uuids;
 import static dev.hegel.Generators.zoneIds;
 import static dev.hegel.Generators.zoneOffsets;
@@ -42,6 +43,8 @@ import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /** Behaviour/conformance suite exercising every generator against the real engine. */
@@ -192,7 +195,8 @@ class ConformanceTest {
                 ipAddresses().v4(), s -> s.chars().filter(c -> c == '.').count() == 3);
         assertAllExamples(ipAddresses().v6(), s -> s.contains(":"));
         assertAllExamples(ipAddresses(), s -> s.contains(".") || s.contains(":"));
-        assertAllExamples(uuids(), s -> s.contains("-"));
+        assertAllExamples(uuids(), Objects::nonNull);
+        assertAllExamples(uuidStrings(), u -> UUID.fromString(u) != null);
         assertAllExamples(fromRegex("[0-9]{3}"), s -> s.matches(".*[0-9]{3}.*"));
     }
 
