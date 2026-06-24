@@ -99,6 +99,19 @@
         <version>3.13.0</version>
       </plugin>
 
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Automatic-Module-Name>dev.hegel</Automatic-Module-Name>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+
       <!-- Filter src/main/java-templates into generated-sources, substituting ${libhegel.version}
            into BuildInfo.ENGINE_VERSION. build-helper (below) adds the output to the compile path. -->
       <plugin>
