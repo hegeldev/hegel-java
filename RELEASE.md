@@ -1,3 +1,3 @@
 RELEASE_TYPE: minor
 
-Define Automatic-Module-Name with Maven maven-jar-plugin. 
+Define Automatic-Module-Name with maven-jar-plugin. 
