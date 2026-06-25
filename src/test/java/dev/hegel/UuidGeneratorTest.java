@@ -2,6 +2,7 @@ package dev.hegel;
 
 import static dev.hegel.Generators.uuids;
 import static dev.hegel.Utils.assertAllExamples;
+import static dev.hegel.Utils.findAny;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.UUID;
@@ -20,6 +21,25 @@ class UuidGeneratorTest {
     void configuredUuidVersionsAreRespected(int version) {
         assertAllExamples(
                 uuids().version(version), u -> UUID.fromString(u.toString()).equals(u) && u.version() == version);
+    }
+
+    /**
+     * This test reflects the current behavior of hegel-core:
+     * it generates uuids with these versions
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1, 2, 3, 4, 5, 7, 8, 9, 12, 14, 15})
+    void anyVersionGeneratesDifferentUuids(int version) {
+        findAny(uuids().anyVersion(), u -> u.version() == version);
+    }
+
+    /**
+     * Just reflects the current behavior - uuids with the 6th version are not generated.
+     */
+    @ValueSource(ints = {6, 11, 13})
+    @ParameterizedTest
+    void hegelCoreDoesntGenerateUuidWithSpecificVersions(int unsupportedVersion) {
+        assertAllExamples(uuids().anyVersion(), u -> u.version() != unsupportedVersion);
     }
 
     @ParameterizedTest

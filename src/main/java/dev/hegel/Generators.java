@@ -522,8 +522,7 @@ public final class Generators {
     }
 
     /**
-     * Generates version-4 {@link UUID} values by default. Use {@link UuidGenerator#version(int)}
-     * to override the RFC 4122 version.
+     * Generates {@link UUID} values; see {@link UuidGenerator} for configuration capabilities.
      *
      * @return a UUID generator
      */
@@ -533,7 +532,7 @@ public final class Generators {
 
     /**
      * Generates version-4 UUID strings by default. Use {@link UuidStringGenerator#version(int)} to
-     * override the RFC 4122 version.
+     * pin a version, or {@link UuidStringGenerator#anyVersion()} to let hegel-core choose it.
      *
      * @return a generator of UUID strings
      */
