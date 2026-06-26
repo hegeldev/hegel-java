@@ -1,6 +1,5 @@
 package dev.hegel;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -14,6 +13,7 @@ import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 import org.junit.jupiter.api.extension.TestTemplateInvocationContext;
 import org.junit.jupiter.api.extension.TestTemplateInvocationContextProvider;
+import org.junit.platform.commons.support.ReflectionSupport;
 
 /**
  * JUnit 5 extension backing {@link HegelTest}. Reports the property as a single test entry and
@@ -76,7 +76,7 @@ public final class HegelTestExtension implements TestTemplateInvocationContextPr
             HegelTest ann = method.getAnnotation(HegelTest.class);
             Settings settings = settingsFrom(ann, method.getName());
             Object target = invocationContext.getTarget().orElse(null);
-            Hegel.test(tc -> invoke(method, target, tc), settings);
+            Hegel.test(tc -> ReflectionSupport.invokeMethod(method, target, tc), settings);
         }
     }
 
@@ -119,22 +119,5 @@ public final class HegelTestExtension implements TestTemplateInvocationContextPr
 
     static boolean isTestCaseParam(Class<?> type) {
         return type == TestCase.class;
-    }
-
-    @Generated // thin reflective dispatch; failure propagation is verified end-to-end.
-    private static void invoke(Method method, Object target, TestCase tc) {
-        try {
-            method.setAccessible(true);
-            method.invoke(target, tc);
-        } catch (InvocationTargetException e) {
-            sneakyThrow(e.getCause());
-        } catch (IllegalAccessException e) {
-            throw new HegelException("Cannot invoke @HegelTest method " + method.getName(), e);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <E extends Throwable> void sneakyThrow(Throwable t) throws E {
-        throw (E) t;
     }
 }
