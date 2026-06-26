@@ -79,8 +79,7 @@ public `Generator`/`TestCase`/`Generators`/`Hegel` surface stays in `dev.hegel`.
 
 ## Coverage notes
 
-Two genuinely-unreachable defensive catch blocks are excluded via `@Generated` (JaCoCo ignores
-`*Generated*`-named annotations): the `NoSuchAlgorithmException` for SHA-256 and the reflective
-dispatch in `HegelTestExtension`. Everything else is covered by real-engine integration tests plus
+One genuinely-unreachable defensive catch block is excluded via `@Generated` (JaCoCo ignores
+`*Generated*`-named annotations): the `NoSuchAlgorithmException` for SHA-256. Everything else is covered by real-engine integration tests plus
 `FakeLibhegel`-driven error-path tests. The engine's `collection_more`/`new_collection` out-params
 are read unconditionally (the engine signals exhaustion on the following draw, not at those calls).
