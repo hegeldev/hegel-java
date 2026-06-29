@@ -11,8 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import dev.hegel.generators.Derive;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class DerivationTest {
@@ -94,6 +96,11 @@ class DerivationTest {
         assertAllExamples(
                 forType(Wrappers.class),
                 w -> w.l() != null && w.b() != null && w.d() != null && w.data() != null && w.i() != null);
+    }
+
+    @Test
+    void derivesUuidScalars() {
+        assertAllExamples(forType(UUID.class), Objects::nonNull);
     }
 
     record Temporal(

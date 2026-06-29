@@ -67,6 +67,9 @@ public final class Derive {
         if (cls == String.class) {
             return Generators.text();
         }
+        if (cls == java.util.UUID.class) {
+            return Generators.uuids();
+        }
         if (cls == byte[].class) {
             return Generators.binary();
         }
