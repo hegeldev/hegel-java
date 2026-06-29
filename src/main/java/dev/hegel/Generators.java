@@ -28,7 +28,6 @@ import dev.hegel.generators.TimeGenerator;
 import dev.hegel.generators.TupleGenerator;
 import dev.hegel.generators.UrlGenerator;
 import dev.hegel.generators.UuidGenerator;
-import dev.hegel.generators.UuidStringGenerator;
 import dev.hegel.generators.ZoneOffsetGenerator;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -528,16 +527,6 @@ public final class Generators {
      */
     public static UuidGenerator uuids() {
         return new UuidGenerator();
-    }
-
-    /**
-     * Generates version-4 UUID strings by default. Use {@link UuidStringGenerator#version(int)} to
-     * pin a version, or {@link UuidStringGenerator#anyVersion()} to let hegel-core choose it.
-     *
-     * @return a generator of UUID strings
-     */
-    public static UuidStringGenerator uuidStrings() {
-        return new UuidStringGenerator();
     }
 
     /**

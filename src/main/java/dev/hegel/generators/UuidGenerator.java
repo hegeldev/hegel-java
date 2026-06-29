@@ -8,14 +8,14 @@ import java.util.UUID;
 /**
  * Generates {@link UUID} values. Always basic (one engine call).
  *
- * <p>Defaults to RFC 4122 version 4, matching {@link UUID#randomUUID()}; pin it with {@link
- * #version(int)}, or call {@link #anyVersion()} to let hegel-core choose the version.
+ * <p>By default generates UUIDs of any version; use {@link #version(int)} to restrict to a
+ * specific RFC 4122 version (1–5).
  */
 public final class UuidGenerator implements Generator<UUID> {
     private final Integer version;
 
     public UuidGenerator() {
-        this(4);
+        this((Integer) null);
     }
 
     private UuidGenerator(Integer version) {
@@ -23,23 +23,16 @@ public final class UuidGenerator implements Generator<UUID> {
     }
 
     /**
-     * @param version the UUID version to generate; must be in {@code [1, 8]}
+     * @param version the UUID version to generate; must be an RFC 4122 version in {@code [1, 5]}
      * @return a copy pinned to the requested version
      */
     public UuidGenerator version(int version) {
         return new UuidGenerator(version);
     }
 
-    /**
-     * @return a copy that omits the version field and lets hegel-core choose the UUID version
-     */
-    public UuidGenerator anyVersion() {
-        return new UuidGenerator(null);
-    }
-
     private static Integer validateVersion(Integer version) {
-        if (version != null && (version < 1 || version > 8)) {
-            throw new IllegalArgumentException("uuids: version must be in [1, 8]");
+        if (version != null && (version < 1 || version > 5)) {
+            throw new IllegalArgumentException("uuids: version must be in [1, 5]");
         }
         return version;
     }
