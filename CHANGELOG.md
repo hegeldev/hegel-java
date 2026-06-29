@@ -2,6 +2,10 @@
 
 
 
+
+## 0.3.0 - 2026-06-29
+
+Change the `Generators.uuids()` return type from `String` to `java.util.UUID`, and expose version configuration as a `uuids().version(v)` method.
 ## 0.2.0 - 2026-06-26
 
 Improve Java Platform Module System support:
