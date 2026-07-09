@@ -469,14 +469,21 @@ public final class Generators {
     /**
      * Derive a generator for {@code type} by reflection.
      *
-     * <p>Supports scalar types ({@code int}, {@code long}, {@code boolean}, {@code float}, {@code
-     * double}, {@code String}, {@code byte[]}, {@link UUID}, and their wrappers), enums, records
-     * (recursively), and {@code List}, {@code Set}, {@code Optional} and {@code Map} of supported
-     * element types.
+     * <p>Supports the scalar types {@code int}, {@code long}, {@code boolean}, {@code float} and
+     * {@code double} (and their wrappers), {@code String}, {@code byte[]}, {@link UUID}, {@link
+     * Duration}, {@link LocalDate}, {@link LocalTime}, {@link java.time.LocalDateTime}, {@link
+     * java.time.OffsetDateTime}, {@link java.time.ZonedDateTime}, {@link ZoneOffset} and {@link
+     * ZoneId}, plus enums and records (recursively).
+     *
+     * <p>{@code List}, {@code Set}, {@code Optional} and {@code Map} of supported element types are
+     * derived only as record components, where the declared element types are known. This {@code
+     * Class}-based entry point cannot express a parameterized type, so e.g. {@code
+     * forType(List.class)} throws.
      *
      * @param type the type to derive a generator for
      * @param <T> the type
      * @return a generator producing instances of {@code type}
+     * @throws HegelException if no generator can be derived for {@code type}
      */
     @SuppressWarnings("unchecked")
     public static <T> Generator<T> forType(Class<T> type) {
@@ -552,7 +559,8 @@ public final class Generators {
     /**
      * Generates {@link java.time.LocalDateTime} values (the engine's offset-free {@code
      * YYYY-MM-DDTHH:MM:SS[.ffffff]} output). Call {@link DateTimeGenerator#timezones} to produce
-     * offset-aware {@link java.time.OffsetDateTime} values instead.
+     * DST-aware {@link java.time.ZonedDateTime} values, or {@link DateTimeGenerator#offsets} to
+     * produce fixed-offset {@link java.time.OffsetDateTime} values instead.
      *
      * @return a datetime generator
      */
