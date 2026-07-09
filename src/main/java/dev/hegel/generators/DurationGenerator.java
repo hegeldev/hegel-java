@@ -9,18 +9,16 @@ import java.time.Duration;
  * Generates {@link Duration} values within an inclusive {@code [min, max]} range. Always basic (one
  * engine call).
  *
- * <p>Durations are drawn as a nanosecond count, so the representable range is {@code [0,
- * Long.MAX_VALUE]} nanoseconds (about 292 years). The default is that whole range; narrow it with
- * the fluent {@link #min(Duration)} / {@link #max(Duration)} methods.
+ * <p>Durations are drawn as a signed nanosecond count, so the representable range is {@code
+ * [Long.MIN_VALUE, Long.MAX_VALUE]} nanoseconds (about ±292 years), negative durations included.
+ * The default is that whole range; narrow it with the fluent {@link #min(Duration)} / {@link
+ * #max(Duration)} methods.
  */
 public final class DurationGenerator implements Generator<Duration> {
     private final long minNanos;
     private final long maxNanos;
 
     public DurationGenerator(long minNanos, long maxNanos) {
-        if (minNanos < 0) {
-            throw new IllegalArgumentException("durations: min must be non-negative");
-        }
         if (minNanos > maxNanos) {
             throw new IllegalArgumentException("durations: min (" + minNanos + "ns) > max (" + maxNanos + "ns)");
         }
@@ -29,7 +27,8 @@ public final class DurationGenerator implements Generator<Duration> {
     }
 
     /**
-     * @param min the inclusive lower bound
+     * @param min the inclusive lower bound (may be negative; must fit in a {@code long} of
+     *     nanoseconds)
      * @return a copy with the lower bound set
      */
     public DurationGenerator min(Duration min) {
@@ -37,7 +36,8 @@ public final class DurationGenerator implements Generator<Duration> {
     }
 
     /**
-     * @param max the inclusive upper bound
+     * @param max the inclusive upper bound (may be negative; must fit in a {@code long} of
+     *     nanoseconds)
      * @return a copy with the upper bound set
      */
     public DurationGenerator max(Duration max) {

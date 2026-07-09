@@ -580,13 +580,14 @@ public final class Generators {
             ZoneId.getAvailableZoneIds().stream().sorted().map(ZoneId::of).toList();
 
     /**
-     * Generates {@link Duration} values across the representable nanosecond range. Configure with the
-     * fluent methods on {@link DurationGenerator}.
+     * Generates {@link Duration} values across the full signed nanosecond range — {@code
+     * [Long.MIN_VALUE, Long.MAX_VALUE]} nanoseconds, about ±292 years — including negative
+     * durations. Configure with the fluent methods on {@link DurationGenerator}.
      *
      * @return a duration generator
      */
     public static DurationGenerator durations() {
-        return new DurationGenerator(0, Long.MAX_VALUE);
+        return new DurationGenerator(Long.MIN_VALUE, Long.MAX_VALUE);
     }
 
     /**

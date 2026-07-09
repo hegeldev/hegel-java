@@ -216,10 +216,16 @@ class ConformanceTest {
         assertAllExamples(dates(), d -> d.getYear() >= 1 && d.getYear() <= 9999);
         assertAllExamples(times(), t -> t.getHour() >= 0 && t.getHour() <= 23);
         assertAllExamples(datetimes(), dt -> dt.getDayOfMonth() >= 1 && dt.getDayOfMonth() <= 31);
-        assertAllExamples(durations(), d -> !d.isNegative() && d.toNanos() <= Long.MAX_VALUE);
+        // durations() spans the full signed nanosecond range: negative values are reachable by
+        // default (Duration is signed, like Hypothesis's timedeltas)...
+        assertTrue(findAny(durations(), Duration::isNegative).isNegative());
+        // ...and bounds are honored, on either side of zero.
         assertAllExamples(
                 durations().min(Duration.ofSeconds(1)).max(Duration.ofSeconds(60)),
                 d -> d.compareTo(Duration.ofSeconds(1)) >= 0 && d.compareTo(Duration.ofSeconds(60)) <= 0);
+        assertAllExamples(
+                durations().min(Duration.ofSeconds(-60)).max(Duration.ofSeconds(-1)),
+                d -> d.compareTo(Duration.ofSeconds(-60)) >= 0 && d.compareTo(Duration.ofSeconds(-1)) <= 0);
     }
 
     @Test
