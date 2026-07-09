@@ -34,6 +34,10 @@ public final class TextGenerator implements Generator<String> {
             String includeChars,
             String excludeChars) {
         Sizes.validate(minSize, maxSize, "text");
+        if (categories != null && excludeCategories != null) {
+            throw new IllegalArgumentException("text: categories() and excludeCategories() cannot be combined;"
+                    + " express the constraint one way, e.g. list only the allowed categories");
+        }
         this.minSize = minSize;
         this.maxSize = maxSize;
         this.minCodepoint = minCodepoint;
@@ -93,8 +97,12 @@ public final class TextGenerator implements Generator<String> {
     /**
      * Restrict to the listed Unicode general categories (e.g. {@code "Lu"}, {@code "Nd"}).
      *
+     * <p>Cannot be combined with {@link #excludeCategories}: the engine honors only one of the two
+     * constraints, so express the restriction one way.
+     *
      * @param cats the allowed categories
      * @return a copy with the categories set
+     * @throws IllegalArgumentException if {@link #excludeCategories} was already set
      */
     public TextGenerator categories(String... cats) {
         return new TextGenerator(
@@ -109,8 +117,14 @@ public final class TextGenerator implements Generator<String> {
     }
 
     /**
+     * Exclude the listed Unicode general categories.
+     *
+     * <p>Cannot be combined with {@link #categories}: the engine honors only one of the two
+     * constraints, so express the restriction one way.
+     *
      * @param cats categories to exclude
      * @return a copy with excluded categories set
+     * @throws IllegalArgumentException if {@link #categories} was already set
      */
     public TextGenerator excludeCategories(String... cats) {
         return new TextGenerator(

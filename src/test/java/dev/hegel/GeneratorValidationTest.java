@@ -65,6 +65,17 @@ class GeneratorValidationTest {
     }
 
     @Test
+    void textCategoriesAndExcludeCategoriesConflict() {
+        // The engine schema honors only one of categories/exclude_categories, so combining them
+        // must fail loudly instead of silently ignoring the exclusion (in either call order).
+        assertThrows(
+                IllegalArgumentException.class, () -> text().categories("L").excludeCategories("Lu"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> text().excludeCategories("Lu").categories("L"));
+    }
+
+    @Test
     void durationBounds() {
         assertThrows(
                 IllegalArgumentException.class,
