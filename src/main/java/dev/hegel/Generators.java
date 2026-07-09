@@ -590,12 +590,14 @@ public final class Generators {
     }
 
     /**
-     * Generates strings matching a (Python-compatible) regular expression.
+     * Generates strings matching a (Python-compatible) regular expression. By default the entire
+     * string matches the pattern; use {@link RegexGenerator#fullmatch(boolean) fullmatch(false)}
+     * to generate strings that merely contain a match.
      *
      * @param pattern the regex pattern
      * @return a regex generator
      */
-    public static Generator<String> fromRegex(String pattern) {
-        return new RegexGenerator(pattern);
+    public static RegexGenerator fromRegex(String pattern) {
+        return new RegexGenerator(pattern, true);
     }
 }
