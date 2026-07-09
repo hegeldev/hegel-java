@@ -22,7 +22,7 @@ Add the dependency with Maven:
 <dependency>
   <groupId>dev.hegel</groupId>
   <artifactId>hegel</artifactId>
-  <version>0.1.0</version>
+  <version>0.4.0</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -30,7 +30,7 @@ Add the dependency with Maven:
 or with Gradle:
 
 ```kotlin
-testImplementation("dev.hegel:hegel:0.1.0")
+testImplementation("dev.hegel:hegel:0.4.0")
 ```
 
 Hegel for Java requires **Java 22+** and uses the [Foreign Function & Memory API](https://docs.oracle.com/en/java/javase/22/core/foreign-function-and-memory-api.html). The native engine is bundled in the jar for Linux (x86-64 and arm64) and macOS (Apple Silicon).
