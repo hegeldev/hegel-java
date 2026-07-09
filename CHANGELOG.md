@@ -3,6 +3,10 @@
 
 
 
+
+## 0.4.0 - 2026-07-09
+
+This release changes the default value of `fullmatch` in `fromRegex` from `false` to `true`.
 ## 0.3.0 - 2026-06-29
 
 Change the `Generators.uuids()` return type from `String` to `java.util.UUID`, and expose version configuration as a `uuids().version(v)` method.
