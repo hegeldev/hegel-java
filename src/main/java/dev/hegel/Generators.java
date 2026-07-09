@@ -113,9 +113,15 @@ public final class Generators {
     }
 
     /**
-     * Generates single-character strings.
+     * Generates strings of exactly one Unicode <em>codepoint</em>. A codepoint outside the Basic
+     * Multilingual Plane occupies two UTF-16 {@code char}s, so the generated string can have {@code
+     * String.length() == 2}; read the value with {@link String#codePointAt(int) codePointAt(0)}
+     * rather than {@code charAt(0)}. (Surrogates are excluded by default, as for {@link #text()}.)
      *
-     * @return a one-character text generator
+     * <p>The result is an ordinary {@link TextGenerator} with {@code minSize(1).maxSize(1)} applied,
+     * so calling further size methods (e.g. {@code minSize(0)}) replaces the one-codepoint contract.
+     *
+     * @return a one-codepoint text generator
      */
     public static TextGenerator characters() {
         return text().minSize(1).maxSize(1);

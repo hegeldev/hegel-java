@@ -98,6 +98,17 @@ class ConformanceTest {
     }
 
     @Test
+    void charactersAreSingleCodepointsNotSingleChars() {
+        // characters() means one Unicode CODEPOINT. A supplementary-plane codepoint occupies two
+        // UTF-16 chars, so String.length() == 2 there; codePointAt(0) is the safe accessor.
+        assertAllExamples(
+                characters().codepoints(0x10000, 0x10FFF),
+                s -> s.codePointCount(0, s.length()) == 1
+                        && s.length() == 2
+                        && Character.isSupplementaryCodePoint(s.codePointAt(0)));
+    }
+
+    @Test
     void binaryRespectsLength() {
         assertAllExamples(binary().minSize(1).maxSize(4), b -> b.length >= 1 && b.length <= 4);
         assertAllExamples(binary(), b -> b != null);
