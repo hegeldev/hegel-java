@@ -43,6 +43,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /** Behaviour/conformance suite exercising every generator against the real engine. */
@@ -194,7 +195,19 @@ class ConformanceTest {
         assertAllExamples(ipAddresses().v6(), s -> s.contains(":"));
         assertAllExamples(ipAddresses(), s -> s.contains(".") || s.contains(":"));
         assertAllExamples(uuids(), Objects::nonNull);
-        assertAllExamples(fromRegex("[0-9]{3}"), s -> s.matches(".*[0-9]{3}.*"));
+    }
+
+    @Test
+    void regexDefaultsToFullmatch() {
+        // By default the entire string matches the pattern (String.matches is a full match).
+        assertAllExamples(fromRegex("[0-9]{3}"), s -> s.matches("[0-9]{3}"));
+        // fullmatch(false) relaxes to contains-a-match: every example contains a match...
+        assertAllExamples(
+                fromRegex("[0-9]{3}").fullmatch(false),
+                s -> Pattern.compile("[0-9]{3}").matcher(s).find());
+        // ...and surrounding characters genuinely occur.
+        assertTrue(!findAny(fromRegex("[0-9]{3}").fullmatch(false), s -> !s.matches("[0-9]{3}"))
+                .matches("[0-9]{3}"));
     }
 
     @Test
