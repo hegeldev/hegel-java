@@ -205,9 +205,8 @@ class ConformanceTest {
         assertAllExamples(
                 fromRegex("[0-9]{3}").fullmatch(false),
                 s -> Pattern.compile("[0-9]{3}").matcher(s).find());
-        // ...and surrounding characters genuinely occur.
-        assertTrue(!findAny(fromRegex("[0-9]{3}").fullmatch(false), s -> !s.matches("[0-9]{3}"))
-                .matches("[0-9]{3}"));
+        // ...and surrounding characters genuinely occur (findAny throws if no such example exists).
+        findAny(fromRegex("[0-9]{3}").fullmatch(false), s -> !s.matches("[0-9]{3}"));
     }
 
     @Test
