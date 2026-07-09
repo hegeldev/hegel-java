@@ -31,11 +31,11 @@ public final class BinaryGenerator implements Generator<byte[]> {
     }
 
     /**
-     * @param maxSize the maximum length (inclusive)
+     * @param maxSize the maximum length (inclusive, {@code >= 0}; omit the call for no bound)
      * @return a copy with the maximum size set
      */
     public BinaryGenerator maxSize(int maxSize) {
-        return new BinaryGenerator(minSize, maxSize);
+        return new BinaryGenerator(minSize, Sizes.checkedMax(maxSize, "binary"));
     }
 
     /** @hidden */

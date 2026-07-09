@@ -65,13 +65,13 @@ public final class TextGenerator implements Generator<String> {
     }
 
     /**
-     * @param maxSize the maximum codepoint length
+     * @param maxSize the maximum codepoint length (must be {@code >= 0}; omit the call for no bound)
      * @return a copy with the maximum size set
      */
     public TextGenerator maxSize(int maxSize) {
         return new TextGenerator(
                 minSize,
-                maxSize,
+                Sizes.checkedMax(maxSize, "text"),
                 minCodepoint,
                 maxCodepoint,
                 categories,
