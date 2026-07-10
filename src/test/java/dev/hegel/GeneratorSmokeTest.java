@@ -125,7 +125,8 @@ class GeneratorSmokeTest {
         assertTrue(tc.draw(times()).getHour() >= 0);
         assertTrue(tc.draw(datetimes()).getYear() >= 1);
         assertTrue(!tc.draw(durations()).isNegative());
-        assertTrue(tc.draw(fromRegex("[a-z]{3}")).length() >= 0);
+        // Fullmatch semantics by default: the whole drawn string matches the pattern.
+        assertTrue(tc.draw(fromRegex("[a-z]{3}")).matches("[a-z]{3}"));
     }
 
     @HegelTest

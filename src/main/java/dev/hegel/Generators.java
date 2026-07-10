@@ -592,9 +592,13 @@ public final class Generators {
     /**
      * Generates strings matching a (Python-compatible) regular expression. By default the entire
      * string matches the pattern; use {@link RegexGenerator#fullmatch(boolean) fullmatch(false)}
-     * to generate strings that merely contain a match.
+     * to generate strings that merely <em>contain</em> a match, with arbitrary padding on either
+     * side (the unanchored semantics of Hypothesis's {@code from_regex}).
      *
-     * @param pattern the regex pattern
+     * <p>The pattern uses the engine's Python {@code re} dialect, which differs from {@link
+     * java.util.regex.Pattern} in some constructs.
+     *
+     * @param pattern the regex pattern (Python {@code re} dialect)
      * @return a regex generator
      */
     public static RegexGenerator fromRegex(String pattern) {

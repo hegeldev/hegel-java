@@ -8,6 +8,9 @@ import dev.hegel.Generator;
  * Generates strings matching a (Python-compatible) regular expression. By default the entire
  * string matches the pattern; use {@link #fullmatch(boolean) fullmatch(false)} to generate strings
  * that merely contain a match. Always basic (one engine call).
+ *
+ * <p>The pattern uses the engine's Python {@code re} dialect, which differs from {@link
+ * java.util.regex.Pattern} in some constructs.
  */
 public final class RegexGenerator implements Generator<String> {
     private final String pattern;
