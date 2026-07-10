@@ -74,14 +74,16 @@ public final class HegelTestExtension implements TestTemplateInvocationContextPr
             invocation.skip();
             Method method = invocationContext.getExecutable();
             HegelTest ann = method.getAnnotation(HegelTest.class);
-            Settings settings = settingsFrom(ann, method.getName());
+            Settings settings = settingsFrom(ann, method);
             Object target = invocationContext.getTarget().orElse(null);
             Hegel.test(tc -> ReflectionSupport.invokeMethod(method, target, tc), settings);
         }
     }
 
-    static Settings settingsFrom(HegelTest ann, String methodName) {
-        String name = ann.name().isEmpty() ? methodName : ann.name();
+    static Settings settingsFrom(HegelTest ann, Method method) {
+        // Qualify the default name with the declaring class: the name derives the example-database
+        // key, and a bare method name would collide across classes with same-named test methods.
+        String name = ann.name().isEmpty() ? method.getDeclaringClass().getName() + "." + method.getName() : ann.name();
         Settings s = new Settings()
                 .testCases(ann.testCases())
                 .verbosity(ann.verbosity())

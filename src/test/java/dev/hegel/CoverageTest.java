@@ -8,6 +8,7 @@ import static dev.hegel.Generators.sets;
 import static dev.hegel.Generators.text;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -133,13 +134,13 @@ class CoverageTest {
         assertTrue(HegelTestExtension.isTestCaseParam(TestCase.class));
         assertFalse(HegelTestExtension.isTestCaseParam(String.class));
 
-        Settings withSeed = HegelTestExtension.settingsFrom(seeded.getAnnotation(HegelTest.class), "s");
+        Settings withSeed = HegelTestExtension.settingsFrom(seeded.getAnnotation(HegelTest.class), seeded);
         assertEquals(5L, withSeed.seed);
         assertTrue(withSeed.hasSeed);
 
-        // Defaults: no seed, no derandomize override, engine-default phases, default database, method
-        // name as the property name.
-        Settings noSeed = HegelTestExtension.settingsFrom(unseeded.getAnnotation(HegelTest.class), "u");
+        // Defaults: no seed, no derandomize override, engine-default phases, default database, and
+        // the fully-qualified method name as the property name.
+        Settings noSeed = HegelTestExtension.settingsFrom(unseeded.getAnnotation(HegelTest.class), unseeded);
         assertFalse(noSeed.hasSeed);
         assertNull(noSeed.derandomize);
         assertNull(noSeed.phasesMask);
@@ -147,12 +148,12 @@ class CoverageTest {
         assertEquals(0, noSeed.suppressMask);
         assertEquals(Mode.TEST_RUN, noSeed.mode);
         assertFalse(noSeed.reportMultipleFailures);
-        assertEquals("u", noSeed.name);
+        assertEquals("dev.hegel.CoverageTest$Holder.unseeded", noSeed.name);
 
         // Fully-configured: derandomize forced on, a single explicit phase, a suppressed check, single
         // case and multi-failure modes, and a name override.
         Method configured = Holder.class.getDeclaredMethod("configured", TestCase.class);
-        Settings c = HegelTestExtension.settingsFrom(configured.getAnnotation(HegelTest.class), "ignored");
+        Settings c = HegelTestExtension.settingsFrom(configured.getAnnotation(HegelTest.class), configured);
         assertEquals(Boolean.TRUE, c.derandomize);
         assertEquals(Integer.valueOf(Phase.GENERATE.bit), c.phasesMask);
         assertEquals(HealthCheck.TOO_SLOW.bit, c.suppressMask);
@@ -163,16 +164,39 @@ class CoverageTest {
         // derandomize forced off, an explicitly empty phase set (runs nothing — distinct from the
         // all-phases default), and the database disabled.
         Method emptyPhases = Holder.class.getDeclaredMethod("derandomFalseEmptyPhases", TestCase.class);
-        Settings e = HegelTestExtension.settingsFrom(emptyPhases.getAnnotation(HegelTest.class), "e");
+        Settings e = HegelTestExtension.settingsFrom(emptyPhases.getAnnotation(HegelTest.class), emptyPhases);
         assertEquals(Boolean.FALSE, e.derandomize);
         assertEquals(Integer.valueOf(0), e.phasesMask);
         assertEquals(Database.Kind.DISABLED, e.database.kind);
 
         // A custom (compile-time) database path.
         Method customDb = Holder.class.getDeclaredMethod("customDb", TestCase.class);
-        Settings d = HegelTestExtension.settingsFrom(customDb.getAnnotation(HegelTest.class), "d");
+        Settings d = HegelTestExtension.settingsFrom(customDb.getAnnotation(HegelTest.class), customDb);
         assertEquals(Database.Kind.PATH, d.database.kind);
         assertEquals("/tmp/hdb", d.database.path);
+    }
+
+    // Two classes with identically-named test methods: their default property names (and hence
+    // example-database keys, which the engine derives from the name) must not collide.
+    static final class SameNameA {
+        @HegelTest
+        void prop(TestCase tc) {}
+    }
+
+    static final class SameNameB {
+        @HegelTest
+        void prop(TestCase tc) {}
+    }
+
+    @Test
+    void sameNamedMethodsInDifferentClassesGetDistinctDatabaseKeys() throws Exception {
+        Method a = SameNameA.class.getDeclaredMethod("prop", TestCase.class);
+        Method b = SameNameB.class.getDeclaredMethod("prop", TestCase.class);
+        Settings sa = HegelTestExtension.settingsFrom(a.getAnnotation(HegelTest.class), a);
+        Settings sb = HegelTestExtension.settingsFrom(b.getAnnotation(HegelTest.class), b);
+        assertNotEquals(sa.name, sb.name);
+        assertEquals("dev.hegel.CoverageTest$SameNameA.prop", sa.name);
+        assertEquals("dev.hegel.CoverageTest$SameNameB.prop", sb.name);
     }
 
     // --- Runner residual branches via fake ---

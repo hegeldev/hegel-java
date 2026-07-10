@@ -124,9 +124,11 @@ public @interface HegelTest {
 
     /**
      * Name for this property, used to derive a stable example-database key. Defaults to the test
-     * method name.
+     * method's fully-qualified name (declaring class name plus method name, e.g. {@code
+     * com.example.FooTest.myProperty}), so same-named methods in different classes get distinct
+     * database keys.
      *
-     * @return the property name, or {@code ""} to use the method name
+     * @return the property name, or {@code ""} to use the fully-qualified method name
      */
     String name() default "";
 }

@@ -65,11 +65,24 @@ class GeneratorValidationTest {
     }
 
     @Test
+    void textCategoriesAndExcludeCategoriesConflict() {
+        // The engine schema honors only one of categories/exclude_categories, so combining them
+        // must fail loudly instead of silently ignoring the exclusion (in either call order).
+        assertThrows(
+                IllegalArgumentException.class, () -> text().categories("L").excludeCategories("Lu"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> text().excludeCategories("Lu").categories("L"));
+    }
+
+    @Test
     void durationBounds() {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> durations().min(java.time.Duration.ofSeconds(2)).max(java.time.Duration.ofSeconds(1)));
-        assertThrows(IllegalArgumentException.class, () -> durations().min(java.time.Duration.ofSeconds(-1)));
+        // Duration is signed, so negative bounds are legal.
+        durations().min(java.time.Duration.ofSeconds(-1));
+        durations().min(java.time.Duration.ofSeconds(-2)).max(java.time.Duration.ofSeconds(-1));
     }
 
     @Test
@@ -91,6 +104,20 @@ class GeneratorValidationTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> maps(integers(), integers()).minSize(5).maxSize(3));
+    }
+
+    @Test
+    void negativeMaxSizeRejected() {
+        // -1 is the engine's internal "unbounded" sentinel; passed to the public setters it used
+        // to silently lift the bound instead of failing. All negative values must be rejected.
+        assertThrows(IllegalArgumentException.class, () -> text().maxSize(-1));
+        assertThrows(IllegalArgumentException.class, () -> binary().maxSize(-1));
+        assertThrows(IllegalArgumentException.class, () -> lists(integers()).maxSize(-1));
+        assertThrows(IllegalArgumentException.class, () -> sets(integers()).maxSize(-1));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> maps(integers(), integers()).maxSize(-1));
+        assertThrows(IllegalArgumentException.class, () -> text().maxSize(-2));
     }
 
     @Test

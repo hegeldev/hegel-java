@@ -113,9 +113,15 @@ public final class Generators {
     }
 
     /**
-     * Generates single-character strings.
+     * Generates strings of exactly one Unicode <em>codepoint</em>. A codepoint outside the Basic
+     * Multilingual Plane occupies two UTF-16 {@code char}s, so the generated string can have {@code
+     * String.length() == 2}; read the value with {@link String#codePointAt(int) codePointAt(0)}
+     * rather than {@code charAt(0)}. (Surrogates are excluded by default, as for {@link #text()}.)
      *
-     * @return a one-character text generator
+     * <p>The result is an ordinary {@link TextGenerator} with {@code minSize(1).maxSize(1)} applied,
+     * so calling further size methods (e.g. {@code minSize(0)}) replaces the one-codepoint contract.
+     *
+     * @return a one-codepoint text generator
      */
     public static TextGenerator characters() {
         return text().minSize(1).maxSize(1);
@@ -463,14 +469,21 @@ public final class Generators {
     /**
      * Derive a generator for {@code type} by reflection.
      *
-     * <p>Supports scalar types ({@code int}, {@code long}, {@code boolean}, {@code float}, {@code
-     * double}, {@code String}, {@code byte[]}, {@link UUID}, and their wrappers), enums, records
-     * (recursively), and {@code List}, {@code Set}, {@code Optional} and {@code Map} of supported
-     * element types.
+     * <p>Supports the scalar types {@code int}, {@code long}, {@code boolean}, {@code float} and
+     * {@code double} (and their wrappers), {@code String}, {@code byte[]}, {@link UUID}, {@link
+     * Duration}, {@link LocalDate}, {@link LocalTime}, {@link java.time.LocalDateTime}, {@link
+     * java.time.OffsetDateTime}, {@link java.time.ZonedDateTime}, {@link ZoneOffset} and {@link
+     * ZoneId}, plus enums and records (recursively).
+     *
+     * <p>{@code List}, {@code Set}, {@code Optional} and {@code Map} of supported element types are
+     * derived only as record components, where the declared element types are known. This {@code
+     * Class}-based entry point cannot express a parameterized type, so e.g. {@code
+     * forType(List.class)} throws.
      *
      * @param type the type to derive a generator for
      * @param <T> the type
      * @return a generator producing instances of {@code type}
+     * @throws HegelException if no generator can be derived for {@code type}
      */
     @SuppressWarnings("unchecked")
     public static <T> Generator<T> forType(Class<T> type) {
@@ -546,7 +559,8 @@ public final class Generators {
     /**
      * Generates {@link java.time.LocalDateTime} values (the engine's offset-free {@code
      * YYYY-MM-DDTHH:MM:SS[.ffffff]} output). Call {@link DateTimeGenerator#timezones} to produce
-     * offset-aware {@link java.time.OffsetDateTime} values instead.
+     * DST-aware {@link java.time.ZonedDateTime} values, or {@link DateTimeGenerator#offsets} to
+     * produce fixed-offset {@link java.time.OffsetDateTime} values instead.
      *
      * @return a datetime generator
      */
@@ -580,21 +594,26 @@ public final class Generators {
             ZoneId.getAvailableZoneIds().stream().sorted().map(ZoneId::of).toList();
 
     /**
-     * Generates {@link Duration} values across the representable nanosecond range. Configure with the
-     * fluent methods on {@link DurationGenerator}.
+     * Generates {@link Duration} values across the full signed nanosecond range — {@code
+     * [Long.MIN_VALUE, Long.MAX_VALUE]} nanoseconds, about ±292 years — including negative
+     * durations. Configure with the fluent methods on {@link DurationGenerator}.
      *
      * @return a duration generator
      */
     public static DurationGenerator durations() {
-        return new DurationGenerator(0, Long.MAX_VALUE);
+        return new DurationGenerator(Long.MIN_VALUE, Long.MAX_VALUE);
     }
 
     /**
      * Generates strings matching a (Python-compatible) regular expression. By default the entire
      * string matches the pattern; use {@link RegexGenerator#fullmatch(boolean) fullmatch(false)}
-     * to generate strings that merely contain a match.
+     * to generate strings that merely <em>contain</em> a match, with arbitrary padding on either
+     * side (the unanchored semantics of Hypothesis's {@code from_regex}).
      *
-     * @param pattern the regex pattern
+     * <p>The pattern uses the engine's Python {@code re} dialect, which differs from {@link
+     * java.util.regex.Pattern} in some constructs.
+     *
+     * @param pattern the regex pattern (Python {@code re} dialect)
      * @return a regex generator
      */
     public static RegexGenerator fromRegex(String pattern) {

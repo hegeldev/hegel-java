@@ -42,11 +42,11 @@ public final class MapGenerator<K, V> implements Generator<Map<K, V>> {
     }
 
     /**
-     * @param maxSize the maximum entry count (inclusive)
+     * @param maxSize the maximum entry count (inclusive, {@code >= 0}; omit the call for no bound)
      * @return a copy with the maximum size set
      */
     public MapGenerator<K, V> maxSize(int maxSize) {
-        return new MapGenerator<>(keys, values, minSize, maxSize);
+        return new MapGenerator<>(keys, values, minSize, Sizes.checkedMax(maxSize, "maps"));
     }
 
     /** @hidden */

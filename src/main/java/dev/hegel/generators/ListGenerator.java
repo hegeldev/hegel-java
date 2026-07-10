@@ -37,11 +37,11 @@ public final class ListGenerator<T> implements Generator<List<T>> {
     }
 
     /**
-     * @param maxSize the maximum length (inclusive)
+     * @param maxSize the maximum length (inclusive, {@code >= 0}; omit the call for no bound)
      * @return a copy with the maximum size set
      */
     public ListGenerator<T> maxSize(int maxSize) {
-        return new ListGenerator<>(element, minSize, maxSize);
+        return new ListGenerator<>(element, minSize, Sizes.checkedMax(maxSize, "lists"));
     }
 
     /** @hidden */

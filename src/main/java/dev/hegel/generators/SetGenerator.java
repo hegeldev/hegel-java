@@ -37,11 +37,11 @@ public final class SetGenerator<T> implements Generator<Set<T>> {
     }
 
     /**
-     * @param maxSize the maximum size (inclusive)
+     * @param maxSize the maximum size (inclusive, {@code >= 0}; omit the call for no bound)
      * @return a copy with the maximum size set
      */
     public SetGenerator<T> maxSize(int maxSize) {
-        return new SetGenerator<>(element, minSize, maxSize);
+        return new SetGenerator<>(element, minSize, Sizes.checkedMax(maxSize, "sets"));
     }
 
     /** @hidden */

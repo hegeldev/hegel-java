@@ -65,6 +65,9 @@ class DerivationTest {
     @Test
     void unsupportedTypeFailsClearly() {
         assertThrows(HegelException.class, () -> forType(Object.class));
+        // Collections are supported only as record components (where the declared element type is
+        // known); the Class-based entry point cannot express them.
+        assertThrows(HegelException.class, () -> forType(List.class));
         // Unsupported generic element type surfaces when the record is generated.
         assertThrows(
                 HegelException.class,
