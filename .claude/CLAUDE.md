@@ -28,7 +28,9 @@ version triggers a warning against `BuildInfo.ENGINE_VERSION`.
 
 `libhegel` resolves from `$HEGEL_LIBHEGEL_PATH` (explicit override), else the OS's standard
 shared-library search path (`LD_LIBRARY_PATH` on Linux, `DYLD_LIBRARY_PATH` on macOS), else the
-native bundled in the jar for the host OS/arch (unpacked to a per-user cache). The bundled libraries are fetched at build time by
+native bundled in the jar for the host OS/arch (unpacked to a per-user cache; the cache is
+best-effort — if it cannot be read or written, e.g. under a sandbox that denies writes to the user
+cache dir, the native is extracted to a fresh directory under the system temp dir instead). The bundled libraries are fetched at build time by
 `scripts/fetch_natives.py` (wired into Maven's `generate-resources` phase), which discovers whatever
 shared objects the pinned `<libhegel.version>` release publishes — no runtime download. The fetch is **strict** —
 because the bundled native is the only way end users get the engine (no runtime-download

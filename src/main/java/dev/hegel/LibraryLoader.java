@@ -27,23 +27,44 @@ import java.util.function.Function;
  *
  * <p>The bundled libraries are placed on the classpath at build time (see {@code
  * scripts/fetch_natives.py}), so the shipped jar is self-contained and nothing is downloaded at
- * runtime. Configuration (environment, cache dir, OS/arch, and the resource opener) is injected so
- * the resolver is fully unit-testable, including the unpack path.
+ * runtime. The per-user cache is purely a performance optimization: when it cannot be read or
+ * written (e.g. a sandbox that denies access to the user cache dir), the library is extracted to a
+ * fresh directory under the system temp dir instead. Configuration (environment, cache dir,
+ * OS/arch, the resource opener, and the temp-dir supplier) is injected so the resolver is fully
+ * unit-testable, including the unpack path.
  */
 final class LibraryLoader {
+    /** Creates a fresh private directory for the temp-dir fallback; injected for testability. */
+    @FunctionalInterface
+    interface TempDirSupplier {
+        Path create() throws IOException;
+    }
+
     private final Map<String, String> env;
     private final Path cacheDir;
     private final String os;
     private final String arch;
     private final Function<String, InputStream> resources;
+    private final TempDirSupplier tempDirs;
 
     LibraryLoader(
             Map<String, String> env, Path cacheDir, String os, String arch, Function<String, InputStream> resources) {
+        this(env, cacheDir, os, arch, resources, () -> Files.createTempDirectory("hegel-java-libhegel"));
+    }
+
+    LibraryLoader(
+            Map<String, String> env,
+            Path cacheDir,
+            String os,
+            String arch,
+            Function<String, InputStream> resources,
+            TempDirSupplier tempDirs) {
         this.env = env;
         this.cacheDir = cacheDir;
         this.os = os;
         this.arch = arch;
         this.resources = resources;
+        this.tempDirs = tempDirs;
     }
 
     /**
@@ -170,9 +191,10 @@ final class LibraryLoader {
     }
 
     /**
-     * Unpack the bundled native for this OS/arch to the cache and return its path, or {@code null} if
-     * no native is bundled for this platform. The cache entry is keyed by the library's content hash,
-     * so it is reused across runs and never collides between engine versions.
+     * Unpack the bundled native for this OS/arch and return its path, or {@code null} if no native
+     * is bundled for this platform. The per-user cache is tried first; on any cache failure the
+     * library is extracted to a fresh directory under the system temp dir instead. Unpacking fails
+     * only when both paths fail, with an error reporting both causes.
      */
     Path unpackBundled() {
         InputStream in = resources.apply(resourcePath());
@@ -185,23 +207,53 @@ final class LibraryLoader {
         } catch (IOException e) {
             throw new HegelException("Failed to read bundled libhegel resource " + resourcePath(), e);
         }
+        IOException cacheFailure;
+        try {
+            return cachedLibrary(bytes);
+        } catch (IOException e) {
+            cacheFailure = e;
+        }
+        try {
+            return tempLibrary(bytes);
+        } catch (IOException e) {
+            e.addSuppressed(cacheFailure);
+            throw new HegelException(
+                    "Failed to unpack bundled libhegel to a temp dir (cache also unusable: " + cacheFailure + ")", e);
+        }
+    }
+
+    /**
+     * The per-user cached copy of the library, written on first use. The cache entry is keyed by
+     * the library's content hash, so it is reused across runs and never collides between engine
+     * versions.
+     */
+    private Path cachedLibrary(byte[] bytes) throws IOException {
         Path dir = cacheDir.resolve(sha256Hex(bytes));
         Path target = dir.resolve(libFileName());
         if (Files.isRegularFile(target) && target.toFile().length() == bytes.length) {
             return target;
         }
+        Files.createDirectories(dir);
+        return installLibrary(dir, bytes);
+    }
+
+    /**
+     * Extract the library to a fresh private directory under the system temp dir.
+     */
+    private Path tempLibrary(byte[] bytes) throws IOException {
+        return installLibrary(tempDirs.create(), bytes);
+    }
+
+    /** Write the library into {@code dir} atomically (temp file + rename), marked executable. */
+    private Path installLibrary(Path dir, byte[] bytes) throws IOException {
+        Path target = dir.resolve(libFileName());
+        Path tmp = Files.createTempFile(dir, "libhegel", ".part");
         try {
-            Files.createDirectories(dir);
-            Path tmp = Files.createTempFile(dir, "libhegel", ".part");
-            try {
-                Files.write(tmp, bytes);
-                tmp.toFile().setExecutable(true, false);
-                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } finally {
-                Files.deleteIfExists(tmp);
-            }
-        } catch (IOException e) {
-            throw new HegelException("Failed to unpack bundled libhegel to " + target, e);
+            Files.write(tmp, bytes);
+            tmp.toFile().setExecutable(true, false);
+            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(tmp);
         }
         return target;
     }
