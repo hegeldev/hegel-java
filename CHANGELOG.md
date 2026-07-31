@@ -4,6 +4,10 @@
 
 
 
+
+## 0.4.1 - 2026-07-31
+
+Fix error when cache directory for libhegel could not be written to, for example inside of a sandbox.
 ## 0.4.0 - 2026-07-09
 
 This release changes the default value of `fullmatch` in `fromRegex` from `false` to `true`.
