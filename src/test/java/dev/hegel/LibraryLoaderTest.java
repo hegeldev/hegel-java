@@ -2,6 +2,7 @@ package dev.hegel;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -240,12 +241,30 @@ class LibraryLoaderTest {
     }
 
     @Test
-    void unpackIoErrorFails(@TempDir Path dir) throws IOException {
-        byte[] payload = "x".getBytes(StandardCharsets.UTF_8);
+    void unusableCacheFallsBackToTempDir(@TempDir Path dir) throws IOException {
+        byte[] payload = "ELF-ish-bytes".getBytes(StandardCharsets.UTF_8);
         Path cacheAsFile = dir.resolve("cache-is-a-file");
         Files.writeString(cacheAsFile, "occupied"); // createDirectories under it must fail
         LibraryLoader l = loader(Map.of(), cacheAsFile, bundled(LINUX_RESOURCE, payload));
+        Path got = l.resolve(); // the default supplier extracts under the system temp dir
+        assertFalse(got.startsWith(cacheAsFile));
+        assertArrayEquals(payload, Files.readAllBytes(got));
+    }
+
+    @Test
+    void cacheAndTempDirBothUnusableFails(@TempDir Path dir) throws IOException {
+        byte[] payload = "x".getBytes(StandardCharsets.UTF_8);
+        Path cacheAsFile = dir.resolve("cache-is-a-file");
+        Files.writeString(cacheAsFile, "occupied");
+        LibraryLoader l =
+                new LibraryLoader(Map.of(), cacheAsFile, "linux", "amd64", bundled(LINUX_RESOURCE, payload), () -> {
+                    throw new IOException("temp denied");
+                });
         HegelException e = assertThrows(HegelException.class, l::resolve);
-        assertTrue(e.getMessage().contains("Failed to unpack bundled libhegel"));
+        // The terminal error reports both causes: the temp failure as the cause, the cache failure
+        // in the message (and suppressed on the cause, so both stack traces survive).
+        assertTrue(e.getCause().getMessage().contains("temp denied"));
+        assertTrue(e.getMessage().contains("cache also unusable"));
+        assertTrue(e.getMessage().contains("cache-is-a-file"));
     }
 }
