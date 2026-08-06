@@ -1,15 +1,14 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 import java.util.UUID;
 
 /**
- * Generates {@link UUID} values. Always basic (one engine call).
+ * Generates {@link UUID} values.
  *
- * <p>By default generates UUIDs of any version; use {@link #version(int)} to restrict to a
- * specific RFC 4122 version (1–5).
+ * <p>By default generates UUIDs of any version (uniform 128 bits, never the nil UUID); use {@link
+ * #version(int)} to restrict to a specific RFC 4122 version (1–5).
  */
 public final class UuidGenerator implements Generator<UUID> {
     private final Integer version;
@@ -39,11 +38,7 @@ public final class UuidGenerator implements Generator<UUID> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<UUID> asBasic() {
-        CBORObject schema = CBORObject.NewMap().Add("type", "uuid");
-        if (version != null) {
-            schema.Add("version", version);
-        }
-        return new BasicGenerator<>(schema, raw -> UUID.fromString(Cbor.asString(raw)));
+    public UUID doDraw(TestCase tc) {
+        return tc.generateUuid(version);
     }
 }

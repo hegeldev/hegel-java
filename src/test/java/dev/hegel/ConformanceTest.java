@@ -223,6 +223,20 @@ class ConformanceTest {
     }
 
     @Test
+    void boundedTemporalGenerators() {
+        java.time.LocalDate dateLo = java.time.LocalDate.of(2020, 2, 5);
+        java.time.LocalDate dateHi = java.time.LocalDate.of(2021, 3, 9);
+        assertAllExamples(dates().min(dateLo).max(dateHi), d -> !d.isBefore(dateLo) && !d.isAfter(dateHi));
+        // A sub-microsecond lower bound is snapped up to the engine's resolution.
+        java.time.LocalTime timeLo = java.time.LocalTime.of(10, 30, 0, 4);
+        java.time.LocalTime timeHi = java.time.LocalTime.of(11, 0);
+        assertAllExamples(times().min(timeLo).max(timeHi), t -> !t.isBefore(timeLo) && !t.isAfter(timeHi));
+        java.time.LocalDateTime lo = java.time.LocalDateTime.of(1999, 12, 31, 23, 0, 0, 1);
+        java.time.LocalDateTime hi = java.time.LocalDateTime.of(2000, 1, 1, 1, 0);
+        assertAllExamples(datetimes().min(lo).max(hi), dt -> !dt.isBefore(lo) && !dt.isAfter(hi));
+    }
+
+    @Test
     void offsetAwareDatetimes() {
         // Bare offsets stay within the legal ZoneOffset range.
         assertAllExamples(zoneOffsets(), o -> o.getTotalSeconds() >= -64800 && o.getTotalSeconds() <= 64800);

@@ -57,8 +57,29 @@ class EndToEndTest {
 
     @Test
     void reportMultipleFailuresProducesAggregateReport() {
-        // Opt-in multi-failure mode wraps the result in an aggregate "Hegel found ..." report
-        // (rather than the default direct rethrow), exercising the engine's failure-enumeration API.
+        // Opt-in multi-failure mode keeps searching after the first failure; two distinct bugs
+        // (different origins) aggregate into one "Hegel found ..." report carrying the originals
+        // as suppressed exceptions.
+        AssertionError err = assertThrows(
+                AssertionError.class,
+                () -> Hegel.test(
+                        tc -> {
+                            if (tc.draw(booleans())) {
+                                throw new AssertionError("bug one");
+                            }
+                            throw new IllegalStateException("bug two");
+                        },
+                        new Settings().reportMultipleFailures(true).seed(123).database(Database.disabled())));
+        assertTrue(err.getMessage().contains("2 distinct failing examples"), err.getMessage());
+        assertTrue(err.getMessage().contains("bug one"), err.getMessage());
+        assertTrue(err.getMessage().contains("bug two"), err.getMessage());
+        assertEquals(2, err.getSuppressed().length);
+    }
+
+    @Test
+    void reportMultipleFailuresWithASingleBugRethrowsDirectly() {
+        // A run that finds only one distinct bug rethrows it directly — no aggregate wrapper —
+        // even with reportMultipleFailures enabled, matching the other Hegel frontends.
         AssertionError err = assertThrows(
                 AssertionError.class,
                 () -> Hegel.test(
@@ -67,7 +88,8 @@ class EndToEndTest {
                             assertTrue(x <= 10, "x too big: " + x);
                         },
                         new Settings().reportMultipleFailures(true).seed(123).database(Database.disabled())));
-        assertTrue(err.getMessage().contains("failing example"), err.getMessage());
+        assertTrue(err.getMessage().contains("x too big: 11"), err.getMessage());
+        assertTrue(!err.getMessage().contains("failing example"), err.getMessage());
     }
 
     @HegelTest

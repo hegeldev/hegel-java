@@ -1,16 +1,17 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 
 /**
- * Generates syntactically valid email addresses. Always basic (one engine call).
+ * Generates syntactically valid (RFC 5321/5322) email addresses like {@code alice@example.com}.
  */
 public final class EmailGenerator implements Generator<String> {
+    private final HandleCache cache = new HandleCache();
+
     /** @hidden */
     @Override
-    public BasicGenerator<String> asBasic() {
-        return new BasicGenerator<>(CBORObject.NewMap().Add("type", "email"), Cbor::asString);
+    public String doDraw(TestCase tc) {
+        return tc.generateString(cache.get(tc, TestCase::emailGenerator));
     }
 }

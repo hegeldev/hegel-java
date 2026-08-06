@@ -1,10 +1,10 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 
 /**
- * Always generates the same value, ignoring the engine's choice. Always basic (one engine call).
+ * Always generates the same value, drawing nothing from the engine.
  *
  * @param <T> the constant value type
  */
@@ -17,8 +17,7 @@ public final class ConstantGenerator<T> implements Generator<T> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<T> asBasic() {
-        CBORObject schema = CBORObject.NewMap().Add("type", "constant").Add("value", CBORObject.Null);
-        return new BasicGenerator<>(schema, raw -> value);
+    public T doDraw(TestCase tc) {
+        return value;
     }
 }

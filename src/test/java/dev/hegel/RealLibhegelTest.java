@@ -62,4 +62,57 @@ class RealLibhegelTest {
     void constructorRejectsBadPath() {
         assertThrows(HegelException.class, () -> new RealLibhegel(Path.of("/nonexistent/libhegel.so")));
     }
+
+    private static RealLibhegel real() {
+        return new RealLibhegel(LibraryLoader.fromEnvironment().resolve());
+    }
+
+    @Test
+    void infrastructureCallsReportNullHandles() {
+        RealLibhegel lib = real();
+        // A NULL handle on an infra call surfaces as a HegelException carrying the engine's
+        // diagnostic rather than undefined behaviour.
+        assertThrows(HegelException.class, () -> lib.runResultStatus(java.lang.foreign.MemorySegment.NULL));
+        assertThrows(HegelException.class, () -> lib.runStart(java.lang.foreign.MemorySegment.NULL, null));
+    }
+
+    @Test
+    void structuredDrawsReportNullHandles() {
+        RealLibhegel lib = real();
+        java.time.LocalDate d = java.time.LocalDate.of(2000, 1, 1);
+        assertEquals(
+                Abi.E_INVALID_HANDLE,
+                lib.generateDate(java.lang.foreign.MemorySegment.NULL, d, d, new java.time.LocalDate[1]));
+        java.time.LocalTime t = java.time.LocalTime.NOON;
+        assertEquals(
+                Abi.E_INVALID_HANDLE,
+                lib.generateTime(java.lang.foreign.MemorySegment.NULL, t, t, new java.time.LocalTime[1]));
+        java.time.LocalDateTime dt = java.time.LocalDateTime.of(d, t);
+        assertEquals(
+                Abi.E_INVALID_HANDLE,
+                lib.generateDatetime(java.lang.foreign.MemorySegment.NULL, dt, dt, new java.time.LocalDateTime[1]));
+    }
+
+    @Test
+    void undecodableBlobWithDefaultOutputIsRejected() {
+        RealLibhegel lib = real();
+        MemorySegment s = lib.settingsNew();
+        MemorySegment[] out = new MemorySegment[1];
+        // A null output callback leaves replay output on stderr; the garbage blob is rejected.
+        assertEquals(Abi.E_INVALID_ARG, lib.testCaseFromBlob(s, "not-a-blob!!!", null, out));
+        lib.settingsFree(s);
+    }
+
+    @Test
+    void regexGeneratorAcceptsATextAlphabet() {
+        RealLibhegel lib = real();
+        MemorySegment[] alphabet = new MemorySegment[1];
+        assertEquals(
+                Abi.OK,
+                lib.stringGeneratorText(0, 5, "ascii", 0, Abi.NO_MAX_CODEPOINT, null, null, null, null, alphabet));
+        MemorySegment[] regex = new MemorySegment[1];
+        assertEquals(Abi.OK, lib.stringGeneratorRegex("[a-z]+", true, alphabet[0], regex));
+        lib.stringGeneratorFree(regex[0]);
+        lib.stringGeneratorFree(alphabet[0]);
+    }
 }

@@ -1,13 +1,12 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 import java.time.ZoneOffset;
 
 /**
  * Generates {@link ZoneOffset} values (fixed UTC offsets) within an inclusive {@code [min, max]}
- * range. Always basic (one engine call).
+ * range.
  *
  * <p>Offsets are drawn at one-second granularity. The default range is the whole legal {@code
  * ZoneOffset} span ({@code -18:00} to {@code +18:00}); narrow it with the fluent {@link
@@ -43,11 +42,7 @@ public final class ZoneOffsetGenerator implements Generator<ZoneOffset> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<ZoneOffset> asBasic() {
-        CBORObject schema = CBORObject.NewMap()
-                .Add("type", "integer")
-                .Add("min_value", minSeconds)
-                .Add("max_value", maxSeconds);
-        return new BasicGenerator<>(schema, raw -> ZoneOffset.ofTotalSeconds(Cbor.asIndex(raw)));
+    public ZoneOffset doDraw(TestCase tc) {
+        return ZoneOffset.ofTotalSeconds((int) tc.generateInteger(minSeconds, maxSeconds));
     }
 }

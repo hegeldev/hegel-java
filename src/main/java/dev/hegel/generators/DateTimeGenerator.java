@@ -1,9 +1,8 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
 import dev.hegel.Generators;
+import dev.hegel.TestCase;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -11,8 +10,12 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
 /**
- * Generates {@link LocalDateTime} values (the engine's offset-free {@code
- * YYYY-MM-DDTHH:MM:SS[.ffffff]} output). Always basic (one engine call).
+ * Generates {@link LocalDateTime} values within an inclusive {@code [min, max]} range, at the
+ * engine's microsecond resolution.
+ *
+ * <p>The default range is {@code 0001-01-01T00:00} to {@code 9999-12-31T23:59:59.999999}; narrow it
+ * with the fluent {@link #min(LocalDateTime)} / {@link #max(LocalDateTime)} methods. Values shrink
+ * toward 2000-01-01T00:00:00, or the nearest bound when that is out of range.
  *
  * <p>Attach a timezone to produce zone-aware values: {@link #timezones(Generator)} pairs each
  * generated wall-clock time with a {@link ZoneId} to make a DST-aware {@link ZonedDateTime}, and
@@ -20,14 +23,65 @@ import java.time.ZonedDateTime;
  * OffsetDateTime}.
  */
 public final class DateTimeGenerator implements Generator<LocalDateTime> {
+    private final LocalDateTime min;
+    private final LocalDateTime max;
 
-    public DateTimeGenerator() {}
+    public DateTimeGenerator() {
+        this(
+                LocalDateTime.of(DateGenerator.DEFAULT_MIN, java.time.LocalTime.MIDNIGHT),
+                LocalDateTime.of(DateGenerator.DEFAULT_MAX, TimeGenerator.DEFAULT_MAX));
+    }
+
+    public DateTimeGenerator(LocalDateTime min, LocalDateTime max) {
+        // Bounds are snapped inward to whole microseconds (the engine's resolution): the lower
+        // bound rounds up (carrying across midnight if needed), the upper bound truncates.
+        LocalDateTime lo = roundUp(min);
+        LocalDateTime hi = truncate(max);
+        validateYear(lo);
+        validateYear(hi);
+        if (lo.isAfter(hi)) {
+            throw new IllegalArgumentException(
+                    "datetimes: min (" + min + ") > max (" + max + ") at microsecond resolution");
+        }
+        this.min = lo;
+        this.max = hi;
+    }
+
+    private static void validateYear(LocalDateTime dt) {
+        if (dt.getYear() < -999_999 || dt.getYear() > 999_999) {
+            throw new IllegalArgumentException("datetimes: year of " + dt + " is outside [-999999, 999999]");
+        }
+    }
+
+    private static LocalDateTime truncate(LocalDateTime t) {
+        return t.withNano(t.getNano() / 1_000 * 1_000);
+    }
+
+    private static LocalDateTime roundUp(LocalDateTime t) {
+        LocalDateTime truncated = truncate(t);
+        return truncated.equals(t) ? t : truncated.plusNanos(1_000);
+    }
+
+    /**
+     * @param min the inclusive lower bound
+     * @return a copy with the lower bound set
+     */
+    public DateTimeGenerator min(LocalDateTime min) {
+        return new DateTimeGenerator(min, max);
+    }
+
+    /**
+     * @param max the inclusive upper bound
+     * @return a copy with the upper bound set
+     */
+    public DateTimeGenerator max(LocalDateTime max) {
+        return new DateTimeGenerator(min, max);
+    }
 
     /** @hidden */
     @Override
-    public BasicGenerator<LocalDateTime> asBasic() {
-        return new BasicGenerator<>(
-                CBORObject.NewMap().Add("type", "datetime"), raw -> LocalDateTime.parse(Cbor.asString(raw)));
+    public LocalDateTime doDraw(TestCase tc) {
+        return tc.generateDatetime(min, max);
     }
 
     /**

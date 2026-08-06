@@ -506,9 +506,10 @@ public final class Generators {
     }
 
     /**
-     * @return a generator of syntactically valid domain names
+     * @return a generator of syntactically valid domain names; see {@link DomainGenerator} for
+     *     configuration capabilities
      */
-    public static Generator<String> domains() {
+    public static DomainGenerator domains() {
         return new DomainGenerator();
     }
 
@@ -530,23 +531,32 @@ public final class Generators {
     }
 
     /**
-     * @return a generator of {@link LocalDate} values (the engine's {@code YYYY-MM-DD} output)
+     * Generates {@link LocalDate} values spanning years 1 to 9999 by default, shrinking toward
+     * 2000-01-01. Narrow the range with {@link DateGenerator#min} / {@link DateGenerator#max}.
+     *
+     * @return a date generator
      */
-    public static Generator<LocalDate> dates() {
+    public static DateGenerator dates() {
         return new DateGenerator();
     }
 
     /**
-     * @return a generator of {@link LocalTime} values (the engine's {@code HH:MM:SS[.ffffff]} output)
+     * Generates {@link LocalTime} values across the whole day by default (at the engine's
+     * microsecond resolution), shrinking toward the lower bound. Narrow the range with {@link
+     * TimeGenerator#min} / {@link TimeGenerator#max}.
+     *
+     * @return a time generator
      */
-    public static Generator<LocalTime> times() {
+    public static TimeGenerator times() {
         return new TimeGenerator();
     }
 
     /**
-     * Generates {@link java.time.LocalDateTime} values (the engine's offset-free {@code
-     * YYYY-MM-DDTHH:MM:SS[.ffffff]} output). Call {@link DateTimeGenerator#timezones} to produce
-     * offset-aware {@link java.time.OffsetDateTime} values instead.
+     * Generates {@link java.time.LocalDateTime} values (at the engine's microsecond resolution),
+     * shrinking toward 2000-01-01T00:00:00. Narrow the range with {@link DateTimeGenerator#min} /
+     * {@link DateTimeGenerator#max}. Call {@link DateTimeGenerator#timezones} to produce zone-aware
+     * {@link java.time.ZonedDateTime} values or {@link DateTimeGenerator#offsets} for offset-aware
+     * {@link java.time.OffsetDateTime} values instead.
      *
      * @return a datetime generator
      */

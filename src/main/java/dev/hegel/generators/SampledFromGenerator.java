@@ -1,13 +1,12 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 import java.util.List;
 
 /**
  * Picks one of a fixed, non-empty list of values (the first is the simplest for shrinking). Drawn
- * as an index into the list, so always basic (one engine call).
+ * as an index into the list.
  *
  * @param <T> the value type
  */
@@ -23,9 +22,7 @@ public final class SampledFromGenerator<T> implements Generator<T> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<T> asBasic() {
-        CBORObject schema =
-                CBORObject.NewMap().Add("type", "integer").Add("min_value", 0).Add("max_value", values.size() - 1);
-        return new BasicGenerator<>(schema, raw -> values.get(Cbor.asIndex(raw)));
+    public T doDraw(TestCase tc) {
+        return values.get((int) tc.generateInteger(0, values.size() - 1));
     }
 }

@@ -86,11 +86,16 @@ public final class HegelTestExtension implements TestTemplateInvocationContextPr
                 .testCases(ann.testCases())
                 .verbosity(ann.verbosity())
                 .mode(ann.mode())
+                .backend(ann.backend())
                 .reportMultipleFailures(ann.reportMultipleFailures())
+                .printBlob(ann.printBlob())
                 .suppressHealthCheck(ann.suppressHealthCheck())
                 .name(name);
         if (ann.seed() != HegelTest.NO_SEED) {
             s = s.seed(ann.seed());
+        }
+        if (!ann.reproduceFailure().isEmpty()) {
+            s = s.reproduceFailure(ann.reproduceFailure());
         }
         if (ann.derandomize() != OptBoolean.DEFAULT) {
             s = s.derandomize(ann.derandomize() == OptBoolean.TRUE);
