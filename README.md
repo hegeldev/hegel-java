@@ -33,7 +33,7 @@ or with Gradle:
 testImplementation("dev.hegel:hegel:0.1.0")
 ```
 
-Hegel for Java requires **Java 22+** and uses the [Foreign Function & Memory API](https://docs.oracle.com/en/java/javase/22/core/foreign-function-and-memory-api.html). The native engine is bundled in the jar for Linux (x86-64 and arm64) and macOS (Apple Silicon).
+Hegel for Java requires **Java 22+** and uses the [Foreign Function & Memory API](https://docs.oracle.com/en/java/javase/22/core/foreign-function-and-memory-api.html). The native engine is bundled in the jar for Linux (x86-64 and arm64), macOS (Apple Silicon), and Windows (x86-64 and arm64).
 
 Because Hegel calls native code, pass `--enable-native-access=ALL-UNNAMED` to silence the JVM's native-access warning. With Maven Surefire:
 

@@ -1,10 +1,18 @@
+# Recipes assume a POSIX shell; on Windows run them under Git Bash.
+set windows-shell := ["bash", "-uc"]
+
 build-libhegel:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -d ../hegel-rust ]; then
         (cd ../hegel-rust && cargo build --release -p hegeltest-c)
+        case "$(uname -s)" in
+            Darwin*) lib=libhegel.dylib ;;
+            MINGW*|MSYS*|CYGWIN*) lib=hegel.dll ;; # cargo emits no lib prefix on Windows
+            *) lib=libhegel.so ;;
+        esac
         echo "Built libhegel. Point the tests at it with:"
-        echo "  export HEGEL_LIBHEGEL_PATH=$(cd ../hegel-rust && pwd)/target/release/libhegel.\$(uname -s | grep -qi darwin && echo dylib || echo so)"
+        echo "  export HEGEL_LIBHEGEL_PATH=$(cd ../hegel-rust && pwd)/target/release/$lib"
     else
         echo "No sibling ../hegel-rust checkout; tests use the libhegel bundled in the jar."
     fi
