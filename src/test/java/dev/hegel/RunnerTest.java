@@ -369,9 +369,11 @@ class RunnerTest {
 
     @Test
     void databaseDisabledAndCiDefaults() {
+        // A disabled database still sends the key: the engine derives the derandomized seed from it.
         FakeLibhegel disabled = new FakeLibhegel();
-        run(disabled, new Settings().database(Database.disabled()), tc -> {});
+        run(disabled, new Settings().database(Database.disabled()).name("d"), tc -> {});
         assertEquals("", disabled.databasePath);
+        assertEquals("d", disabled.databaseKey);
 
         // CI default disables the database and derandomizes.
         FakeLibhegel ci = new FakeLibhegel();

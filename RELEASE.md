@@ -63,6 +63,12 @@ regex anchors (`\b`, `\B`, `$`) respected in non-final positions, Unicode catego
 astral planes, several shrinker crashes and runaway-execution bugs, flaky tests reported as flaky
 instead of under a wrong origin, and substantially more effective shrink passes.
 
+This release also fixes derandomized seeds in CI. A derandomized run derives its seed from the
+test's database key, which hegel-java previously sent only when the example database was enabled —
+and CI disables the database. Every named test in a CI run therefore derandomized from the same
+fallback key and saw the same inputs. Each named test now derives its seed from its own name, so
+repeated runs of one test stay deterministic while different tests still see different inputs.
+
 Breaking changes:
 
 - Custom `Generator` implementations must now implement `doDraw(TestCase)`; the CBOR schema

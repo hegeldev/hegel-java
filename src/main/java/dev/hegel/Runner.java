@@ -267,26 +267,24 @@ final class Runner {
             lib.settingsPhases(s, st.phasesMask);
         }
 
-        boolean dbEnabled;
         switch (st.database.kind) {
             case DISABLED:
                 lib.settingsDatabase(s, "");
-                dbEnabled = false;
                 break;
             case PATH:
                 lib.settingsDatabase(s, st.database.path);
-                dbEnabled = true;
                 break;
             default:
+                // Unset: CI disables the database, otherwise the engine default stands.
                 if (ci) {
                     lib.settingsDatabase(s, "");
-                    dbEnabled = false;
-                } else {
-                    dbEnabled = true;
                 }
                 break;
         }
-        if (dbEnabled && st.name != null) {
+        // The key is sent whenever there is one, even with the database off: the engine also derives
+        // the derandomized seed from it, so gating this on dbEnabled would make every named test in
+        // CI (where the database is disabled) derandomize off the same fallback key.
+        if (st.name != null) {
             lib.settingsDatabaseKey(s, st.name);
         }
     }
