@@ -144,10 +144,11 @@ final class LibraryLoader {
     }
 
     private String libExt() {
-        if (os.equals("windows")) {
-            return "dll";
-        }
-        return os.equals("darwin") ? "dylib" : "so";
+        return switch (os) {
+            case "windows" -> "dll";
+            case "darwin" -> "dylib";
+            default -> "so";
+        };
     }
 
     /** The shared-library file name for this OS (e.g. {@code libhegel.so}, {@code libhegel.dll}). */
@@ -157,10 +158,11 @@ final class LibraryLoader {
 
     /** The OS's conventional shared-library search-path environment variable. */
     private String libraryPathVar() {
-        if (os.equals("windows")) {
-            return "PATH";
-        }
-        return os.equals("darwin") ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
+        return switch (os) {
+            case "windows" -> "PATH";
+            case "darwin" -> "DYLD_LIBRARY_PATH";
+            default -> "LD_LIBRARY_PATH";
+        };
     }
 
     /** Classpath resource path of the native library bundled for this OS/arch. */
