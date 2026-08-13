@@ -5,20 +5,39 @@ pom's current <version> by the RELEASE_TYPE, writes it back, prepends the change
 Maven Central via the `release` profile, and then records the release in git (commit + tag +
 GitHub release).
 
-The publish happens *before* the tag is pushed: if `mvn deploy` fails, nothing is committed or
-tagged, so a retry starts clean. `push-or-pr` pushes the release commit to main afterwards,
-falling back to a PR if main has diverged.
+The publish happens *before* the tag is pushed: if `mvn deploy` fails before the bundle is
+uploaded, nothing is committed or tagged, so a retry starts clean. If it fails *after* the upload
+(the deployment publishes server-side from that point on), the version is checked against the
+Central API and the release continues if it is live — see `deploy_and_verify`. `push-or-pr`
+pushes the release commit to main afterwards, falling back to a PR if main has diverged.
 """
 
 import argparse
+import base64
+import json
 import os
 import re
 import subprocess
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 POM = ROOT / "pom.xml"
+
+# Printed by central-publishing-maven-plugin once the bundle is on the portal. From that point
+# the deployment validates and publishes server-side (autoPublish) no matter how the mvn
+# process exits.
+UPLOAD_MARKER = "Uploaded bundle successfully"
+
+CENTRAL_PUBLISHED_URL = "https://central.sonatype.com/api/v1/publisher/published"
+# How long to keep polling Central for an uploaded deployment to publish, and the poll interval.
+# Publishing normally completes within a few minutes of upload.
+PUBLISH_WAIT_SECONDS = 10 * 60
+PUBLISH_POLL_SECONDS = 30
 
 
 def git(*args: str) -> None:
@@ -90,6 +109,62 @@ def add_changelog(path: Path, *, version: str, content: str) -> None:
         path.write_text(f"{existing[: idx + 1]}\n{entry}{existing[idx + 1 :]}")
 
 
+def run_deploy(mvn_args: list[str]) -> tuple[int, bool]:
+    """Run `mvn deploy`, echoing its output, and return (exit code, whether the bundle upload
+    succeeded)."""
+    process = subprocess.Popen(mvn_args, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    uploaded = False
+    assert process.stdout is not None
+    for line in process.stdout:
+        print(line, end="", flush=True)
+        if UPLOAD_MARKER in line:
+            uploaded = True
+    return process.wait(), uploaded
+
+
+def is_published(version: str) -> bool:
+    """Ask the Central Publisher API whether dev.hegel:hegel:{version} is live on Maven Central.
+    Network and server errors count as "not (yet) published", so a transiently failing status
+    endpoint — the very thing being recovered from — just means polling again."""
+    credentials = f"{os.environ['CENTRAL_TOKEN_USER']}:{os.environ['CENTRAL_TOKEN_PASS']}"
+    token = base64.b64encode(credentials.encode()).decode()
+    query = urllib.parse.urlencode({"namespace": "dev.hegel", "name": "hegel", "version": version})
+    request = urllib.request.Request(f"{CENTRAL_PUBLISHED_URL}?{query}", headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return bool(json.load(response).get("published"))
+    except (urllib.error.URLError, TimeoutError, ValueError):
+        return False
+
+
+def deploy_and_verify(mvn_args: list[str], version: str) -> None:
+    """Run `mvn deploy`, tolerating failures that happen after the version is safe on Central.
+
+    The deploy can exit nonzero even though the release went (or is going) out: the plugin's
+    wait-until-published poll can hit a transient error (e.g. a 502) after the bundle uploaded,
+    and on a re-run of a failed release job the upload is rejected because the version already
+    exists. Aborting in those cases strands a published version with no tag, changelog, or
+    GitHub release, and the next release attempt then collides with it. So on failure, this
+    checks whether the version is live on Central — polling for a while if the upload succeeded,
+    a single check otherwise — and returns normally if it is, letting the git bookkeeping
+    proceed."""
+    returncode, uploaded = run_deploy(mvn_args)
+    if returncode == 0:
+        return
+    error = subprocess.CalledProcessError(returncode, mvn_args)
+    if "CENTRAL_TOKEN_USER" not in os.environ or "CENTRAL_TOKEN_PASS" not in os.environ:
+        raise error
+    deadline = time.monotonic() + (PUBLISH_WAIT_SECONDS if uploaded else 0)
+    while True:
+        if is_published(version):
+            print(f"mvn deploy failed (exit {returncode}) but {version} is published on Central; continuing.")
+            return
+        if time.monotonic() >= deadline:
+            raise error
+        print(f"mvn deploy failed (exit {returncode}) after upload; waiting for {version} to publish...")
+        time.sleep(PUBLISH_POLL_SECONDS)
+
+
 def check(base_ref: str) -> None:
     """PR gate (run by check-release.yml): if the PR changes source, require a well-formed
     RELEASE.md. A no-op for PRs that touch no source."""
@@ -151,7 +226,7 @@ def release() -> None:
     # Publish to Maven Central. The release profile builds + signs the jar/sources/javadoc,
     # fails loudly if the bundled natives are missing, and uploads + publishes the deployment
     # (autoPublish + waitUntil=published are configured on the plugin). Done before any git tag
-    # so a failure leaves nothing to unwind.
+    # so a pre-upload failure leaves nothing to unwind.
     mvn_args = ["mvn", "-B", "-P", "release", "deploy"]
     # Pin the signing key by fingerprint (GPG_KEYNAME) so the build signs with the Hegel release
     # key specifically and fails if that key isn't the one in the keyring, rather than silently
@@ -159,7 +234,7 @@ def release() -> None:
     keyname = os.environ.get("GPG_KEYNAME")
     if keyname:
         mvn_args.append(f"-Dgpg.keyname={keyname}")
-    subprocess.run(mvn_args, check=True, cwd=ROOT)
+    deploy_and_verify(mvn_args, new_version)
 
     app_slug = os.environ["HEGEL_RELEASE_APP_SLUG"]
     bot_user_id = subprocess.run(
