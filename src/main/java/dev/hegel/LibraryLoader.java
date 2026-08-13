@@ -21,8 +21,11 @@ import java.util.function.Function;
  *   <li>{@code $HEGEL_LIBHEGEL_PATH} — explicit override (e.g. for local engine development); if
  *       set it must point at an existing file, otherwise resolution fails.
  *   <li>the OS's standard shared-library search path ({@code LD_LIBRARY_PATH} on Linux, {@code
- *       DYLD_LIBRARY_PATH} on macOS): the first directory containing the library file is used.
- *   <li>the native library bundled in the jar for this OS/arch, unpacked to a per-user cache.
+ *       DYLD_LIBRARY_PATH} on macOS, {@code PATH} on Windows): the first directory containing the
+ *       library file is used.
+ *   <li>the native library bundled in the jar for this OS/arch, unpacked to a per-user cache
+ *       ({@code $XDG_CACHE_HOME}/{@code ~/.cache} on Linux and macOS, {@code %LOCALAPPDATA%} on
+ *       Windows).
  * </ol>
  *
  * <p>The bundled libraries are placed on the classpath at build time (see {@code
@@ -72,10 +75,11 @@ final class LibraryLoader {
      */
     static LibraryLoader fromEnvironment() {
         Map<String, String> env = System.getenv();
+        String os = mapOs(System.getProperty("os.name"));
         return new LibraryLoader(
                 env,
-                defaultCacheDir(env),
-                mapOs(System.getProperty("os.name")),
+                defaultCacheDir(env, os),
+                os,
                 mapArch(System.getProperty("os.arch")),
                 LibraryLoader::classpathResource);
     }
@@ -85,9 +89,26 @@ final class LibraryLoader {
         return LibraryLoader.class.getClassLoader().getResourceAsStream(name);
     }
 
-    static Path defaultCacheDir(Map<String, String> env) {
+    /**
+     * The per-user cache directory for unpacked natives: {@code $XDG_CACHE_HOME} if set (an
+     * explicit override on every OS), else the idiomatic per-OS cache root — {@code
+     * %LOCALAPPDATA%} on Windows, {@code ~/.cache} elsewhere.
+     */
+    static Path defaultCacheDir(Map<String, String> env, String os) {
         String xdg = env.get("XDG_CACHE_HOME");
-        Path base = (xdg != null && !xdg.isEmpty()) ? Path.of(xdg) : Path.of(home(env), ".cache");
+        if (xdg != null && !xdg.isEmpty()) {
+            return cacheSubdir(Path.of(xdg));
+        }
+        if (os.equals("windows")) {
+            String localAppData = env.get("LOCALAPPDATA");
+            if (localAppData != null && !localAppData.isEmpty()) {
+                return cacheSubdir(Path.of(localAppData));
+            }
+        }
+        return cacheSubdir(Path.of(home(env), ".cache"));
+    }
+
+    private static Path cacheSubdir(Path base) {
         return base.resolve("hegel-java").resolve("libhegel");
     }
 
@@ -104,8 +125,11 @@ final class LibraryLoader {
         if (os.contains("linux")) {
             return "linux";
         }
+        if (os.contains("windows")) {
+            return "windows";
+        }
         throw new HegelException(
-                "libhegel does not support this operating system: '" + osName + "' (linux/macOS only).");
+                "libhegel does not support this operating system: '" + osName + "' (Linux, macOS, and Windows only).");
     }
 
     static String mapArch(String osArch) {
@@ -120,17 +144,25 @@ final class LibraryLoader {
     }
 
     private String libExt() {
-        return os.equals("darwin") ? "dylib" : "so";
+        return switch (os) {
+            case "windows" -> "dll";
+            case "darwin" -> "dylib";
+            default -> "so";
+        };
     }
 
-    /** The shared-library file name for this OS (e.g. {@code libhegel.so}). */
+    /** The shared-library file name for this OS (e.g. {@code libhegel.so}, {@code libhegel.dll}). */
     private String libFileName() {
         return "libhegel." + libExt();
     }
 
     /** The OS's conventional shared-library search-path environment variable. */
     private String libraryPathVar() {
-        return os.equals("darwin") ? "DYLD_LIBRARY_PATH" : "LD_LIBRARY_PATH";
+        return switch (os) {
+            case "windows" -> "PATH";
+            case "darwin" -> "DYLD_LIBRARY_PATH";
+            default -> "LD_LIBRARY_PATH";
+        };
     }
 
     /** Classpath resource path of the native library bundled for this OS/arch. */
