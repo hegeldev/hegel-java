@@ -50,7 +50,7 @@
     <!-- The libhegel/hegel-rust release whose native libraries are bundled into the jar.
          Bump this and rebuild to ship a new engine; scripts/fetch_natives.py fetches the
          matching shared objects at build time. -->
-    <libhegel.version>0.30.4</libhegel.version>
+    <libhegel.version>0.32.5</libhegel.version>
     <!-- Set -Dhegel.natives.skip=true to skip the build-time native fetch (e.g. offline
          local dev against a sibling hegel-rust checkout). -->
     <hegel.natives.skip>false</hegel.natives.skip>
