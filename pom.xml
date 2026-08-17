@@ -6,7 +6,7 @@
 
   <groupId>dev.hegel</groupId>
   <artifactId>hegel</artifactId>
-  <version>0.4.1</version>
+  <version>0.4.2</version>
   <packaging>jar</packaging>
 
   <name>hegel-java</name>
@@ -54,6 +54,9 @@
     <!-- Set -Dhegel.natives.skip=true to skip the build-time native fetch (e.g. offline
          local dev against a sibling hegel-rust checkout). -->
     <hegel.natives.skip>false</hegel.natives.skip>
+    <!-- The Python interpreter used to run scripts/fetch_natives.py; the windows-python
+         profile overrides it, since Windows installs no python3 launcher. -->
+    <hegel.python>python3</hegel.python>
     <!-- FFM requires native access; surefire passes this to the test JVM. -->
     <hegel.argLine>--enable-native-access=ALL-UNNAMED</hegel.argLine>
   </properties>
@@ -168,7 +171,7 @@
             </goals>
             <configuration>
               <skip>${hegel.natives.skip}</skip>
-              <executable>python3</executable>
+              <executable>${hegel.python}</executable>
               <arguments>
                 <argument>${project.basedir}/scripts/fetch_natives.py</argument>
                 <argument>--version</argument>
@@ -283,6 +286,19 @@
   </build>
 
   <profiles>
+    <!-- Windows ships python.exe but no python3 launcher. -->
+    <profile>
+      <id>windows-python</id>
+      <activation>
+        <os>
+          <family>windows</family>
+        </os>
+      </activation>
+      <properties>
+        <hegel.python>python</hegel.python>
+      </properties>
+    </profile>
+
     <!-- Activated for publishing to Maven Central, via `mvn deploy -P release`. -->
     <profile>
       <id>release</id>

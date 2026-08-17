@@ -31,8 +31,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Asset names look like ``libhegel-linux-amd64.so`` / ``libhegel-darwin-arm64.dylib``.
-ASSET_RE = re.compile(r"^libhegel-([A-Za-z0-9]+)-([A-Za-z0-9]+)\.(so|dylib)$")
+# Asset names look like ``libhegel-linux-amd64.so`` / ``libhegel-darwin-arm64.dylib`` /
+# ``libhegel-windows-amd64.dll``.
+ASSET_RE = re.compile(r"^libhegel-([A-Za-z0-9]+)-([A-Za-z0-9]+)\.(so|dylib|dll)$")
 DEFAULT_REPO = "hegeldev/hegel-rust"
 
 

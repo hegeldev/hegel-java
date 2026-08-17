@@ -42,7 +42,8 @@ class LibraryLoaderTest {
         assertEquals("linux", LibraryLoader.mapOs("Linux"));
         assertEquals("darwin", LibraryLoader.mapOs("Mac OS X"));
         assertEquals("darwin", LibraryLoader.mapOs("Darwin"));
-        assertThrows(HegelException.class, () -> LibraryLoader.mapOs("Windows 11"));
+        assertEquals("windows", LibraryLoader.mapOs("Windows 11"));
+        assertThrows(HegelException.class, () -> LibraryLoader.mapOs("FreeBSD"));
 
         assertEquals("amd64", LibraryLoader.mapArch("amd64"));
         assertEquals("amd64", LibraryLoader.mapArch("x86_64"));
@@ -54,21 +55,45 @@ class LibraryLoaderTest {
     @Test
     void defaultCacheDirHonoursXdgThenHome() {
         assertEquals(
-                Path.of("/xdg/hegel-java/libhegel"), LibraryLoader.defaultCacheDir(Map.of("XDG_CACHE_HOME", "/xdg")));
-        assertEquals(Path.of("/h/.cache/hegel-java/libhegel"), LibraryLoader.defaultCacheDir(Map.of("HOME", "/h")));
+                Path.of("/xdg/hegel-java/libhegel"),
+                LibraryLoader.defaultCacheDir(Map.of("XDG_CACHE_HOME", "/xdg"), "linux"));
+        assertEquals(
+                Path.of("/h/.cache/hegel-java/libhegel"), LibraryLoader.defaultCacheDir(Map.of("HOME", "/h"), "linux"));
     }
 
     @Test
     void cacheDirAndHomeEdgeCases() {
         assertEquals(
                 Path.of("/h/.cache/hegel-java/libhegel"),
-                LibraryLoader.defaultCacheDir(Map.of("XDG_CACHE_HOME", "", "HOME", "/h")));
+                LibraryLoader.defaultCacheDir(Map.of("XDG_CACHE_HOME", "", "HOME", "/h"), "linux"));
         // No HOME and no XDG falls back to the user.home system property.
-        Path d = LibraryLoader.defaultCacheDir(Map.of());
+        Path d = LibraryLoader.defaultCacheDir(Map.of(), "linux");
         assertTrue(d.endsWith(Path.of("hegel-java/libhegel")));
         // Empty HOME also falls back to user.home.
-        Path d2 = LibraryLoader.defaultCacheDir(Map.of("HOME", ""));
+        Path d2 = LibraryLoader.defaultCacheDir(Map.of("HOME", ""), "linux");
         assertTrue(d2.endsWith(Path.of("hegel-java/libhegel")));
+    }
+
+    @Test
+    void windowsCacheDirPrefersLocalAppData() {
+        assertEquals(
+                Path.of("/lad/hegel-java/libhegel"),
+                LibraryLoader.defaultCacheDir(Map.of("LOCALAPPDATA", "/lad", "HOME", "/h"), "windows"));
+        // XDG_CACHE_HOME is an explicit override on every OS, Windows included.
+        assertEquals(
+                Path.of("/xdg/hegel-java/libhegel"),
+                LibraryLoader.defaultCacheDir(Map.of("XDG_CACHE_HOME", "/xdg", "LOCALAPPDATA", "/lad"), "windows"));
+        // Unset or empty LOCALAPPDATA falls back to the POSIX-style default.
+        assertEquals(
+                Path.of("/h/.cache/hegel-java/libhegel"),
+                LibraryLoader.defaultCacheDir(Map.of("HOME", "/h"), "windows"));
+        assertEquals(
+                Path.of("/h/.cache/hegel-java/libhegel"),
+                LibraryLoader.defaultCacheDir(Map.of("LOCALAPPDATA", "", "HOME", "/h"), "windows"));
+        // LOCALAPPDATA is ignored off-Windows.
+        assertEquals(
+                Path.of("/h/.cache/hegel-java/libhegel"),
+                LibraryLoader.defaultCacheDir(Map.of("LOCALAPPDATA", "/lad", "HOME", "/h"), "linux"));
     }
 
     @Test
@@ -84,6 +109,8 @@ class LibraryLoaderTest {
         assertEquals("native/linux-amd64/libhegel.so", linux.resourcePath());
         LibraryLoader darwin = new LibraryLoader(Map.of(), dir, "darwin", "arm64", NO_RESOURCES);
         assertEquals("native/darwin-arm64/libhegel.dylib", darwin.resourcePath());
+        LibraryLoader windows = new LibraryLoader(Map.of(), dir, "windows", "amd64", NO_RESOURCES);
+        assertEquals("native/windows-amd64/libhegel.dll", windows.resourcePath());
     }
 
     @Test
@@ -164,6 +191,16 @@ class LibraryLoaderTest {
         Files.writeString(lib, "mac-lib");
         Map<String, String> env = Map.of("DYLD_LIBRARY_PATH", libDir.toString());
         LibraryLoader l = new LibraryLoader(new HashMap<>(env), dir.resolve("cache"), "darwin", "arm64", NO_RESOURCES);
+        assertEquals(lib, l.resolve());
+    }
+
+    @Test
+    void windowsSearchesPath(@TempDir Path dir) throws IOException {
+        Path libDir = Files.createDirectories(dir.resolve("libs"));
+        Path lib = libDir.resolve("libhegel.dll");
+        Files.writeString(lib, "win-lib");
+        Map<String, String> env = Map.of("PATH", libDir.toString());
+        LibraryLoader l = new LibraryLoader(new HashMap<>(env), dir.resolve("cache"), "windows", "amd64", NO_RESOURCES);
         assertEquals(lib, l.resolve());
     }
 
