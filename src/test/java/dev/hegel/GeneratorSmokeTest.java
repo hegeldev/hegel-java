@@ -58,7 +58,8 @@ class GeneratorSmokeTest {
 
     @HegelTest
     void mapsBasicAndNonBasic(TestCase tc) {
-        Map<Integer, String> m = tc.draw(maps(integers().min(0).max(3), text().maxSize(3)));
+        Map<Integer, String> m =
+                tc.draw(maps(integers().min(0).max(3), text().maxSize(3)).maxSize(4));
         assertTrue(m.size() <= 4);
         // non-basic key via filter
         Map<Integer, Integer> m2 = tc.draw(maps(

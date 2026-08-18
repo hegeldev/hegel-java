@@ -12,8 +12,8 @@ authoritative references are hegel-rust (the engine and canonical client) and it
 - `just coverage` / `mvn verify` — runs all tests and enforces **100% instruction + branch
   coverage** (JaCoCo). This is a hard gate.
 - `just test` / `mvn test` — full suite, no coverage gate.
-- `mvn test -Dtest=CborTest` / `-Dtest=CborTest#decodesTag91` — one class / one method.
-  `-Dtest='*Conformance*,*Behaviour*'` is what `just conformance` runs.
+- `mvn test -Dtest=RunnerTest` / `-Dtest=RunnerTest#happyPathMarksValidAndFreesEverything` — one
+  class / one method. `-Dtest='*Conformance*,*Behaviour*'` is what `just conformance` runs.
 - `just conformance` — the behaviour suite against the real engine.
 - `just build-libhegel` — build `libhegel` from a sibling `../hegel-rust` checkout.
 - `just format` / `just lint` — palantir-java-format via spotless-maven-plugin.
@@ -42,47 +42,63 @@ fetch (required when offline, since the fetch is otherwise a hard error).
 
 ## Architecture
 
-Data crosses the FFI boundary as **CBOR**: generator *schemas* in, generated *values* out. Users
-never see CBOR or schemas.
+Data crosses the FFI boundary through libhegel's **typed draw functions**
+(`hegel_generate_integer`, `hegel_generate_float`, `hegel_generate_string` through opaque
+`hegel_string_generator_t` handles, structured date/time/datetime/uuid/ip draws, …). Every fallible
+call takes a per-thread `hegel_context_t*` first argument and returns a `hegel_result_t`; results
+come back through out-parameters, and every handle is caller-owned and explicitly freed.
 
 Layers live in `dev.hegel`; the concrete generator implementations are in the `dev.hegel.generators`
 subpackage (one class per generator: `IntegerGenerator`, `TextGenerator`, `ListGenerator`,
 `RegexGenerator`, `EmailGenerator`, `DateTimeGenerator`, `Derive`/`RecordGenerator`, etc.). The
-public `Generator`/`TestCase`/`Generators`/`Hegel` surface stays in `dev.hegel`.
+public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `dev.hegel`.
 
 - **FFI binding** — `Libhegel` (a fakeable interface) and `RealLibhegel` (FFM). `LibraryLoader`
-  resolves the library (override / OS library path / jar-bundled native unpacked to a cache); `Engine` is
-  the process-wide lazy holder of the loaded shared object (with a test hook) — it caches only the
-  immutable, thread-safe library, never per-test state.
-  `Cbor` encodes schemas and decodes values (Tag 91 / WTF-8, BigInteger ints, float widths). `Abi`
-  holds the C constants.
-- **Per-case primitives** — `DataSource` is the abstraction generators draw against; `LiveDataSource`
-  wraps the engine, translating return codes (`StopTest` → OVERRUN, `AssumeRejected` → INVALID,
-  other negatives → `HegelException`) and short-circuiting once a case is aborted.
-- **Run loop** — `Runner` builds the settings handle, drives `hegel_run_start` →
-  `hegel_next_test_case` → `hegel_mark_complete`, and turns the result into a pass or an
-  `AssertionError` carrying the minimal counterexample. `Settings` is the immutable config; its
-  closed-state setting types live alongside it — `Mode` (`TEST_RUN` / `SINGLE_TEST_CASE`),
-  `Database` (unset / disabled / path), `OptBoolean` (default / true / false, for annotation
-  attributes whose underlying default is environment-dependent, e.g. `derandomize`).
-- **Generators** — `Generator<T>` (public) with `map`/`filter`/`flatMap`. The basic/composite dual
-  path is driven by `Generator.asBasic()`: a schema-describable generator returns a `BasicGenerator`
-  (CBOR schema + a client-side `parse` function) and gets the default single-call `doDraw`;
-  everything else returns `null` and overrides `doDraw`. `map` on a basic generator composes the
-  parse over the same schema (`mapBasic`, one engine call, shrinks as well as the original);
-  otherwise (`MappedGenerator`/`FilteredGenerator`/`FlatMappedGenerator`/`CompositeGenerator`) it
-  brackets the draw in a span. `Generators` is the factory facade. Collection/`oneOf`/tuple
-  generators return a basic schema from `asBasic()` only when their elements are basic, and fall
-  back to the engine collection API otherwise.
-- **Public API** — `Hegel.check` / `Hegel.with`, `TestCase` (`draw`/`assume`/`note`/`target`),
-  the `@HegelTest` annotation + `HegelTestExtension` (a JUnit 5 `TestTemplateInvocationContextProvider`
-  that drives the engine loop and invokes the user method per case).
+  resolves the library (override / OS library path / jar-bundled native unpacked to a cache);
+  `Engine` is the process-wide lazy holder of the loaded shared object (with a test hook) — it
+  caches only the immutable, thread-safe library, never per-test state. `RealLibhegel` keeps one
+  libhegel error context per thread (read back by `lastErrorMessage()`), passes date/time/datetime
+  structs by value, copies engine-allocated string/bytes buffers out and frees them, and bridges
+  the per-run output callback (`hegel_output_callback_t`) to a `Consumer<String>` through an FFM
+  upcall stub whose arena lives until `runFree`. `Abi` holds the C constants.
+- **Per-case primitives** — `DataSource` is the abstraction generators draw against;
+  `LiveDataSource` wraps the engine, translating return codes (`StopTest` → OVERRUN,
+  `AssumeRejected` → INVALID, `INVALID_ARG` → `IllegalArgumentException` with the engine's
+  diagnostic, other negatives → `HegelException`) and short-circuiting once a case is aborted.
+- **Run loop** — `Runner` builds the settings handle and drives `hegel_run_start` →
+  `hegel_next_test_case` → `hegel_mark_complete`. The engine only *explores* (generation and
+  shrinking), so every pumped case is non-final; after the loop drains, `hegel_run_result` yields
+  PASSED, FAILED, or ERROR. On FAILED the runner replays each distinct counterexample's
+  **reproduce blob** (`hegel_test_case_from_blob`) with reporting enabled — printing the shrunk
+  draws and re-raising the body's own exception (a replay that no longer fails is reported as a
+  flaky test). On ERROR the engine's message surfaces directly (`FailedHealthCheck: ...` becomes
+  `HealthCheckFailure`). `Settings` is the immutable config; its closed-state setting types live
+  alongside it — `Mode`, `Backend` (auto / default / urandom for Antithesis), `Database`,
+  `OptBoolean` — plus `printBlob` (print a copy-pasteable reproducer per failure) and
+  `reproduceFailure` (replay a stored blob instead of running the property).
+- **Generators** — `Generator<T>` (public) with `map`/`filter`/`flatMap`. Leaf generators call the
+  typed draw bridges on `TestCase` (`generateInteger`, `generateFloat`, `generateString`, …);
+  composite generators (collections via the engine's `new_collection`/`collection_more` protocol,
+  `oneOf`, tuples, `map`/`filter`/`flatMap`) compose other generators' `doDraw` inside labeled
+  spans, mirroring hegel-rust. String-shaped generators (`text`/`characters`/regex/email/url/
+  domain) build a validated `hegel_string_generator_t` handle once per configuration and cache it
+  (`HandleCache`, rebuilt if a test swaps the `Engine` binding); `StringGeneratorHandle` frees the
+  engine allocation via a `Cleaner` when unreachable. `Generators` is the factory facade.
+- **Public API** — `Hegel.test`, `TestCase` (`draw`/`assume`/`note`/`target`), the `@HegelTest`
+  annotation + `HegelTestExtension` (a JUnit 5 `TestTemplateInvocationContextProvider` that drives
+  the engine loop and invokes the user method per case).
+- **Stateful testing** — `Stateful.run(machine, tc)` reflects `@Rule`/`@Invariant` methods (sorted
+  by name for determinism), registers them via `hegel_new_state_machine`, and polls
+  `hegel_state_machine_next_rule` until `HEGEL_STATE_MACHINE_DONE`, wrapping each step in a
+  STATEFUL_RULE span (discarded when the rule fails an assumption). `Pool<T>` tracks previously
+  generated values over the engine's pool primitives so rules can reuse or consume them.
 - **Derivation** — `dev.hegel.generators.Derive` + `RecordGenerator` build generators from records,
   enums, scalars, and generic `List`/`Set`/`Optional`/`Map` by reflection.
 
 ## Coverage notes
 
-One genuinely-unreachable defensive catch block is excluded via `@Generated` (JaCoCo ignores
-`*Generated*`-named annotations): the `NoSuchAlgorithmException` for SHA-256. Everything else is covered by real-engine integration tests plus
-`FakeLibhegel`-driven error-path tests. The engine's `collection_more`/`new_collection` out-params
-are read unconditionally (the engine signals exhaustion on the following draw, not at those calls).
+A few genuinely-unreachable defensive blocks are excluded via `@Generated` (JaCoCo ignores
+`*Generated*`-named annotations): the `NoSuchAlgorithmException` for SHA-256, the lookup of the
+output-callback bridge method, and the `IllegalAccessException` after `setAccessible(true)`
+succeeded in `Stateful`. Everything else is covered by real-engine integration tests plus
+`FakeLibhegel`-driven error-path tests.

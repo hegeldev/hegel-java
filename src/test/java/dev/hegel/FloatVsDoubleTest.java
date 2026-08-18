@@ -10,15 +10,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code floats()} and {@code doubles()} are distinct: the former is a true 32-bit {@code float}
- * (IEEE single, schema width 32), the latter a 64-bit {@code double} (width 64).
+ * (IEEE single, draw width 32), the latter a 64-bit {@code double} (width 64).
  */
 class FloatVsDoubleTest {
-    @Test
-    void schemasCarryTheRightWidth() {
-        assertEquals(32, floats().asBasic().schema.get("width").AsInt32());
-        assertEquals(64, doubles().asBasic().schema.get("width").AsInt32());
-    }
-
     @HegelTest(testCases = 20, database = Database.DISABLED)
     void drawsAreTheRightJavaType(TestCase tc) {
         assertInstanceOf(Float.class, tc.draw(floats()));

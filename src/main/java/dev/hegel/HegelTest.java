@@ -115,12 +115,36 @@ public @interface HegelTest {
     Mode mode() default Mode.TEST_RUN;
 
     /**
-     * Keep searching for additional distinct failures after the first and aggregate them into one
-     * report, instead of rethrowing the first failure directly.
+     * The source of randomness. The default, {@link Backend#AUTO}, selects {@link Backend#URANDOM}
+     * automatically when running inside Antithesis and {@link Backend#DEFAULT} otherwise.
+     *
+     * @return the randomness backend
+     */
+    Backend backend() default Backend.AUTO;
+
+    /**
+     * Keep searching for additional distinct failures after the first. Several distinct bugs
+     * aggregate into one report; a run that finds a single bug still rethrows it directly.
      *
      * @return whether to report multiple failures
      */
     boolean reportMultipleFailures() default false;
+
+    /**
+     * Print a copy-pasteable {@code reproduceFailure} line for each reported failure.
+     *
+     * @return whether to print reproduce blobs with failures
+     */
+    boolean printBlob() default false;
+
+    /**
+     * Replay a stored failure blob (printed by {@link #printBlob}) instead of running the property:
+     * the test body is re-run against exactly the choices the blob encodes, bypassing generation
+     * and shrinking. Empty (the default) runs the property normally.
+     *
+     * @return the base64 reproduce blob, or {@code ""} for none
+     */
+    String reproduceFailure() default "";
 
     /**
      * Name for this property, used to derive a stable example-database key. Defaults to the test

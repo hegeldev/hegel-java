@@ -1,16 +1,17 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 
 /**
- * Generates syntactically valid URLs. Always basic (one engine call).
+ * Generates syntactically valid (RFC 3986) {@code http}/{@code https} URLs.
  */
 public final class UrlGenerator implements Generator<String> {
+    private final HandleCache cache = new HandleCache();
+
     /** @hidden */
     @Override
-    public BasicGenerator<String> asBasic() {
-        return new BasicGenerator<>(CBORObject.NewMap().Add("type", "url"), Cbor::asString);
+    public String doDraw(TestCase tc) {
+        return tc.generateString(cache.get(tc, TestCase::urlGenerator));
     }
 }

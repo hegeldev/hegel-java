@@ -26,9 +26,12 @@ public final class Settings {
     final Integer phasesMask; // null = leave the engine default (all phases)
     final Verbosity verbosity;
     final Mode mode;
+    final Backend backend;
     // Default false: a single, directly-rethrown failure is far friendlier to debuggers and stack
     // traces than an aggregated report — and that matters more in Java than elsewhere.
     final boolean reportMultipleFailures;
+    final boolean printBlob;
+    final String reproduceFailure; // null = run normally instead of replaying a blob
     final String name;
 
     /** Create settings with all defaults (100 test cases, all phases, normal verbosity). */
@@ -46,7 +49,10 @@ public final class Settings {
         this.phasesMask = b.phasesMask;
         this.verbosity = b.verbosity;
         this.mode = b.mode;
+        this.backend = b.backend;
         this.reportMultipleFailures = b.reportMultipleFailures;
+        this.printBlob = b.printBlob;
+        this.reproduceFailure = b.reproduceFailure;
         this.name = b.name;
     }
 
@@ -62,7 +68,10 @@ public final class Settings {
         b.phasesMask = phasesMask;
         b.verbosity = verbosity;
         b.mode = mode;
+        b.backend = backend;
         b.reportMultipleFailures = reportMultipleFailures;
+        b.printBlob = printBlob;
+        b.reproduceFailure = reproduceFailure;
         b.name = name;
         mutator.accept(b);
         return new Settings(b);
@@ -79,7 +88,10 @@ public final class Settings {
         Integer phasesMask = null;
         Verbosity verbosity = Verbosity.NORMAL;
         Mode mode = Mode.TEST_RUN;
+        Backend backend = Backend.AUTO;
         boolean reportMultipleFailures = false;
+        boolean printBlob = false;
+        String reproduceFailure = null;
         String name = null;
     }
 
@@ -183,16 +195,52 @@ public final class Settings {
     }
 
     /**
+     * Select the source of randomness (default {@link Backend#AUTO}: {@link Backend#URANDOM} when
+     * running inside Antithesis, otherwise {@link Backend#DEFAULT}).
+     *
+     * @param backend the randomness backend
+     * @return a new settings instance
+     */
+    public Settings backend(Backend backend) {
+        return with(b -> b.backend = backend);
+    }
+
+    /**
      * Control whether the run keeps searching for additional distinct failures after the first.
-     * Defaults to {@code false}: a single failure is rethrown directly (preserving its type and stack
-     * trace, which is friendlier to debuggers); enabling this instead aggregates the distinct
-     * failures into one report.
+     * Defaults to {@code false}: the run stops at the first failing example. When enabled, several
+     * distinct bugs aggregate into one report (carrying the originals as suppressed exceptions); a
+     * run that finds a single bug still rethrows it directly, preserving its type and stack trace.
      *
      * @param yes whether to report multiple failures
      * @return a new settings instance
      */
     public Settings reportMultipleFailures(boolean yes) {
         return with(b -> b.reportMultipleFailures = yes);
+    }
+
+    /**
+     * Print a copy-pasteable {@code reproduceFailure} line for each reported failure. The reproduce
+     * blob is always attached to a failure; this only controls whether it is printed.
+     *
+     * @param yes whether to print reproduce blobs with failures
+     * @return a new settings instance
+     */
+    public Settings printBlob(boolean yes) {
+        return with(b -> b.printBlob = yes);
+    }
+
+    /**
+     * Replay a single stored failure instead of running the property: the blob (from {@link
+     * #printBlob(boolean)} output) is decoded and the test body re-run against exactly the choices
+     * it encodes, bypassing generation and shrinking. The run fails with the reproduced failure, or
+     * reports a stale blob if it no longer fails. A blob is only guaranteed to reproduce under the
+     * Hegel version that produced it.
+     *
+     * @param blob the base64 reproduce blob
+     * @return a new settings instance
+     */
+    public Settings reproduceFailure(String blob) {
+        return with(b -> b.reproduceFailure = blob);
     }
 
     /**
