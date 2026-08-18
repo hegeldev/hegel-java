@@ -1,6 +1,6 @@
 RELEASE_TYPE: minor
 
-This release upgrades the bundled libhegel engine from 0.14.14 to 0.30.4, rewriting the FFM
+This release upgrades the bundled libhegel engine from 0.14.14 to 0.32.5, rewriting the FFM
 binding layer against the engine's modern typed-draw C ABI. It brings roughly two months of engine
 correctness, shrinking, and performance improvements, plus several new features.
 
