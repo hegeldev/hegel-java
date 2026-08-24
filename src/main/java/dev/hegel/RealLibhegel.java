@@ -436,7 +436,6 @@ final class RealLibhegel implements Libhegel {
         return (Integer) invoke(handle, withCtx);
     }
 
-    /** Require OK from a call that cannot fail with this binding's inputs. */
     private void check(String op, int code) {
         if (code != Abi.OK) {
             throw new HegelException(

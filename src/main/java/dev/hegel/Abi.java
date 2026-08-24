@@ -43,8 +43,6 @@ public final class Abi {
     public static final int HC_LARGE_INITIAL_TEST_CASE = 1 << 3;
 
     // Span labels reserved by the engine (hegel_label_t; argument to hegel_start_span).
-    // Values 16-30 are emitted internally by the engine around its own draws and are never
-    // opened by this binding.
     public static final long LABEL_LIST = 1;
     public static final long LABEL_LIST_ELEMENT = 2;
     public static final long LABEL_SET = 3;
@@ -62,9 +60,7 @@ public final class Abi {
     public static final long LABEL_ENUM_VARIANT = 15;
     public static final long LABEL_STATEFUL_RULE = 31;
 
-    // The label space is open beyond the reserved values: any stable u64 works. This binding's
-    // composite generator uses the FNV-1a hash of "dev.hegel.composite", mirroring how the Rust
-    // frontend labels its composite spans (a compile-time FNV-1a hash of the composite's name).
+    // The label space is open beyond the reserved values: any stable u64 works.
     public static final long LABEL_COMPOSITE = fnv1a("dev.hegel.composite");
 
     // hegel_mode_t.
@@ -88,13 +84,8 @@ public final class Abi {
     public static final int STATUS_OVERRUN = 2;
     public static final int STATUS_INTERESTING = 3;
 
-    /** hegel_state_machine_next_rule writes this rule index when the step budget is exhausted. */
     public static final long STATE_MACHINE_DONE = -1;
-
-    // UINT64_MAX sentinel for "unbounded" collection size.
     public static final long UNBOUNDED = -1L; // 0xFFFFFFFFFFFFFFFF as a Java long
-
-    // UINT32_MAX sentinel for "no maximum codepoint" in hegel_string_generator_text.
     public static final long NO_MAX_CODEPOINT = 0xFFFFFFFFL;
 
     static long fnv1a(String s) {
