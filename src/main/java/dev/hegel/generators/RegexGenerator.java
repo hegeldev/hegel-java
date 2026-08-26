@@ -1,17 +1,18 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 
 /**
  * Generates strings matching a (Python-compatible) regular expression. By default the entire
  * string matches the pattern; use {@link #fullmatch(boolean) fullmatch(false)} to generate strings
- * that merely contain a match. Always basic (one engine call).
+ * that merely contain a match. The pattern is validated by the engine when the first value is
+ * drawn.
  */
 public final class RegexGenerator implements Generator<String> {
     private final String pattern;
     private final boolean fullmatch;
+    private final HandleCache cache = new HandleCache();
 
     public RegexGenerator(String pattern, boolean fullmatch) {
         this.pattern = pattern;
@@ -29,9 +30,7 @@ public final class RegexGenerator implements Generator<String> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<String> asBasic() {
-        CBORObject schema =
-                CBORObject.NewMap().Add("type", "regex").Add("pattern", pattern).Add("fullmatch", fullmatch);
-        return new BasicGenerator<>(schema, Cbor::asString);
+    public String doDraw(TestCase tc) {
+        return tc.generateString(cache.get(tc, t -> t.regexGenerator(pattern, fullmatch, null)));
     }
 }

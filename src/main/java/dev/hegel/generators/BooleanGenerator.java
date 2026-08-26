@@ -1,16 +1,15 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 
 /**
- * Generates {@code true} or {@code false}. Always basic (one engine call).
+ * Generates {@code true} or {@code false} with equal probability.
  */
 public final class BooleanGenerator implements Generator<Boolean> {
     /** @hidden */
     @Override
-    public BasicGenerator<Boolean> asBasic() {
-        return new BasicGenerator<>(CBORObject.NewMap().Add("type", "boolean"), Cbor::asBoolean);
+    public Boolean doDraw(TestCase tc) {
+        return tc.generateBoolean(0.5);
     }
 }

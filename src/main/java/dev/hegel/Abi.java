@@ -11,7 +11,7 @@ package dev.hegel;
 public final class Abi {
     private Abi() {}
 
-    // Return codes (hegel_error_t).
+    // Return codes (hegel_result_t).
     public static final int OK = 0;
     public static final int E_STOP_TEST = -1;
     public static final int E_ASSUME = -2;
@@ -21,8 +21,14 @@ public final class Abi {
     public static final int E_ALREADY_COMPLETE = -6;
     public static final int E_NOT_COMPLETE = -7;
     public static final int E_INTERNAL = -8;
+    public static final int E_CONCURRENT_USE = -9;
 
-    // Phases (bitmask for hegel_settings_phases).
+    // Aggregate run outcome (hegel_run_status_t).
+    public static final int RUN_STATUS_PASSED = 0;
+    public static final int RUN_STATUS_FAILED = 1;
+    public static final int RUN_STATUS_ERROR = 2;
+
+    // Phases (bitmask for hegel_settings_set_phases).
     public static final int PHASE_EXPLICIT = 1 << 0;
     public static final int PHASE_REUSE = 1 << 1;
     public static final int PHASE_GENERATE = 1 << 2;
@@ -30,13 +36,13 @@ public final class Abi {
     public static final int PHASE_SHRINK = 1 << 4;
     public static final int PHASE_ALL = 31;
 
-    // Health-check suppression bitmask (hegel_settings_suppress_health_check).
+    // Health-check suppression bitmask (hegel_settings_set_suppress_health_check).
     public static final int HC_FILTER_TOO_MUCH = 1 << 0;
     public static final int HC_TOO_SLOW = 1 << 1;
     public static final int HC_TEST_CASES_TOO_LARGE = 1 << 2;
     public static final int HC_LARGE_INITIAL_TEST_CASE = 1 << 3;
 
-    // Span labels (argument to hegel_start_span).
+    // Span labels reserved by the engine (hegel_label_t; argument to hegel_start_span).
     public static final long LABEL_LIST = 1;
     public static final long LABEL_LIST_ELEMENT = 2;
     public static final long LABEL_SET = 3;
@@ -52,12 +58,19 @@ public final class Abi {
     public static final long LABEL_MAPPED = 13;
     public static final long LABEL_SAMPLED_FROM = 14;
     public static final long LABEL_ENUM_VARIANT = 15;
-    public static final long LABEL_STATEFUL = 16;
-    public static final long LABEL_COMPOSITE = 17;
+    public static final long LABEL_STATEFUL_RULE = 31;
+
+    // The label space is open beyond the reserved values: any stable u64 works.
+    public static final long LABEL_COMPOSITE = fnv1a("dev.hegel.composite");
 
     // hegel_mode_t.
     public static final int MODE_TEST_RUN = 0;
     public static final int MODE_SINGLE_TEST_CASE = 1;
+
+    // hegel_backend_t.
+    public static final int BACKEND_AUTO = 0;
+    public static final int BACKEND_DEFAULT = 1;
+    public static final int BACKEND_URANDOM = 2;
 
     // hegel_verbosity_t.
     public static final int VERBOSITY_QUIET = 0;
@@ -71,6 +84,16 @@ public final class Abi {
     public static final int STATUS_OVERRUN = 2;
     public static final int STATUS_INTERESTING = 3;
 
-    // UINT64_MAX sentinel for "unbounded" collection size.
+    public static final long STATE_MACHINE_DONE = -1;
     public static final long UNBOUNDED = -1L; // 0xFFFFFFFFFFFFFFFF as a Java long
+    public static final long NO_MAX_CODEPOINT = 0xFFFFFFFFL;
+
+    static long fnv1a(String s) {
+        long hash = 0xcbf29ce484222325L;
+        for (byte b : s.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+            hash ^= (b & 0xffL);
+            hash *= 0x100000001b3L;
+        }
+        return hash;
+    }
 }

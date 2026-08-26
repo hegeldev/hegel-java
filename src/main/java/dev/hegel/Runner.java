@@ -2,15 +2,19 @@ package dev.hegel;
 
 import java.io.PrintStream;
 import java.lang.foreign.MemorySegment;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
- * Drives a single property test: builds the settings handle, runs the engine's case loop, maps each
- * case outcome to a status, and turns the aggregated result into a pass or an {@link
- * AssertionError} carrying the minimal falsifying example.
+ * Drives a single property test: builds the settings handle, pumps the engine's exploration loop,
+ * and turns the aggregated result into a pass or a thrown failure.
+ *
+ * <p>The engine only explores — generation and shrinking — so every pumped case is non-final. The
+ * client owns the final replays: once the loop drains, each discovered counterexample's reproduce
+ * blob is read off the run result and replayed via {@code hegel_test_case_from_blob} with reporting
+ * enabled, which prints the minimal example's draws and re-raises the test body's own exception. A
+ * counterexample whose replay does not fail again is a flaky test. Run-level errors (a failed
+ * health check, nondeterminism, an engine panic) surface with the engine's own message.
  */
 final class Runner {
     private Runner() {}
@@ -23,6 +27,16 @@ final class Runner {
         "dev.hegel.", "org.junit.", "org.opentest4j.", "jdk.", "java.", "sun.", "com.sun."
     };
 
+    /**
+     * Message for a test whose outcome changed when re-run with the same generated data. After the
+     * engine shrinks and verifies a counterexample, the runner replays its blob one final time; if
+     * that replay does not fail, the test is non-deterministic.
+     */
+    static final String FLAKY_DIAGNOSTIC = "Flaky test detected: Your test produced different outcomes"
+            + " when run with the same generated data — it failed when it previously succeeded, or"
+            + " succeeded when it previously failed. This usually means your test depends on external"
+            + " state such as global variables, system time, or external random number generators.";
+
     static void run(Settings settings, Consumer<TestCase> body) {
         run(Engine.get(), settings, body, System.getenv(), System.err);
     }
@@ -32,51 +46,27 @@ final class Runner {
         MemorySegment s = lib.settingsNew();
         try {
             applySettings(lib, s, settings, env);
-            MemorySegment run = lib.runStart(s);
-            if (isNull(run)) {
-                throw backend(lib, "hegel_run_start");
+            if (settings.reproduceFailure != null) {
+                throw replayBlob(lib, s, settings.reproduceFailure, body, out);
             }
+            MemorySegment run = lib.runStart(s, out::println);
             try {
-                // Default (report_multiple_failures off): keep the actual exception so we can rethrow it
-                // directly — best for debuggers and stack traces, and no origin tracking. Only the
-                // multiple-failures mode needs to stitch each captured message back onto a distinct,
-                // engine-deduped failure, so it alone builds the origin map.
-                Throwable[] captured = {null};
-                Map<String, String> panicByOrigin = settings.reportMultipleFailures ? new HashMap<>() : null;
-                loop(lib, run, settings.mode == Mode.SINGLE_TEST_CASE, body, out, (origin, e) -> {
-                    captured[0] = e;
-                    if (panicByOrigin != null) {
-                        String message = describe(e);
-                        out.println(message);
-                        panicByOrigin.put(origin, message);
-                    }
-                });
-                MemorySegment result = lib.runResult(run);
-                if (isNull(result)) {
-                    throw backend(lib, "hegel_run_result");
+                if (settings.mode == Mode.SINGLE_TEST_CASE) {
+                    driveSingleCase(lib, run, body, out);
+                    return;
                 }
-                if (!lib.resultPassed(result)) {
-                    MemorySegment failure = lib.resultFailure(result, 0);
-                    // A health check aborts the run regardless of mode; the engine reports it as a failure
-                    // whose panic message is "FailedHealthCheck: ..." (the documented ABI format, stable
-                    // across engine versions). Surface it as its own type, not a property failure.
-                    String panic = lib.failurePanicMessage(failure);
-                    if (panic != null && panic.startsWith("FailedHealthCheck")) {
-                        throw new HealthCheckFailure(failureMessage(lib, failure));
+                while (true) {
+                    MemorySegment tc = lib.nextTestCase(run);
+                    if (isNull(tc)) {
+                        break;
                     }
-                    if (panicByOrigin != null) {
-                        throw buildFailure(lib, result, panicByOrigin);
-                    }
-                    // Otherwise rethrow the body's own exception (always unchecked, from Consumer#accept).
-                    if (captured[0] instanceof Error error) {
-                        throw error;
-                    }
-                    if (captured[0] instanceof RuntimeException re) {
-                        throw re;
-                    }
-                    // A failure with no Java exception to rethrow (e.g. the replay phase was disabled):
-                    // surface the engine's own diagnostic.
-                    throw new AssertionError(failureMessage(lib, failure));
+                    driveOneCase(lib, tc, false, body, out);
+                }
+                MemorySegment result = lib.runResult(run);
+                try {
+                    finish(lib, s, result, settings, body, out);
+                } finally {
+                    lib.runResultFree(result);
                 }
             } finally {
                 lib.runFree(run);
@@ -86,63 +76,177 @@ final class Runner {
         }
     }
 
-    private static void loop(
+    /** Translate a drained run's result into a normal return or the failure to raise. */
+    private static void finish(
             Libhegel lib,
-            MemorySegment run,
-            boolean single,
+            MemorySegment s,
+            MemorySegment result,
+            Settings settings,
             Consumer<TestCase> body,
-            PrintStream out,
-            BiConsumer<String, Throwable> onReportedFailure) {
-        while (true) {
-            MemorySegment tc = lib.nextTestCase(run);
-            if (isNull(tc)) {
-                String msg = lib.lastErrorMessage();
-                if (msg != null && !msg.isEmpty()) {
-                    throw new HegelException("hegel_next_test_case failed: " + msg);
-                }
+            PrintStream out) {
+        switch (lib.runResultStatus(result)) {
+            case Abi.RUN_STATUS_PASSED:
                 return;
-            }
-            driveOneCase(lib, tc, single, body, out, onReportedFailure);
+            case Abi.RUN_STATUS_ERROR:
+                // The run produced no verdict on the property: a failed health check (surfaced as
+                // its own type), nondeterminism, or an engine panic.
+                String message = nullToEmpty(lib.runResultError(result));
+                if (message.startsWith("FailedHealthCheck")) {
+                    throw new HealthCheckFailure(message);
+                }
+                throw new HegelException(message);
+            default:
+                throw replayFailures(lib, s, result, settings, body, out);
         }
     }
 
-    static void driveOneCase(
+    /**
+     * Replay every distinct counterexample's blob (printing its draws and notes) and build the
+     * run's closing throw: the single failure's own exception, or an aggregate for several distinct
+     * bugs.
+     */
+    private static AssertionError replayFailures(
             Libhegel lib,
-            MemorySegment tc,
-            boolean single,
+            MemorySegment s,
+            MemorySegment result,
+            Settings settings,
             Consumer<TestCase> body,
-            PrintStream out,
-            BiConsumer<String, Throwable> onReportedFailure) {
-        boolean reporting = single || lib.isFinalReplay(tc);
-        TestCase testCase = new TestCase(new LiveDataSource(lib, tc), reporting, out);
-        int status;
-        String origin = null;
-        try {
-            body.accept(testCase);
-            status = Abi.STATUS_VALID;
-        } catch (AssumeRejected e) {
-            status = Abi.STATUS_INVALID;
-        } catch (StopTest e) {
-            status = Abi.STATUS_OVERRUN;
-        } catch (HegelException e) {
-            throw e;
-        } catch (Throwable e) {
-            status = Abi.STATUS_INTERESTING;
-            origin = originOf(e);
-            // Hand the failing exception to the run only on the case the engine actually reports —
-            // the final replay of the minimal example — exactly as hegel_test_case_is_final_replay
-            // is meant to gate (single-test-case mode has no replay, so its one case reports
-            // directly). The drawn values are printed separately by TestCase under this same flag, so
-            // the counterexample is shown whether or not the exception is rethrown.
-            if (reporting) {
-                onReportedFailure.accept(origin, e);
+            PrintStream out) {
+        long count = lib.runResultFailureCount(result);
+        boolean multiple = count > 1;
+        if (multiple) {
+            out.println("Property-based test failed with " + count + " distinct failures.");
+        }
+        Throwable[] captured = new Throwable[(int) count];
+        for (int i = 0; i < count; i++) {
+            if (multiple) {
+                out.println();
             }
+            String blob = lib.failureBlob(result, i);
+            if (blob == null) {
+                throw new HegelException("internal error: failure " + i + " carries no reproduce blob");
+            }
+            MemorySegment[] tcOut = new MemorySegment[1];
+            int rc = lib.testCaseFromBlob(s, blob, out::println, tcOut);
+            if (rc != Abi.OK) {
+                throw new HegelException(
+                        "hegel_test_case_from_blob failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
+            }
+            Throwable failure = driveOneCase(lib, tcOut[0], true, body, out);
+            if (failure == null) {
+                throw new HegelException(FLAKY_DIAGNOSTIC);
+            }
+            if (settings.printBlob) {
+                out.println();
+                out.println("To reproduce this failure, replay it with:");
+                out.println("    @HegelTest(reproduceFailure = \"" + blob + "\")");
+            }
+            captured[i] = failure;
         }
-        int rc = lib.markComplete(tc, status, origin);
+        if (!multiple) {
+            throw asUnchecked(captured[0]);
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("Hegel found ").append(count).append(" distinct failing examples:");
+        for (Throwable failure : captured) {
+            sb.append("\n\n").append(describe(failure));
+        }
+        AssertionError aggregate = new AssertionError(sb.toString());
+        for (Throwable failure : captured) {
+            aggregate.addSuppressed(failure);
+        }
+        return aggregate;
+    }
+
+    /**
+     * Drive a {@link Mode#SINGLE_TEST_CASE} run: the engine emits exactly one case and the run's
+     * verdict is that case's outcome. There is no shrinking or replay, so a failure re-raises
+     * straight away.
+     */
+    private static void driveSingleCase(Libhegel lib, MemorySegment run, Consumer<TestCase> body, PrintStream out) {
+        MemorySegment tc = lib.nextTestCase(run);
+        if (isNull(tc)) {
+            throw new HegelException("hegel_next_test_case produced no case for a single-test-case run");
+        }
+        Throwable failure = driveOneCase(lib, tc, true, body, out);
+        if (failure != null) {
+            throw asUnchecked(failure);
+        }
+    }
+
+    /**
+     * Replay a single stored blob ({@link Settings#reproduceFailure}), bypassing generation and
+     * shrinking: a reproduced failure re-raises the body's own exception, and a blob that no longer
+     * fails is reported as stale (returned for the caller to throw).
+     */
+    private static RuntimeException replayBlob(
+            Libhegel lib, MemorySegment s, String blob, Consumer<TestCase> body, PrintStream out) {
+        MemorySegment[] tcOut = new MemorySegment[1];
+        int rc = lib.testCaseFromBlob(s, blob, out::println, tcOut);
         if (rc != Abi.OK) {
-            throw new HegelException(
-                    "hegel_mark_complete failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
+            return new HegelException("reproduceFailure: the supplied blob is not valid (rc="
+                    + rc
+                    + "): "
+                    + nullToEmpty(lib.lastErrorMessage()));
         }
+        Throwable failure = driveOneCase(lib, tcOut[0], true, body, out);
+        if (failure == null) {
+            return new HegelException("reproduceFailure: the supplied failure blob no longer reproduces a"
+                    + " failure. The failure may have been fixed, or the blob is stale.");
+        }
+        throw asUnchecked(failure);
+    }
+
+    /**
+     * Run the body once against {@code tc}, report the outcome, and free the handle. Returns the
+     * exception that made the case interesting, or {@code null} for any other outcome. With {@code
+     * reporting} enabled the case's draws and notes are printed to {@code out}.
+     */
+    static Throwable driveOneCase(
+            Libhegel lib, MemorySegment tc, boolean reporting, Consumer<TestCase> body, PrintStream out) {
+        try {
+            TestCase testCase = new TestCase(new LiveDataSource(lib, tc), reporting, out);
+            int status;
+            String origin = null;
+            Throwable interesting = null;
+            try {
+                body.accept(testCase);
+                status = Abi.STATUS_VALID;
+            } catch (AssumeRejected e) {
+                status = Abi.STATUS_INVALID;
+            } catch (StopTest e) {
+                status = Abi.STATUS_OVERRUN;
+            } catch (HegelException e) {
+                // A binding/engine error, not a property failure: abort the whole run.
+                throw e;
+            } catch (Throwable e) {
+                status = Abi.STATUS_INTERESTING;
+                origin = originOf(e);
+                interesting = e;
+            }
+            int rc = lib.markComplete(tc, status, origin);
+            if (rc != Abi.OK) {
+                throw new HegelException(
+                        "hegel_mark_complete failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
+            }
+            return interesting;
+        } finally {
+            // The handle is caller-owned. On the error paths above the case may be incomplete;
+            // the run still holds its own reference and completes it when freed.
+            lib.testCaseFree(tc);
+        }
+    }
+
+    /**
+     * Convert a captured test-body failure for rethrow with its original type: an {@link Error} is
+     * thrown here, anything else is returned for the caller to throw (a {@link
+     * java.util.function.Consumer} body can only throw unchecked exceptions).
+     */
+    private static RuntimeException asUnchecked(Throwable t) {
+        if (t instanceof Error error) {
+            throw error;
+        }
+        return (RuntimeException) t;
     }
 
     static void applySettings(Libhegel lib, MemorySegment s, Settings st, Map<String, String> env) {
@@ -154,9 +258,8 @@ final class Runner {
         }
         lib.settingsDerandomize(s, st.derandomize != null ? st.derandomize : ci);
         lib.settingsReportMultipleFailures(s, st.reportMultipleFailures);
-        if (st.mode != Mode.TEST_RUN) {
-            lib.settingsMode(s, st.mode.code);
-        }
+        lib.settingsMode(s, st.mode.code);
+        lib.settingsBackend(s, st.backend.code);
         if (st.suppressMask != 0) {
             lib.settingsSuppressHealthCheck(s, st.suppressMask);
         }
@@ -164,26 +267,24 @@ final class Runner {
             lib.settingsPhases(s, st.phasesMask);
         }
 
-        boolean dbEnabled;
         switch (st.database.kind) {
             case DISABLED:
                 lib.settingsDatabase(s, "");
-                dbEnabled = false;
                 break;
             case PATH:
                 lib.settingsDatabase(s, st.database.path);
-                dbEnabled = true;
                 break;
             default:
+                // Unset: CI disables the database, otherwise the engine default stands.
                 if (ci) {
                     lib.settingsDatabase(s, "");
-                    dbEnabled = false;
-                } else {
-                    dbEnabled = true;
                 }
                 break;
         }
-        if (dbEnabled && st.name != null) {
+        // The key is sent whenever there is one, even with the database off: the engine also derives
+        // the derandomized seed from it, so gating this on dbEnabled would make every named test in
+        // CI (where the database is disabled) derandomize off the same fallback key.
+        if (st.name != null) {
             lib.settingsDatabaseKey(s, st.name);
         }
     }
@@ -211,42 +312,8 @@ final class Runner {
         return msg == null ? e.getClass().getName() : e.getClass().getName() + ": " + msg;
     }
 
-    static AssertionError buildFailure(Libhegel lib, MemorySegment result, Map<String, String> panicByOrigin) {
-        long n = lib.resultFailureCount(result);
-        StringBuilder sb = new StringBuilder();
-        sb.append("Hegel found ").append(n).append(n == 1 ? " failing example:" : " distinct failing examples:");
-        for (long i = 0; i < n; i++) {
-            MemorySegment failure = lib.resultFailure(result, i);
-            String diagnostic = lib.failureDiagnostic(failure);
-            String panic = lib.failurePanicMessage(failure);
-            String origin = lib.failureOrigin(failure);
-            sb.append("\n\n").append(pick(diagnostic, panic));
-            String captured = panicByOrigin.get(origin);
-            if (captured != null) {
-                sb.append("\n  ").append(captured);
-            }
-        }
-        return new AssertionError(sb.toString());
-    }
-
-    /** The engine's own message for a failure (full diagnostic, or panic message as a fallback). */
-    private static String failureMessage(Libhegel lib, MemorySegment failure) {
-        return pick(lib.failureDiagnostic(failure), lib.failurePanicMessage(failure));
-    }
-
-    private static String pick(String diagnostic, String panic) {
-        if (diagnostic != null && !diagnostic.isEmpty()) {
-            return diagnostic;
-        }
-        return nullToEmpty(panic);
-    }
-
     private static String nullToEmpty(String s) {
         return s == null ? "" : s;
-    }
-
-    private static HegelException backend(Libhegel lib, String op) {
-        return new HegelException(op + " failed: " + nullToEmpty(lib.lastErrorMessage()));
     }
 
     static boolean isNull(MemorySegment seg) {

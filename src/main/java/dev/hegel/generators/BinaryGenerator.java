@@ -1,16 +1,13 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Abi;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 
 /**
  * Generates {@code byte[]} values with length in an inclusive {@code [minSize, maxSize]} range.
- * Always basic (one engine call).
  *
- * <p>The default is any length; narrow it with the fluent {@link #minSize(int)} / {@link
- * #maxSize(int)} methods.
+ * <p>Lengths default to {@code [0, 100]} (or {@code [minSize, minSize + 100]} for a larger
+ * minimum); set an explicit {@link #maxSize(int)} for longer arrays.
  */
 public final class BinaryGenerator implements Generator<byte[]> {
     private final long minSize;
@@ -40,11 +37,7 @@ public final class BinaryGenerator implements Generator<byte[]> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<byte[]> asBasic() {
-        CBORObject schema = CBORObject.NewMap().Add("type", "binary").Add("min_size", minSize);
-        if (maxSize != Abi.UNBOUNDED) {
-            schema.Add("max_size", maxSize);
-        }
-        return new BasicGenerator<>(schema, Cbor::asBytes);
+    public byte[] doDraw(TestCase tc) {
+        return tc.generateBytes(minSize, Sizes.resolveMax(minSize, maxSize, TextGenerator.DEFAULT_MAX_SIZE));
     }
 }

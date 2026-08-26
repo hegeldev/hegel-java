@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.upokecenter.cbor.CBORObject;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -13,50 +12,18 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class TestCaseTest {
-    /** A DataSource that returns a fixed value and records target calls. */
-    private static final class StubSource implements DataSource {
-        double lastTarget = Double.NaN;
-        String lastLabel;
-
-        @Override
-        public Object generate(CBORObject schema) {
-            return 7;
-        }
-
-        @Override
-        public void startSpan(long label) {}
-
-        @Override
-        public void stopSpan(boolean discard) {}
-
-        @Override
-        public long newCollection(long minSize, long maxSize) {
-            return 0;
-        }
-
-        @Override
-        public boolean collectionMore(long id) {
-            return false;
-        }
-
-        @Override
-        public void collectionReject(long id, String why) {}
-
-        @Override
-        public void target(double value, String label) {
-            lastTarget = value;
-            lastLabel = label;
-        }
-    }
-
-    private TestCase newCase(StubSource s, boolean reporting, ByteArrayOutputStream buf) {
-        return new TestCase(s, reporting, new PrintStream(buf, true, StandardCharsets.UTF_8));
+    /** A TestCase over a fake binding; only the reporting/target plumbing is under test here. */
+    private TestCase newCase(FakeLibhegel fake, boolean reporting, ByteArrayOutputStream buf) {
+        return new TestCase(
+                new LiveDataSource(fake, FakeLibhegel.TC),
+                reporting,
+                new PrintStream(buf, true, StandardCharsets.UTF_8));
     }
 
     @Test
     void drawReportsTopLevelWithLabelAndDefaultName() {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        TestCase tc = newCase(new StubSource(), true, buf);
+        TestCase tc = newCase(new FakeLibhegel(), true, buf);
         tc.draw(constant(1), "x");
         tc.draw(constant(2));
         String out = buf.toString(StandardCharsets.UTF_8);
@@ -67,7 +34,7 @@ class TestCaseTest {
     @Test
     void drawDoesNotReportWhenNotReporting() {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        TestCase tc = newCase(new StubSource(), false, buf);
+        TestCase tc = newCase(new FakeLibhegel(), false, buf);
         assertEquals(5, tc.draw(constant(5)));
         assertEquals("", buf.toString(StandardCharsets.UTF_8));
     }
@@ -75,7 +42,7 @@ class TestCaseTest {
     @Test
     void nestedDrawsAreNotReported() {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        TestCase tc = newCase(new StubSource(), true, buf);
+        TestCase tc = newCase(new FakeLibhegel(), true, buf);
         Generator<Integer> nested = new Generator<>() {
             @Override
             public Integer doDraw(TestCase inner) {
@@ -92,26 +59,25 @@ class TestCaseTest {
     @Test
     void noteRespectsReporting() {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        TestCase reporting = newCase(new StubSource(), true, buf);
+        TestCase reporting = newCase(new FakeLibhegel(), true, buf);
         reporting.note("hello");
         assertTrue(buf.toString(StandardCharsets.UTF_8).contains("hello"));
 
         ByteArrayOutputStream quiet = new ByteArrayOutputStream();
-        newCase(new StubSource(), false, quiet).note("nope");
+        newCase(new FakeLibhegel(), false, quiet).note("nope");
         assertEquals("", quiet.toString(StandardCharsets.UTF_8));
     }
 
     @Test
     void assumeAndTarget() {
-        StubSource s = new StubSource();
-        TestCase tc = newCase(s, false, new ByteArrayOutputStream());
+        FakeLibhegel fake = new FakeLibhegel();
+        TestCase tc = newCase(fake, false, new ByteArrayOutputStream());
         tc.assume(true);
         assertThrows(AssumeRejected.class, () -> tc.assume(false));
         tc.target(3.5);
-        assertEquals(3.5, s.lastTarget, 0.0);
-        assertEquals("", s.lastLabel);
         tc.target(9.0, "score");
-        assertEquals("score", s.lastLabel);
+        fake.targetRc = Abi.E_STOP_TEST;
+        assertThrows(StopTest.class, () -> tc.target(1.0));
     }
 
     @Test

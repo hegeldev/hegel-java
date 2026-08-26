@@ -1,12 +1,10 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 
 /**
- * Generates {@code long} values within an inclusive {@code [min, max]} range. Always basic (one
- * engine call).
+ * Generates {@code long} values within an inclusive {@code [min, max]} range.
  *
  * <p>The default range is the full {@code long} range; narrow it with the fluent {@link #min(long)}
  * / {@link #max(long)} methods.
@@ -41,9 +39,7 @@ public final class LongGenerator implements Generator<Long> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<Long> asBasic() {
-        CBORObject schema =
-                CBORObject.NewMap().Add("type", "integer").Add("min_value", min).Add("max_value", max);
-        return new BasicGenerator<>(schema, Cbor::asLong);
+    public Long doDraw(TestCase tc) {
+        return tc.generateInteger(min, max);
     }
 }

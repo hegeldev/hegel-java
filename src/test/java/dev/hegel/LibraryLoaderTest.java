@@ -261,14 +261,14 @@ class LibraryLoaderTest {
         FakeLibhegel fake = new FakeLibhegel();
 
         fake.version = "9.9.9";
-        assertTrue(warnOutput(fake, "0.14.14").contains("9.9.9"));
+        assertTrue(warnOutput(fake, "0.30.4").contains("9.9.9"));
 
-        fake.version = "0.14.14";
-        assertEquals("", warnOutput(fake, "0.14.14")); // matching: silent
+        fake.version = "0.30.4";
+        assertEquals("", warnOutput(fake, "0.30.4")); // matching: silent
         assertEquals("", warnOutput(fake, null)); // expected unknown: silent
 
         fake.version = null;
-        assertEquals("", warnOutput(fake, "0.14.14")); // loaded unknown: silent
+        assertEquals("", warnOutput(fake, "0.30.4")); // loaded unknown: silent
     }
 
     private static String warnOutput(FakeLibhegel lib, String expected) {

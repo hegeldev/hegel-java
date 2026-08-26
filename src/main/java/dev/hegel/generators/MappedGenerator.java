@@ -6,10 +6,8 @@ import dev.hegel.TestCase;
 import java.util.function.Function;
 
 /**
- * Result of {@link Generator#map}. Preserves the efficient single-draw path: when the source is
- * basic, {@link #asBasic} composes {@code f} over the source's parse (via {@link
- * BasicGenerator#mapBasic}) so the chain stays a single engine call; otherwise the draw is bracketed
- * in a {@code map} span.
+ * Result of {@link Generator#map}. Draws from the source and applies {@code f}, bracketing the pair
+ * in a {@code map} span so the shrinker treats them as one unit.
  *
  * @param <T> the source value type
  * @param <U> the mapped value type
@@ -25,22 +23,11 @@ public final class MappedGenerator<T, U> implements Generator<U> {
 
     @Override
     public U doDraw(TestCase tc) {
-        BasicGenerator<U> basic = asBasic();
-        if (basic != null) {
-            return basic.doDraw(tc);
-        }
         tc.startSpan(Abi.LABEL_MAPPED);
         try {
             return f.apply(source.doDraw(tc));
         } finally {
             tc.stopSpan(false);
         }
-    }
-
-    /** @hidden */
-    @Override
-    public BasicGenerator<U> asBasic() {
-        BasicGenerator<T> sourceBasic = source.asBasic();
-        return sourceBasic == null ? null : sourceBasic.mapBasic(f);
     }
 }

@@ -1,10 +1,13 @@
 package dev.hegel;
 
-import com.upokecenter.cbor.CBORObject;
 import java.io.PrintStream;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * The handle a property test body uses to draw values and steer the engine.
@@ -13,8 +16,8 @@ import java.util.Map;
  * {@link #draw(Generator)}, reject uninteresting inputs with {@link #assume(boolean)}, attach debug
  * context with {@link #note(String)}, and guide the search with {@link #target(double)}.
  *
- * <p>On the engine's final replay of a minimal failing example, each top-level {@code draw} is
- * printed as an assignment (for example {@code x = 42;}) so the counterexample is readable.
+ * <p>On the replay of a minimal failing example, each top-level {@code draw} is printed as an
+ * assignment (for example {@code x = 42;}) so the counterexample is readable.
  */
 public final class TestCase {
     private final DataSource source;
@@ -80,7 +83,7 @@ public final class TestCase {
     }
 
     /**
-     * Record a debug message, shown only on the final replay of a failing case.
+     * Record a debug message, shown only on the replay of a failing case.
      *
      * @param message the message to record
      */
@@ -113,8 +116,115 @@ public final class TestCase {
     // access; not part of the user-facing API) ---
 
     /** @hidden */
-    public Object generateFromSchema(CBORObject schema) {
-        return source.generate(schema);
+    public boolean generateBoolean(double p) {
+        return source.generateBoolean(p);
+    }
+
+    /** @hidden */
+    public long generateInteger(long min, long max) {
+        return source.generateInteger(min, max);
+    }
+
+    /** @hidden */
+    public double generateFloat(
+            int width,
+            double min,
+            double max,
+            boolean allowNan,
+            boolean allowInfinity,
+            boolean excludeMin,
+            boolean excludeMax,
+            double smallestNonzeroMagnitude) {
+        return source.generateFloat(
+                width, min, max, allowNan, allowInfinity, excludeMin, excludeMax, smallestNonzeroMagnitude);
+    }
+
+    /** @hidden */
+    public byte[] generateBytes(long minSize, long maxSize) {
+        return source.generateBytes(minSize, maxSize);
+    }
+
+    /** @hidden */
+    public String generateString(StringGeneratorHandle generator) {
+        return source.generateString(generator);
+    }
+
+    /** @hidden */
+    public LocalDate generateDate(LocalDate min, LocalDate max) {
+        return source.generateDate(min, max);
+    }
+
+    /** @hidden */
+    public LocalTime generateTime(LocalTime min, LocalTime max) {
+        return source.generateTime(min, max);
+    }
+
+    /** @hidden */
+    public LocalDateTime generateDatetime(LocalDateTime min, LocalDateTime max) {
+        return source.generateDatetime(min, max);
+    }
+
+    /** @hidden */
+    public UUID generateUuid(Integer version) {
+        return source.generateUuid(version);
+    }
+
+    /** @hidden */
+    public byte[] generateIpv4() {
+        return source.generateIpv4();
+    }
+
+    /** @hidden */
+    public byte[] generateIpv6() {
+        return source.generateIpv6();
+    }
+
+    /** @hidden */
+    public StringGeneratorHandle textGenerator(
+            long minSize,
+            long maxSize,
+            String codec,
+            long minCodepoint,
+            long maxCodepoint,
+            List<String> categories,
+            List<String> excludeCategories,
+            String includeCharacters,
+            String excludeCharacters) {
+        return source.textGenerator(
+                minSize,
+                maxSize,
+                codec,
+                minCodepoint,
+                maxCodepoint,
+                categories,
+                excludeCategories,
+                includeCharacters,
+                excludeCharacters);
+    }
+
+    /** @hidden */
+    public StringGeneratorHandle regexGenerator(String pattern, boolean fullmatch, StringGeneratorHandle alphabet) {
+        return source.regexGenerator(pattern, fullmatch, alphabet);
+    }
+
+    /** @hidden */
+    public StringGeneratorHandle emailGenerator() {
+        return source.emailGenerator();
+    }
+
+    /** @hidden */
+    public StringGeneratorHandle urlGenerator() {
+        return source.urlGenerator();
+    }
+
+    /** @hidden */
+    public StringGeneratorHandle domainGenerator(long maxLength) {
+        return source.domainGenerator(maxLength);
+    }
+
+    /** @hidden */
+    public boolean ownsStringGenerator(StringGeneratorHandle generator) {
+        return source.ownsStringGenerator(generator);
     }
 
     /** @hidden */
@@ -140,6 +250,28 @@ public final class TestCase {
     /** @hidden */
     public void collectionReject(long id, String why) {
         source.collectionReject(id, why);
+    }
+
+    // --- stateful-testing primitives, used by Stateful and Pool in this package ---
+
+    long newPool() {
+        return source.newPool();
+    }
+
+    long poolAdd(long poolId) {
+        return source.poolAdd(poolId);
+    }
+
+    long poolGenerate(long poolId, boolean consume) {
+        return source.poolGenerate(poolId, consume);
+    }
+
+    long newStateMachine(List<String> ruleNames, List<String> invariantNames) {
+        return source.newStateMachine(ruleNames, invariantNames);
+    }
+
+    long stateMachineNextRule(long stateMachineId) {
+        return source.stateMachineNextRule(stateMachineId);
     }
 
     static String repr(Object value) {

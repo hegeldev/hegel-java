@@ -1,13 +1,11 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 import java.time.Duration;
 
 /**
- * Generates {@link Duration} values within an inclusive {@code [min, max]} range. Always basic (one
- * engine call).
+ * Generates {@link Duration} values within an inclusive {@code [min, max]} range.
  *
  * <p>Durations are drawn as a nanosecond count, so the representable range is {@code [0,
  * Long.MAX_VALUE]} nanoseconds (about 292 years). The default is that whole range; narrow it with
@@ -46,11 +44,7 @@ public final class DurationGenerator implements Generator<Duration> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<Duration> asBasic() {
-        CBORObject schema = CBORObject.NewMap()
-                .Add("type", "integer")
-                .Add("min_value", minNanos)
-                .Add("max_value", maxNanos);
-        return new BasicGenerator<>(schema, raw -> Duration.ofNanos(Cbor.asLong(raw)));
+    public Duration doDraw(TestCase tc) {
+        return Duration.ofNanos(tc.generateInteger(minNanos, maxNanos));
     }
 }

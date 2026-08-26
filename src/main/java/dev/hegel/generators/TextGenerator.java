@@ -1,20 +1,25 @@
 package dev.hegel.generators;
 
-import com.upokecenter.cbor.CBORObject;
 import dev.hegel.Abi;
-import dev.hegel.Cbor;
 import dev.hegel.Generator;
+import dev.hegel.TestCase;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Generates strings with fine-grained control over length and character selection. Always basic.
+ * Generates strings with fine-grained control over length and character selection.
  *
  * <p>Surrogate codepoints (Unicode category {@code Cs}) are excluded by default so generated
  * strings round-trip cleanly through Java; request specific categories to override the default
  * exclusion.
+ *
+ * <p>Lengths default to {@code [0, 100]} characters (or {@code [minSize, minSize + 100]} for a
+ * larger minimum); set an explicit {@link #maxSize(int)} for longer strings.
  */
 public final class TextGenerator implements Generator<String> {
+    /** The default length cap when no explicit {@code maxSize} is set. */
+    static final long DEFAULT_MAX_SIZE = 100;
+
     private final long minSize;
     private final long maxSize;
     private final Integer minCodepoint;
@@ -23,6 +28,7 @@ public final class TextGenerator implements Generator<String> {
     private final List<String> excludeCategories;
     private final String includeChars;
     private final String excludeChars;
+    private final HandleCache cache = new HandleCache();
 
     public TextGenerator(
             long minSize,
@@ -38,10 +44,22 @@ public final class TextGenerator implements Generator<String> {
         this.maxSize = maxSize;
         this.minCodepoint = minCodepoint;
         this.maxCodepoint = maxCodepoint;
-        this.categories = categories;
+        this.categories = validateCategories(categories);
         this.excludeCategories = excludeCategories;
         this.includeChars = includeChars;
         this.excludeChars = excludeChars;
+    }
+
+    private static List<String> validateCategories(List<String> categories) {
+        if (categories != null) {
+            for (String c : categories) {
+                if (c.equals("Cs") || c.equals("C")) {
+                    throw new IllegalArgumentException(
+                            "text: category \"" + c + "\" includes surrogate codepoints, unsupported");
+                }
+            }
+        }
+        return categories;
     }
 
     /**
@@ -137,44 +155,30 @@ public final class TextGenerator implements Generator<String> {
 
     /** @hidden */
     @Override
-    public BasicGenerator<String> asBasic() {
-        CBORObject schema = CBORObject.NewMap().Add("type", "string").Add("min_size", minSize);
-        if (maxSize != Abi.UNBOUNDED) {
-            schema.Add("max_size", maxSize);
-        }
-        if (minCodepoint != null) {
-            schema.Add("min_codepoint", minCodepoint);
-        }
-        if (maxCodepoint != null) {
-            schema.Add("max_codepoint", maxCodepoint);
-        }
+    public String doDraw(TestCase tc) {
+        return tc.generateString(cache.get(tc, this::buildHandle));
+    }
+
+    private dev.hegel.StringGeneratorHandle buildHandle(TestCase tc) {
+        List<String> exclude;
         if (categories != null) {
-            CBORObject arr = CBORObject.NewArray();
-            for (String c : categories) {
-                if (c.equals("Cs") || c.equals("C")) {
-                    throw new IllegalArgumentException(
-                            "text: category \"" + c + "\" includes surrogate codepoints, unsupported");
-                }
-                arr.Add(c);
-            }
-            schema.Add("categories", arr);
+            exclude = null;
         } else {
-            List<String> excl = new ArrayList<>(excludeCategories == null ? List.of() : excludeCategories);
-            if (!excl.contains("Cs")) {
-                excl.add("Cs");
+            // Surrogates are excluded by default so drawn strings are valid Java strings.
+            exclude = new ArrayList<>(excludeCategories == null ? List.of() : excludeCategories);
+            if (!exclude.contains("Cs")) {
+                exclude.add("Cs");
             }
-            CBORObject arr = CBORObject.NewArray();
-            for (String c : excl) {
-                arr.Add(c);
-            }
-            schema.Add("exclude_categories", arr);
         }
-        if (includeChars != null) {
-            schema.Add("include_characters", includeChars);
-        }
-        if (excludeChars != null) {
-            schema.Add("exclude_characters", excludeChars);
-        }
-        return new BasicGenerator<>(schema, Cbor::asString);
+        return tc.textGenerator(
+                minSize,
+                Sizes.resolveMax(minSize, maxSize, DEFAULT_MAX_SIZE),
+                null,
+                minCodepoint == null ? 0 : minCodepoint,
+                maxCodepoint == null ? Abi.NO_MAX_CODEPOINT : maxCodepoint,
+                categories,
+                exclude,
+                includeChars,
+                excludeChars);
     }
 }
