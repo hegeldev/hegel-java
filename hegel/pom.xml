@@ -7,7 +7,7 @@
   <parent>
     <groupId>dev.hegel</groupId>
     <artifactId>hegel-parent</artifactId>
-    <version>0.5.0</version>
+    <version>0.5.1</version>
   </parent>
 
   <artifactId>hegel</artifactId>
