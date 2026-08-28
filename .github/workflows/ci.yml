@@ -73,6 +73,36 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: just coverage
 
+  test-jna:
+    name: "test hegel-jna (java ${{ matrix.java-version }})"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        java-version: ["17", "21"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java-version }}
+          cache: maven
+
+      - uses: ./.github/actions/install-tools
+        with:
+          tools: just
+
+      - name: Test hegel-jna with 100% coverage enforcement
+        env:
+          # Raises the GitHub API rate limit for fetch_natives.py asset discovery.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: just coverage-jna
+
   test-os:
     name: "test (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
@@ -129,7 +159,7 @@ jobs:
   release:
     name: release
     if: github.event_name == 'push' && github.repository == 'hegeldev/hegel-java'
-    needs: [lint, test, test-os, docs]
+    needs: [lint, test, test-jna, test-os, docs]
     runs-on: ubuntu-latest
     permissions:
       contents: write
