@@ -1,6 +1,5 @@
 package dev.hegel;
 
-import java.lang.foreign.MemorySegment;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -17,10 +16,10 @@ import java.util.UUID;
  */
 final class LiveDataSource implements DataSource {
     private final Libhegel lib;
-    private final MemorySegment tc;
+    private final long tc;
     private boolean aborted;
 
-    LiveDataSource(Libhegel lib, MemorySegment tc) {
+    LiveDataSource(Libhegel lib, long tc) {
         this.lib = lib;
         this.tc = tc;
     }
@@ -113,7 +112,7 @@ final class LiveDataSource implements DataSource {
     public String generateString(StringGeneratorHandle generator) {
         checkLive();
         String[] out = new String[1];
-        translate(lib.generateString(tc, generator.segment, out), "generate_string");
+        translate(lib.generateString(tc, generator.handle, out), "generate_string");
         return out[0];
     }
 
@@ -183,7 +182,7 @@ final class LiveDataSource implements DataSource {
             String includeCharacters,
             String excludeCharacters) {
         checkLive();
-        MemorySegment[] out = new MemorySegment[1];
+        long[] out = new long[1];
         translate(
                 lib.stringGeneratorText(
                         minSize,
@@ -203,9 +202,9 @@ final class LiveDataSource implements DataSource {
     @Override
     public StringGeneratorHandle regexGenerator(String pattern, boolean fullmatch, StringGeneratorHandle alphabet) {
         checkLive();
-        MemorySegment[] out = new MemorySegment[1];
+        long[] out = new long[1];
         translate(
-                lib.stringGeneratorRegex(pattern, fullmatch, alphabet == null ? null : alphabet.segment, out),
+                lib.stringGeneratorRegex(pattern, fullmatch, alphabet == null ? 0 : alphabet.handle, out),
                 "string_generator_regex");
         return new StringGeneratorHandle(lib, out[0]);
     }
@@ -213,7 +212,7 @@ final class LiveDataSource implements DataSource {
     @Override
     public StringGeneratorHandle emailGenerator() {
         checkLive();
-        MemorySegment[] out = new MemorySegment[1];
+        long[] out = new long[1];
         translate(lib.stringGeneratorEmail(out), "string_generator_email");
         return new StringGeneratorHandle(lib, out[0]);
     }
@@ -221,7 +220,7 @@ final class LiveDataSource implements DataSource {
     @Override
     public StringGeneratorHandle urlGenerator() {
         checkLive();
-        MemorySegment[] out = new MemorySegment[1];
+        long[] out = new long[1];
         translate(lib.stringGeneratorUrl(out), "string_generator_url");
         return new StringGeneratorHandle(lib, out[0]);
     }
@@ -229,7 +228,7 @@ final class LiveDataSource implements DataSource {
     @Override
     public StringGeneratorHandle domainGenerator(long maxLength) {
         checkLive();
-        MemorySegment[] out = new MemorySegment[1];
+        long[] out = new long[1];
         translate(lib.stringGeneratorDomain(maxLength, out), "string_generator_domain");
         return new StringGeneratorHandle(lib, out[0]);
     }

@@ -85,9 +85,13 @@ class ConformanceTest {
     @Test
     void textRespectsLengthAndCharacters() {
         assertAllExamples(text().minSize(1).maxSize(3), s -> cp(s) >= 1 && cp(s) <= 3);
+        // The engine's Unicode tables may be newer than this JVM's (e.g. JDK 17 knows Unicode 13):
+        // a codepoint the JVM has no data for reads as UNASSIGNED and cannot be classified, so only
+        // codepoints the JVM knows are held to the category.
         assertAllExamples(
                 text().categories("Nd").minSize(1).maxSize(2),
-                s -> s.codePoints().allMatch(Character::isDigit));
+                s -> s.codePoints()
+                        .allMatch(c -> Character.isDigit(c) || Character.getType(c) == Character.UNASSIGNED));
         assertAllExamples(
                 text().codepoints('a', 'z').minSize(1).maxSize(2),
                 s -> s.codePoints().allMatch(c -> c >= 'a' && c <= 'z'));
@@ -283,15 +287,15 @@ class ConformanceTest {
         if (t instanceof Integer) {
             return true;
         }
-        if (t instanceof Tuple2<?, ?>(var left, var right)) {
-            return isTree(left) && isTree(right);
+        if (t instanceof Tuple2<?, ?> pair) {
+            return isTree(pair.value1()) && isTree(pair.value2());
         }
         return false;
     }
 
     private static int depth(Object t) {
-        if (t instanceof Tuple2<?, ?>(var left, var right)) {
-            return 1 + Math.max(depth(left), depth(right));
+        if (t instanceof Tuple2<?, ?> pair) {
+            return 1 + Math.max(depth(pair.value1()), depth(pair.value2()));
         }
         return 0;
     }

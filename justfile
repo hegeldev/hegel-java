@@ -26,6 +26,12 @@ test:
 coverage:
     mvn -B verify
 
+test-jna:
+    mvn -B -pl hegel-jna -am test
+
+coverage-jna:
+    mvn -B -pl hegel-jna -am verify
+
 conformance:
     mvn -B test -Dtest='*Conformance*,*Behaviour*'
 
@@ -40,7 +46,7 @@ check-docs:
 
 docs:
     mvn -B -q javadoc:javadoc
-    open target/reports/apidocs/index.html
+    open hegel/target/reports/apidocs/index.html
 
 clean:
     mvn -B -q clean

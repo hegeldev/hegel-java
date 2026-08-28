@@ -1,6 +1,5 @@
 package dev.hegel;
 
-import java.lang.foreign.MemorySegment;
 import java.lang.ref.Cleaner;
 
 /**
@@ -19,22 +18,22 @@ public final class StringGeneratorHandle {
     private static final Cleaner CLEANER = Cleaner.create();
 
     final Libhegel lib;
-    final MemorySegment segment;
+    final long handle;
 
-    StringGeneratorHandle(Libhegel lib, MemorySegment segment) {
+    StringGeneratorHandle(Libhegel lib, long handle) {
         this.lib = lib;
-        this.segment = segment;
-        CLEANER.register(this, new Free(lib, segment));
+        this.handle = handle;
+        CLEANER.register(this, new Free(lib, handle));
     }
 
     /**
      * The deferred release of the engine-side allocation. A record (not a lambda capturing {@code
      * this}) so the cleanable never keeps its own handle reachable.
      */
-    record Free(Libhegel lib, MemorySegment segment) implements Runnable {
+    record Free(Libhegel lib, long handle) implements Runnable {
         @Override
         public void run() {
-            lib.stringGeneratorFree(segment);
+            lib.stringGeneratorFree(handle);
         }
     }
 }

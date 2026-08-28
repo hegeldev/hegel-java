@@ -5,11 +5,11 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>dev.hegel</groupId>
-  <artifactId>hegel</artifactId>
+  <artifactId>hegel-parent</artifactId>
   <version>0.5.0</version>
-  <packaging>jar</packaging>
+  <packaging>pom</packaging>
 
-  <name>hegel-java</name>
+  <name>hegel-java parent</name>
   <description>Property-based testing for Java, built on Hypothesis</description>
   <url>https://github.com/hegeldev/hegel-java</url>
 
@@ -42,12 +42,17 @@
     <url>https://github.com/hegeldev/hegel-java/issues</url>
   </issueManagement>
 
+  <modules>
+    <module>hegel</module>
+    <module>hegel-jna</module>
+  </modules>
+
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>22</maven.compiler.release>
     <junit.version>5.11.4</junit.version>
     <jacoco.version>0.8.14</jacoco.version>
-    <!-- The libhegel/hegel-rust release whose native libraries are bundled into the jar.
+    <!-- The libhegel/hegel-rust release whose native libraries are bundled into the jars.
          Bump this and rebuild to ship a new engine; scripts/fetch_natives.py fetches the
          matching shared objects at build time. -->
     <libhegel.version>0.32.5</libhegel.version>
@@ -57,8 +62,9 @@
     <!-- The Python interpreter used to run scripts/fetch_natives.py; the windows-python
          profile overrides it, since Windows installs no python3 launcher. -->
     <hegel.python>python3</hegel.python>
-    <!-- FFM requires native access; surefire passes this to the test JVM. -->
+    <!-- FFM (and JNA on Java 24+) requires native access; surefire passes this to the test JVM. -->
     <hegel.argLine>--enable-native-access=ALL-UNNAMED</hegel.argLine>
+    <hegel.shared>${maven.multiModuleProjectDirectory}/shared</hegel.shared>
   </properties>
 
   <dependencies>
@@ -88,199 +94,220 @@
   </dependencies>
 
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.4.2</version>
+        </plugin>
+
+        <!-- Filter the shared java-templates into generated-sources, substituting
+             ${libhegel.version} into BuildInfo.ENGINE_VERSION. build-helper (below) adds the
+             output to the compile path. -->
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.3.1</version>
+          <executions>
+            <execution>
+              <id>filter-java-templates</id>
+              <phase>generate-sources</phase>
+              <goals>
+                <goal>copy-resources</goal>
+              </goals>
+              <configuration>
+                <outputDirectory>${project.build.directory}/generated-sources/java-templates</outputDirectory>
+                <resources>
+                  <resource>
+                    <directory>${hegel.shared}/src/main/java-templates</directory>
+                    <filtering>true</filtering>
+                  </resource>
+                </resources>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+
+        <!-- Register the shared sources, shared tests, and the filtered templates as
+             compile/test source roots. -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>3.6.0</version>
+          <executions>
+            <execution>
+              <id>add-shared-sources</id>
+              <phase>generate-sources</phase>
+              <goals>
+                <goal>add-source</goal>
+              </goals>
+              <configuration>
+                <sources>
+                  <source>${hegel.shared}/src/main/java</source>
+                  <source>${project.build.directory}/generated-sources/java-templates</source>
+                </sources>
+              </configuration>
+            </execution>
+            <execution>
+              <id>add-shared-test-sources</id>
+              <phase>generate-test-sources</phase>
+              <goals>
+                <goal>add-test-source</goal>
+              </goals>
+              <configuration>
+                <sources>
+                  <source>${hegel.shared}/src/test/java</source>
+                </sources>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+
+        <!-- Stage the libhegel native libraries into the build output so they are packaged
+             into the jar as classpath resources (native/<os>-<arch>/libhegel.<ext>). Runs
+             before compile/test so the test JVM resolves the bundled native too. -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>3.5.0</version>
+          <executions>
+            <execution>
+              <id>fetch-natives</id>
+              <phase>generate-resources</phase>
+              <goals>
+                <goal>exec</goal>
+              </goals>
+              <configuration>
+                <skip>${hegel.natives.skip}</skip>
+                <executable>${hegel.python}</executable>
+                <arguments>
+                  <argument>${maven.multiModuleProjectDirectory}/scripts/fetch_natives.py</argument>
+                  <argument>--version</argument>
+                  <argument>${libhegel.version}</argument>
+                  <argument>--out</argument>
+                  <argument>${project.build.outputDirectory}</argument>
+                </arguments>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.5.2</version>
+          <configuration>
+            <argLine>@{argLine} ${hegel.argLine}</argLine>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-invoker-plugin</artifactId>
+          <version>3.9.0</version>
+          <configuration>
+            <projectsDirectory>src/it</projectsDirectory>
+            <cloneProjectsTo>${project.build.directory}/it</cloneProjectsTo>
+            <streamLogs>true</streamLogs>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>2.46.1</version>
+          <configuration>
+            <java>
+              <palantirJavaFormat>
+                <version>2.91.0</version>
+              </palantirJavaFormat>
+            </java>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>3.11.2</version>
+          <configuration>
+            <doclint>all,-missing</doclint>
+            <quiet>true</quiet>
+          </configuration>
+        </plugin>
+
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco.version}</version>
+          <executions>
+            <execution>
+              <id>prepare-agent</id>
+              <goals>
+                <goal>prepare-agent</goal>
+              </goals>
+            </execution>
+            <execution>
+              <id>report</id>
+              <phase>verify</phase>
+              <goals>
+                <goal>report</goal>
+              </goals>
+            </execution>
+            <execution>
+              <id>check</id>
+              <phase>verify</phase>
+              <goals>
+                <goal>check</goal>
+              </goals>
+              <configuration>
+                <rules>
+                  <rule>
+                    <element>BUNDLE</element>
+                    <limits>
+                      <limit>
+                        <counter>INSTRUCTION</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>1.00</minimum>
+                      </limit>
+                      <limit>
+                        <counter>BRANCH</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>1.00</minimum>
+                      </limit>
+                    </limits>
+                  </rule>
+                </rules>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
     <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.13.0</version>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <version>3.4.2</version>
-        <configuration>
-          <archive>
-            <manifestEntries>
-              <Automatic-Module-Name>dev.hegel</Automatic-Module-Name>
-            </manifestEntries>
-          </archive>
-        </configuration>
-      </plugin>
-
-      <!-- Filter src/main/java-templates into generated-sources, substituting ${libhegel.version}
-           into BuildInfo.ENGINE_VERSION. build-helper (below) adds the output to the compile path. -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-resources-plugin</artifactId>
-        <version>3.3.1</version>
-        <executions>
-          <execution>
-            <id>filter-java-templates</id>
-            <phase>generate-sources</phase>
-            <goals>
-              <goal>copy-resources</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>${project.build.directory}/generated-sources/java-templates</outputDirectory>
-              <resources>
-                <resource>
-                  <directory>src/main/java-templates</directory>
-                  <filtering>true</filtering>
-                </resource>
-              </resources>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-
-      <!-- Register the filtered templates as a compile source root. -->
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>build-helper-maven-plugin</artifactId>
-        <version>3.6.0</version>
-        <executions>
-          <execution>
-            <id>add-generated-sources</id>
-            <phase>generate-sources</phase>
-            <goals>
-              <goal>add-source</goal>
-            </goals>
-            <configuration>
-              <sources>
-                <source>${project.build.directory}/generated-sources/java-templates</source>
-              </sources>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-
-      <!-- Stage the libhegel native libraries into the build output so they are packaged
-           into the jar as classpath resources (native/<os>-<arch>/libhegel.<ext>). Runs
-           before compile/test so the test JVM resolves the bundled native too. -->
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>3.5.0</version>
-        <executions>
-          <execution>
-            <id>fetch-natives</id>
-            <phase>generate-resources</phase>
-            <goals>
-              <goal>exec</goal>
-            </goals>
-            <configuration>
-              <skip>${hegel.natives.skip}</skip>
-              <executable>${hegel.python}</executable>
-              <arguments>
-                <argument>${project.basedir}/scripts/fetch_natives.py</argument>
-                <argument>--version</argument>
-                <argument>${libhegel.version}</argument>
-                <argument>--out</argument>
-                <argument>${project.build.outputDirectory}</argument>
-              </arguments>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.2</version>
-        <configuration>
-          <argLine>@{argLine} ${hegel.argLine}</argLine>
-        </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-invoker-plugin</artifactId>
-        <version>3.9.0</version>
-        <configuration>
-          <projectsDirectory>src/it</projectsDirectory>
-          <cloneProjectsTo>${project.build.directory}/it</cloneProjectsTo>
-          <streamLogs>true</streamLogs>
-        </configuration>
-        <executions>
-          <execution>
-            <id>module-consumer-it</id>
-            <goals>
-              <goal>install</goal>
-              <goal>run</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-
       <plugin>
         <groupId>com.diffplug.spotless</groupId>
         <artifactId>spotless-maven-plugin</artifactId>
-        <version>2.46.1</version>
+        <inherited>false</inherited>
         <configuration>
           <java>
+            <includes>
+              <include>shared/src/main/java/**/*.java</include>
+              <include>shared/src/main/java-templates/**/*.java</include>
+              <include>shared/src/test/java/**/*.java</include>
+            </includes>
             <palantirJavaFormat>
               <version>2.91.0</version>
             </palantirJavaFormat>
           </java>
         </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-javadoc-plugin</artifactId>
-        <version>3.11.2</version>
-        <configuration>
-          <doclint>all,-missing</doclint>
-          <quiet>true</quiet>
-        </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.jacoco</groupId>
-        <artifactId>jacoco-maven-plugin</artifactId>
-        <version>${jacoco.version}</version>
-        <executions>
-          <execution>
-            <id>prepare-agent</id>
-            <goals>
-              <goal>prepare-agent</goal>
-            </goals>
-          </execution>
-          <execution>
-            <id>report</id>
-            <phase>verify</phase>
-            <goals>
-              <goal>report</goal>
-            </goals>
-          </execution>
-          <execution>
-            <id>check</id>
-            <phase>verify</phase>
-            <goals>
-              <goal>check</goal>
-            </goals>
-            <configuration>
-              <rules>
-                <rule>
-                  <element>BUNDLE</element>
-                  <limits>
-                    <limit>
-                      <counter>INSTRUCTION</counter>
-                      <value>COVEREDRATIO</value>
-                      <minimum>1.00</minimum>
-                    </limit>
-                    <limit>
-                      <counter>BRANCH</counter>
-                      <value>COVEREDRATIO</value>
-                      <minimum>1.00</minimum>
-                    </limit>
-                  </limits>
-                </rule>
-              </rules>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
     </plugins>
   </build>

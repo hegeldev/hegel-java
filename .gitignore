@@ -5,6 +5,8 @@ target/
 CLAUDE.local.md
 .claude/settings.local.json
 
+.vscode/
+
 # whitelist .claude files, rather than blacklist. Some local claude files
 # (skills, agents) have to live in .claude - as opposed to eg CLAUDE.local.md,
 # which we gitignore at the top level.

@@ -16,12 +16,21 @@ Instead of writing tests with hand-picked example inputs, you describe a *proper
 
 ## Installation
 
+Hegel for Java ships as two interchangeable artifacts with the same API — pick the one that
+matches your JVM:
+
+- **`dev.hegel:hegel`** — requires **Java 22+**; binds the engine over the
+  [Foreign Function & Memory API](https://docs.oracle.com/en/java/javase/22/core/foreign-function-and-memory-api.html)
+  with no extra dependencies.
+- **`dev.hegel:hegel-jna`** — requires **Java 17+**; binds the engine over
+  [JNA](https://github.com/java-native-access/jna).
+
 Add the dependency with Maven:
 
 ```xml
 <dependency>
   <groupId>dev.hegel</groupId>
-  <artifactId>hegel</artifactId>
+  <artifactId>hegel</artifactId> <!-- or "hegel-jna" for Java 17-21 -->
   <version>0.1.0</version>
   <scope>test</scope>
 </dependency>
@@ -30,12 +39,17 @@ Add the dependency with Maven:
 or with Gradle:
 
 ```kotlin
-testImplementation("dev.hegel:hegel:0.1.0")
+testImplementation("dev.hegel:hegel:0.1.0") // or "dev.hegel:hegel-jna:0.1.0"
 ```
 
-Hegel for Java requires **Java 22+** and uses the [Foreign Function & Memory API](https://docs.oracle.com/en/java/javase/22/core/foreign-function-and-memory-api.html). The native engine is bundled in the jar for Linux (x86-64 and arm64), macOS (Apple Silicon), and Windows (x86-64 and arm64).
+Depend on exactly one of the two — they contain the same classes and differ only in how they call
+the native engine. The engine is bundled in both jars for Linux (x86-64 and arm64), macOS (Apple
+Silicon), and Windows (x86-64 and arm64).
 
-Because Hegel calls native code, pass `--enable-native-access=ALL-UNNAMED` to silence the JVM's native-access warning. With Maven Surefire:
+Because Hegel calls native code, pass `--enable-native-access=ALL-UNNAMED` to silence the JVM's
+native-access warning — printed by JDK 22+ for `hegel` (FFM) and by JDK 24+ for `hegel-jna` (JNA,
+under [JEP 472](https://openjdk.org/jeps/472)). The flag is accepted on every supported JDK
+(17+), so it is safe to set unconditionally. With Maven Surefire:
 
 ```xml
 <argLine>--enable-native-access=ALL-UNNAMED</argLine>

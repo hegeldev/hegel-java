@@ -6,13 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 
 /** Targeted tests closing remaining coverage branches. */
@@ -35,24 +32,6 @@ class CoverageTest {
         // FNV-1a 64-bit of the empty string is the offset basis.
         assertEquals(0xcbf29ce484222325L, Abi.fnv1a(""));
         assertTrue(Abi.LABEL_COMPOSITE == Abi.fnv1a("dev.hegel.composite"));
-    }
-
-    // --- output-callback bridge ---
-    @Test
-    void emitLineDecodesAndSwallowsExceptions() {
-        try (java.lang.foreign.Arena arena = java.lang.foreign.Arena.ofConfined()) {
-            byte[] bytes = "hello".getBytes(StandardCharsets.UTF_8);
-            MemorySegment line = arena.allocate(bytes.length);
-            MemorySegment.copy(bytes, 0, line, java.lang.foreign.ValueLayout.JAVA_BYTE, 0, bytes.length);
-            AtomicReference<String> got = new AtomicReference<>();
-            RealLibhegel.emitLine(got::set, MemorySegment.NULL, line, bytes.length);
-            assertEquals("hello", got.get());
-            // A throwing consumer must be swallowed: an exception escaping an upcall kills the VM.
-            Consumer<String> throwing = s -> {
-                throw new IllegalStateException("never escapes");
-            };
-            RealLibhegel.emitLine(throwing, MemorySegment.NULL, line, bytes.length);
-        }
     }
 
     // --- StringGeneratorHandle cleanup ---
@@ -355,7 +334,8 @@ class CoverageTest {
     }
 
     @Test
-    void isNullHandlesJavaNull() {
-        assertTrue(Runner.isNull(null));
+    void isNullChecksTheAddress() {
+        assertTrue(Runner.isNull(0));
+        assertFalse(Runner.isNull(FakeLibhegel.TC));
     }
 }

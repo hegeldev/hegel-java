@@ -1,6 +1,5 @@
 package dev.hegel;
 
-import java.lang.foreign.MemorySegment;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -12,12 +11,14 @@ import java.util.function.Consumer;
  *
  * <p>Modelled as an interface so tests can substitute a fake binding that returns chosen return
  * codes, exercising every error path without the real engine. The production implementation is
- * {@link RealLibhegel}, which drives libhegel over the Foreign Function and Memory API.
+ * {@code RealLibhegel} (Foreign Function and Memory API, in {@code hegel}) or {@code JnaLibhegel}
+ * (JNA, in {@code hegel-jna}).
  *
  * <p>Opaque handles ({@code hegel_settings_t*}, {@code hegel_run_t*}, {@code hegel_test_case_t*},
- * {@code hegel_run_result_t*}, {@code hegel_string_generator_t*}) are passed as {@link
- * MemorySegment}; callers treat them as opaque and never dereference them. Handles are caller-owned:
- * every handle a method returns must be released with its matching {@code *Free} method.
+ * {@code hegel_run_result_t*}, {@code hegel_string_generator_t*}) are passed as raw addresses
+ * ({@code long}; {@code 0} is NULL); callers treat them as opaque and never dereference them.
+ * Handles are caller-owned: every handle a method returns must be released with its matching
+ * {@code *Free} method.
  *
  * <p>Two calling conventions coexist here, mirroring how the frontend consumes the ABI:
  *
@@ -37,34 +38,34 @@ import java.util.function.Consumer;
  */
 interface Libhegel {
     // Settings. Setters cannot fail with this binding's inputs; implementations throw on non-OK.
-    MemorySegment settingsNew();
+    long settingsNew();
 
-    void settingsFree(MemorySegment s);
+    void settingsFree(long s);
 
-    void settingsMode(MemorySegment s, int mode);
+    void settingsMode(long s, int mode);
 
-    void settingsBackend(MemorySegment s, int backend);
+    void settingsBackend(long s, int backend);
 
-    void settingsTestCases(MemorySegment s, long n);
+    void settingsTestCases(long s, long n);
 
-    void settingsVerbosity(MemorySegment s, int v);
+    void settingsVerbosity(long s, int v);
 
-    void settingsSeed(MemorySegment s, long seed, boolean hasSeed);
+    void settingsSeed(long s, long seed, boolean hasSeed);
 
-    void settingsDerandomize(MemorySegment s, boolean derandomize);
+    void settingsDerandomize(long s, boolean derandomize);
 
-    void settingsReportMultipleFailures(MemorySegment s, boolean yes);
+    void settingsReportMultipleFailures(long s, boolean yes);
 
     /**
      * {@code path == null} leaves the engine default; {@code ""} disables; otherwise sets the dir.
      */
-    void settingsDatabase(MemorySegment s, String path);
+    void settingsDatabase(long s, String path);
 
-    void settingsDatabaseKey(MemorySegment s, String key);
+    void settingsDatabaseKey(long s, String key);
 
-    void settingsPhases(MemorySegment s, int mask);
+    void settingsPhases(long s, int mask);
 
-    void settingsSuppressHealthCheck(MemorySegment s, int mask);
+    void settingsSuppressHealthCheck(long s, int mask);
 
     // Run lifecycle.
 
@@ -73,17 +74,17 @@ interface Libhegel {
      * output}; {@code null} leaves it on stderr. The callback stays registered until {@link
      * #runFree}.
      */
-    MemorySegment runStart(MemorySegment settings, Consumer<String> output);
+    long runStart(long settings, Consumer<String> output);
 
-    /** The next test-case handle, or {@code NULL} once the run is finished. */
-    MemorySegment nextTestCase(MemorySegment run);
+    /** The next test-case handle, or {@code 0} once the run is finished. */
+    long nextTestCase(long run);
 
     /** A caller-owned snapshot of the finished run's result; release with {@link #runResultFree}. */
-    MemorySegment runResult(MemorySegment run);
+    long runResult(long run);
 
-    void runResultFree(MemorySegment result);
+    void runResultFree(long result);
 
-    void runFree(MemorySegment run);
+    void runFree(long run);
 
     /**
      * Replay a base64 reproduce blob as a standalone test case. Returns the raw rc ({@link
@@ -91,17 +92,17 @@ interface Libhegel {
      * caller-owned handle. {@code output} has the same contract as in {@link #runStart} but need not
      * outlive the call.
      */
-    int testCaseFromBlob(MemorySegment settings, String blob, Consumer<String> output, MemorySegment[] out);
+    int testCaseFromBlob(long settings, String blob, Consumer<String> output, long[] out);
 
-    void testCaseFree(MemorySegment tc);
+    void testCaseFree(long tc);
 
     // Per-test-case draws. Each returns the raw rc.
-    int generateBoolean(MemorySegment tc, double p, boolean[] out);
+    int generateBoolean(long tc, double p, boolean[] out);
 
-    int generateInteger(MemorySegment tc, long min, long max, long[] out);
+    int generateInteger(long tc, long min, long max, long[] out);
 
     int generateFloat(
-            MemorySegment tc,
+            long tc,
             int width,
             double min,
             double max,
@@ -112,25 +113,25 @@ interface Libhegel {
             double smallestNonzeroMagnitude,
             double[] out);
 
-    int generateBytes(MemorySegment tc, long minSize, long maxSize, byte[][] out);
+    int generateBytes(long tc, long minSize, long maxSize, byte[][] out);
 
-    int generateString(MemorySegment tc, MemorySegment generator, String[] out);
+    int generateString(long tc, long generator, String[] out);
 
-    int generateDate(MemorySegment tc, LocalDate min, LocalDate max, LocalDate[] out);
+    int generateDate(long tc, LocalDate min, LocalDate max, LocalDate[] out);
 
     /** Time bounds and results are at microsecond resolution (the engine's granularity). */
-    int generateTime(MemorySegment tc, LocalTime min, LocalTime max, LocalTime[] out);
+    int generateTime(long tc, LocalTime min, LocalTime max, LocalTime[] out);
 
-    int generateDatetime(MemorySegment tc, LocalDateTime min, LocalDateTime max, LocalDateTime[] out);
+    int generateDatetime(long tc, LocalDateTime min, LocalDateTime max, LocalDateTime[] out);
 
     /** On OK writes the UUID's 16 big-endian bytes into {@code out16}. */
-    int generateUuid(MemorySegment tc, int version, boolean hasVersion, byte[] out16);
+    int generateUuid(long tc, int version, boolean hasVersion, byte[] out16);
 
     /** On OK writes the address's 4 network-order bytes into {@code out4}. */
-    int generateIpv4(MemorySegment tc, byte[] out4);
+    int generateIpv4(long tc, byte[] out4);
 
     /** On OK writes the address's 16 network-order bytes into {@code out16}. */
-    int generateIpv6(MemorySegment tc, byte[] out16);
+    int generateIpv6(long tc, byte[] out16);
 
     // String-generator handles. Constructors return the raw rc (INVALID_ARG for a configuration
     // that is rejected, e.g. an empty alphabet with max_size > 0); handles are released with
@@ -145,57 +146,57 @@ interface Libhegel {
             List<String> excludeCategories,
             String includeCharacters,
             String excludeCharacters,
-            MemorySegment[] out);
+            long[] out);
 
-    int stringGeneratorRegex(String pattern, boolean fullmatch, MemorySegment alphabet, MemorySegment[] out);
+    int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out);
 
-    int stringGeneratorEmail(MemorySegment[] out);
+    int stringGeneratorEmail(long[] out);
 
-    int stringGeneratorUrl(MemorySegment[] out);
+    int stringGeneratorUrl(long[] out);
 
-    int stringGeneratorDomain(long maxLength, MemorySegment[] out);
+    int stringGeneratorDomain(long maxLength, long[] out);
 
-    void stringGeneratorFree(MemorySegment generator);
+    void stringGeneratorFree(long generator);
 
     // Structure: spans, collections, pools, state machines. Each returns the raw rc.
-    int startSpan(MemorySegment tc, long label);
+    int startSpan(long tc, long label);
 
-    int stopSpan(MemorySegment tc, boolean discard);
+    int stopSpan(long tc, boolean discard);
 
-    int newCollection(MemorySegment tc, long minSize, long maxSize, long[] outId);
+    int newCollection(long tc, long minSize, long maxSize, long[] outId);
 
-    int collectionMore(MemorySegment tc, long id, boolean[] outMore);
+    int collectionMore(long tc, long id, boolean[] outMore);
 
-    int collectionReject(MemorySegment tc, long id, String why);
+    int collectionReject(long tc, long id, String why);
 
-    int newPool(MemorySegment tc, long[] outId);
+    int newPool(long tc, long[] outId);
 
-    int poolAdd(MemorySegment tc, long poolId, long[] outVariableId);
+    int poolAdd(long tc, long poolId, long[] outVariableId);
 
-    int poolGenerate(MemorySegment tc, long poolId, boolean consume, long[] outVariableId);
+    int poolGenerate(long tc, long poolId, boolean consume, long[] outVariableId);
 
-    int newStateMachine(MemorySegment tc, List<String> ruleNames, List<String> invariantNames, long[] outId);
+    int newStateMachine(long tc, List<String> ruleNames, List<String> invariantNames, long[] outId);
 
     /** {@code outRuleIndex[0]} receives the rule index, or {@link Abi#STATE_MACHINE_DONE}. */
-    int stateMachineNextRule(MemorySegment tc, long stateMachineId, long[] outRuleIndex);
+    int stateMachineNextRule(long tc, long stateMachineId, long[] outRuleIndex);
 
-    int target(MemorySegment tc, double value, String label);
+    int target(long tc, double value, String label);
 
-    int markComplete(MemorySegment tc, int status, String origin);
+    int markComplete(long tc, int status, String origin);
 
     // Results.
-    int runResultStatus(MemorySegment result);
+    int runResultStatus(long result);
 
     /** The run-level error message, or {@code null} when the run completed normally. */
-    String runResultError(MemorySegment result);
+    String runResultError(long result);
 
-    long runResultFailureCount(MemorySegment result);
+    long runResultFailureCount(long result);
 
     /**
      * The reproduce blob of the {@code index}-th distinct failure, or {@code null} if libhegel
      * produced none for it.
      */
-    String failureBlob(MemorySegment result, long index);
+    String failureBlob(long result, long index);
 
     // Diagnostics.
     String lastErrorMessage();

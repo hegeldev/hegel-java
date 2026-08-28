@@ -1,7 +1,6 @@
 package dev.hegel;
 
 import java.io.PrintStream;
-import java.lang.foreign.MemorySegment;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -43,26 +42,26 @@ final class Runner {
 
     static void run(
             Libhegel lib, Settings settings, Consumer<TestCase> body, Map<String, String> env, PrintStream out) {
-        MemorySegment s = lib.settingsNew();
+        long s = lib.settingsNew();
         try {
             applySettings(lib, s, settings, env);
             if (settings.reproduceFailure != null) {
                 throw replayBlob(lib, s, settings.reproduceFailure, body, out);
             }
-            MemorySegment run = lib.runStart(s, out::println);
+            long run = lib.runStart(s, out::println);
             try {
                 if (settings.mode == Mode.SINGLE_TEST_CASE) {
                     driveSingleCase(lib, run, body, out);
                     return;
                 }
                 while (true) {
-                    MemorySegment tc = lib.nextTestCase(run);
+                    long tc = lib.nextTestCase(run);
                     if (isNull(tc)) {
                         break;
                     }
                     driveOneCase(lib, tc, false, body, out);
                 }
-                MemorySegment result = lib.runResult(run);
+                long result = lib.runResult(run);
                 try {
                     finish(lib, s, result, settings, body, out);
                 } finally {
@@ -78,12 +77,7 @@ final class Runner {
 
     /** Translate a drained run's result into a normal return or the failure to raise. */
     private static void finish(
-            Libhegel lib,
-            MemorySegment s,
-            MemorySegment result,
-            Settings settings,
-            Consumer<TestCase> body,
-            PrintStream out) {
+            Libhegel lib, long s, long result, Settings settings, Consumer<TestCase> body, PrintStream out) {
         switch (lib.runResultStatus(result)) {
             case Abi.RUN_STATUS_PASSED:
                 return;
@@ -106,12 +100,7 @@ final class Runner {
      * bugs.
      */
     private static AssertionError replayFailures(
-            Libhegel lib,
-            MemorySegment s,
-            MemorySegment result,
-            Settings settings,
-            Consumer<TestCase> body,
-            PrintStream out) {
+            Libhegel lib, long s, long result, Settings settings, Consumer<TestCase> body, PrintStream out) {
         long count = lib.runResultFailureCount(result);
         boolean multiple = count > 1;
         if (multiple) {
@@ -126,7 +115,7 @@ final class Runner {
             if (blob == null) {
                 throw new HegelException("internal error: failure " + i + " carries no reproduce blob");
             }
-            MemorySegment[] tcOut = new MemorySegment[1];
+            long[] tcOut = new long[1];
             int rc = lib.testCaseFromBlob(s, blob, out::println, tcOut);
             if (rc != Abi.OK) {
                 throw new HegelException(
@@ -163,8 +152,8 @@ final class Runner {
      * verdict is that case's outcome. There is no shrinking or replay, so a failure re-raises
      * straight away.
      */
-    private static void driveSingleCase(Libhegel lib, MemorySegment run, Consumer<TestCase> body, PrintStream out) {
-        MemorySegment tc = lib.nextTestCase(run);
+    private static void driveSingleCase(Libhegel lib, long run, Consumer<TestCase> body, PrintStream out) {
+        long tc = lib.nextTestCase(run);
         if (isNull(tc)) {
             throw new HegelException("hegel_next_test_case produced no case for a single-test-case run");
         }
@@ -180,8 +169,8 @@ final class Runner {
      * fails is reported as stale (returned for the caller to throw).
      */
     private static RuntimeException replayBlob(
-            Libhegel lib, MemorySegment s, String blob, Consumer<TestCase> body, PrintStream out) {
-        MemorySegment[] tcOut = new MemorySegment[1];
+            Libhegel lib, long s, String blob, Consumer<TestCase> body, PrintStream out) {
+        long[] tcOut = new long[1];
         int rc = lib.testCaseFromBlob(s, blob, out::println, tcOut);
         if (rc != Abi.OK) {
             return new HegelException("reproduceFailure: the supplied blob is not valid (rc="
@@ -202,8 +191,7 @@ final class Runner {
      * exception that made the case interesting, or {@code null} for any other outcome. With {@code
      * reporting} enabled the case's draws and notes are printed to {@code out}.
      */
-    static Throwable driveOneCase(
-            Libhegel lib, MemorySegment tc, boolean reporting, Consumer<TestCase> body, PrintStream out) {
+    static Throwable driveOneCase(Libhegel lib, long tc, boolean reporting, Consumer<TestCase> body, PrintStream out) {
         try {
             TestCase testCase = new TestCase(new LiveDataSource(lib, tc), reporting, out);
             int status;
@@ -249,7 +237,7 @@ final class Runner {
         return (RuntimeException) t;
     }
 
-    static void applySettings(Libhegel lib, MemorySegment s, Settings st, Map<String, String> env) {
+    static void applySettings(Libhegel lib, long s, Settings st, Map<String, String> env) {
         boolean ci = Settings.isCi(env);
         lib.settingsTestCases(s, st.testCases);
         lib.settingsVerbosity(s, st.verbosity.code);
@@ -316,7 +304,7 @@ final class Runner {
         return s == null ? "" : s;
     }
 
-    static boolean isNull(MemorySegment seg) {
-        return seg == null || seg.address() == 0;
+    static boolean isNull(long handle) {
+        return handle == 0;
     }
 }

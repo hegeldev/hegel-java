@@ -1,6 +1,5 @@
 package dev.hegel;
 
-import java.lang.foreign.MemorySegment;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -16,11 +15,11 @@ import java.util.function.Consumer;
  */
 final class FakeLibhegel implements Libhegel {
     // Opaque handle sentinels (non-null addresses).
-    static final MemorySegment SETTINGS = MemorySegment.ofAddress(0x100);
-    static final MemorySegment RUN = MemorySegment.ofAddress(0x200);
-    static final MemorySegment TC = MemorySegment.ofAddress(0x300);
-    static final MemorySegment RESULT = MemorySegment.ofAddress(0x400);
-    static final MemorySegment STRING_GEN = MemorySegment.ofAddress(0x600);
+    static final long SETTINGS = 0x100;
+    static final long RUN = 0x200;
+    static final long TC = 0x300;
+    static final long RESULT = 0x400;
+    static final long STRING_GEN = 0x600;
 
     String lastError = "fake error";
     String version = "0.0.0-fake";
@@ -126,66 +125,66 @@ final class FakeLibhegel implements Libhegel {
     private int ruleIndex;
 
     @Override
-    public MemorySegment settingsNew() {
+    public long settingsNew() {
         return SETTINGS;
     }
 
     @Override
-    public void settingsFree(MemorySegment s) {
+    public void settingsFree(long s) {
         settingsFreed = true;
     }
 
     @Override
-    public void settingsMode(MemorySegment s, int mode) {
+    public void settingsMode(long s, int mode) {
         modeCode = mode;
     }
 
     @Override
-    public void settingsBackend(MemorySegment s, int backend) {
+    public void settingsBackend(long s, int backend) {
         backendCode = backend;
     }
 
     @Override
-    public void settingsTestCases(MemorySegment s, long n) {
+    public void settingsTestCases(long s, long n) {
         testCases = n;
     }
 
     @Override
-    public void settingsVerbosity(MemorySegment s, int v) {}
+    public void settingsVerbosity(long s, int v) {}
 
     @Override
-    public void settingsSeed(MemorySegment s, long seed, boolean hasSeed) {}
+    public void settingsSeed(long s, long seed, boolean hasSeed) {}
 
     @Override
-    public void settingsDerandomize(MemorySegment s, boolean derandomize) {
+    public void settingsDerandomize(long s, boolean derandomize) {
         this.derandomize = derandomize;
     }
 
     @Override
-    public void settingsReportMultipleFailures(MemorySegment s, boolean yes) {}
+    public void settingsReportMultipleFailures(long s, boolean yes) {}
 
     @Override
-    public void settingsDatabase(MemorySegment s, String path) {
+    public void settingsDatabase(long s, String path) {
         databasePath = path;
     }
 
     @Override
-    public void settingsDatabaseKey(MemorySegment s, String key) {
+    public void settingsDatabaseKey(long s, String key) {
         databaseKey = key;
     }
 
     @Override
-    public void settingsPhases(MemorySegment s, int mask) {
+    public void settingsPhases(long s, int mask) {
         phasesMask = mask;
     }
 
     @Override
-    public void settingsSuppressHealthCheck(MemorySegment s, int mask) {
+    public void settingsSuppressHealthCheck(long s, int mask) {
         suppressMask = mask;
     }
 
     @Override
-    public MemorySegment runStart(MemorySegment settings, Consumer<String> output) {
+    public long runStart(long settings, Consumer<String> output) {
         if (runStartFails) {
             throw new HegelException("hegel_run_start failed: " + lastError);
         }
@@ -194,34 +193,34 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public MemorySegment nextTestCase(MemorySegment run) {
+    public long nextTestCase(long run) {
         if (nextTestCaseFails) {
             throw new HegelException("hegel_next_test_case failed: " + lastError);
         }
         if (casesServed >= caseCount) {
-            return MemorySegment.NULL;
+            return 0;
         }
         casesServed++;
         return TC;
     }
 
     @Override
-    public MemorySegment runResult(MemorySegment run) {
+    public long runResult(long run) {
         return RESULT;
     }
 
     @Override
-    public void runResultFree(MemorySegment result) {
+    public void runResultFree(long result) {
         runResultFreed = true;
     }
 
     @Override
-    public void runFree(MemorySegment run) {
+    public void runFree(long run) {
         runFreed = true;
     }
 
     @Override
-    public int testCaseFromBlob(MemorySegment settings, String blob, Consumer<String> output, MemorySegment[] out) {
+    public int testCaseFromBlob(long settings, String blob, Consumer<String> output, long[] out) {
         if (fromBlobRc == Abi.OK) {
             replayedBlobs.add(blob);
             out[0] = TC;
@@ -230,12 +229,12 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public void testCaseFree(MemorySegment tc) {
+    public void testCaseFree(long tc) {
         freedTestCases++;
     }
 
     @Override
-    public int generateBoolean(MemorySegment tc, double p, boolean[] out) {
+    public int generateBoolean(long tc, double p, boolean[] out) {
         if (generateBooleanRc == Abi.OK) {
             out[0] = booleanValue;
         }
@@ -243,7 +242,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateInteger(MemorySegment tc, long min, long max, long[] out) {
+    public int generateInteger(long tc, long min, long max, long[] out) {
         if (generateIntegerRc == Abi.OK) {
             integerMin = min;
             integerMax = max;
@@ -254,7 +253,7 @@ final class FakeLibhegel implements Libhegel {
 
     @Override
     public int generateFloat(
-            MemorySegment tc,
+            long tc,
             int width,
             double min,
             double max,
@@ -271,7 +270,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateBytes(MemorySegment tc, long minSize, long maxSize, byte[][] out) {
+    public int generateBytes(long tc, long minSize, long maxSize, byte[][] out) {
         if (generateBytesRc == Abi.OK) {
             bytesMinSize = minSize;
             bytesMaxSize = maxSize;
@@ -281,7 +280,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateString(MemorySegment tc, MemorySegment generator, String[] out) {
+    public int generateString(long tc, long generator, String[] out) {
         if (generateStringRc == Abi.OK) {
             out[0] = stringValue;
         }
@@ -289,7 +288,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateDate(MemorySegment tc, LocalDate min, LocalDate max, LocalDate[] out) {
+    public int generateDate(long tc, LocalDate min, LocalDate max, LocalDate[] out) {
         if (generateDateRc == Abi.OK) {
             out[0] = min;
         }
@@ -297,7 +296,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateTime(MemorySegment tc, LocalTime min, LocalTime max, LocalTime[] out) {
+    public int generateTime(long tc, LocalTime min, LocalTime max, LocalTime[] out) {
         if (generateTimeRc == Abi.OK) {
             out[0] = min;
         }
@@ -305,7 +304,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateDatetime(MemorySegment tc, LocalDateTime min, LocalDateTime max, LocalDateTime[] out) {
+    public int generateDatetime(long tc, LocalDateTime min, LocalDateTime max, LocalDateTime[] out) {
         if (generateDatetimeRc == Abi.OK) {
             out[0] = min;
         }
@@ -313,7 +312,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateUuid(MemorySegment tc, int version, boolean hasVersion, byte[] out16) {
+    public int generateUuid(long tc, int version, boolean hasVersion, byte[] out16) {
         if (generateUuidRc == Abi.OK) {
             System.arraycopy(uuidBytes, 0, out16, 0, 16);
         }
@@ -321,7 +320,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateIpv4(MemorySegment tc, byte[] out4) {
+    public int generateIpv4(long tc, byte[] out4) {
         if (generateIpv4Rc == Abi.OK) {
             System.arraycopy(ipv4Bytes, 0, out4, 0, 4);
         }
@@ -329,7 +328,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateIpv6(MemorySegment tc, byte[] out16) {
+    public int generateIpv6(long tc, byte[] out16) {
         if (generateIpv6Rc == Abi.OK) {
             System.arraycopy(ipv6Bytes, 0, out16, 0, 16);
         }
@@ -347,7 +346,7 @@ final class FakeLibhegel implements Libhegel {
             List<String> excludeCategories,
             String includeCharacters,
             String excludeCharacters,
-            MemorySegment[] out) {
+            long[] out) {
         if (stringGeneratorTextRc == Abi.OK) {
             textMinSize = minSize;
             textMaxSize = maxSize;
@@ -363,7 +362,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int stringGeneratorRegex(String pattern, boolean fullmatch, MemorySegment alphabet, MemorySegment[] out) {
+    public int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out) {
         if (stringGeneratorRegexRc == Abi.OK) {
             out[0] = STRING_GEN;
         }
@@ -371,7 +370,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int stringGeneratorEmail(MemorySegment[] out) {
+    public int stringGeneratorEmail(long[] out) {
         if (stringGeneratorEmailRc == Abi.OK) {
             out[0] = STRING_GEN;
         }
@@ -379,7 +378,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int stringGeneratorUrl(MemorySegment[] out) {
+    public int stringGeneratorUrl(long[] out) {
         if (stringGeneratorUrlRc == Abi.OK) {
             out[0] = STRING_GEN;
         }
@@ -387,7 +386,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int stringGeneratorDomain(long maxLength, MemorySegment[] out) {
+    public int stringGeneratorDomain(long maxLength, long[] out) {
         if (stringGeneratorDomainRc == Abi.OK) {
             domainMaxLength = maxLength;
             out[0] = STRING_GEN;
@@ -396,12 +395,12 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public void stringGeneratorFree(MemorySegment generator) {
+    public void stringGeneratorFree(long generator) {
         freedStringGenerators++;
     }
 
     @Override
-    public int startSpan(MemorySegment tc, long label) {
+    public int startSpan(long tc, long label) {
         if (startSpanRc == Abi.OK) {
             startedSpans.add(label);
         }
@@ -409,12 +408,12 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int stopSpan(MemorySegment tc, boolean discard) {
+    public int stopSpan(long tc, boolean discard) {
         return stopSpanRc;
     }
 
     @Override
-    public int newCollection(MemorySegment tc, long minSize, long maxSize, long[] outId) {
+    public int newCollection(long tc, long minSize, long maxSize, long[] outId) {
         if (newCollectionRc == Abi.OK) {
             collectionMinSize = minSize;
             collectionMaxSize = maxSize;
@@ -424,7 +423,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int collectionMore(MemorySegment tc, long id, boolean[] outMore) {
+    public int collectionMore(long tc, long id, boolean[] outMore) {
         if (collectionMoreRc == Abi.OK) {
             outMore[0] = moreIndex < moreSequence.length && moreSequence[moreIndex++];
         }
@@ -432,12 +431,12 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int collectionReject(MemorySegment tc, long id, String why) {
+    public int collectionReject(long tc, long id, String why) {
         return collectionRejectRc;
     }
 
     @Override
-    public int newPool(MemorySegment tc, long[] outId) {
+    public int newPool(long tc, long[] outId) {
         if (newPoolRc == Abi.OK) {
             outId[0] = poolId;
         }
@@ -445,7 +444,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int poolAdd(MemorySegment tc, long poolId, long[] outVariableId) {
+    public int poolAdd(long tc, long poolId, long[] outVariableId) {
         if (poolAddRc == Abi.OK) {
             outVariableId[0] = nextVariableId++;
         }
@@ -453,7 +452,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int poolGenerate(MemorySegment tc, long poolId, boolean consume, long[] outVariableId) {
+    public int poolGenerate(long tc, long poolId, boolean consume, long[] outVariableId) {
         if (poolGenerateRc == Abi.OK) {
             outVariableId[0] = poolGenerateValue == null ? 0 : poolGenerateValue;
         }
@@ -461,7 +460,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int newStateMachine(MemorySegment tc, List<String> ruleNames, List<String> invariantNames, long[] outId) {
+    public int newStateMachine(long tc, List<String> ruleNames, List<String> invariantNames, long[] outId) {
         if (newStateMachineRc == Abi.OK) {
             stateMachineRules = ruleNames;
             stateMachineInvariants = invariantNames;
@@ -471,7 +470,7 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int stateMachineNextRule(MemorySegment tc, long stateMachineId, long[] outRuleIndex) {
+    public int stateMachineNextRule(long tc, long stateMachineId, long[] outRuleIndex) {
         if (stateMachineNextRuleRc == Abi.OK) {
             outRuleIndex[0] = ruleIndex < ruleSequence.length ? ruleSequence[ruleIndex++] : Abi.STATE_MACHINE_DONE;
         }
@@ -479,34 +478,34 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int target(MemorySegment tc, double value, String label) {
+    public int target(long tc, double value, String label) {
         return targetRc;
     }
 
     @Override
-    public int markComplete(MemorySegment tc, int status, String origin) {
+    public int markComplete(long tc, int status, String origin) {
         markedStatuses.add(status);
         markedOrigins.add(origin);
         return markCompleteRc;
     }
 
     @Override
-    public int runResultStatus(MemorySegment result) {
+    public int runResultStatus(long result) {
         return runStatus;
     }
 
     @Override
-    public String runResultError(MemorySegment result) {
+    public String runResultError(long result) {
         return runError;
     }
 
     @Override
-    public long runResultFailureCount(MemorySegment result) {
+    public long runResultFailureCount(long result) {
         return failureBlobs.size();
     }
 
     @Override
-    public String failureBlob(MemorySegment result, long index) {
+    public String failureBlob(long result, long index) {
         return failureBlobs.get((int) index);
     }
 

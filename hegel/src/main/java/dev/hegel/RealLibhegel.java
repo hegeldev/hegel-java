@@ -429,6 +429,10 @@ final class RealLibhegel implements Libhegel {
         return context.get();
     }
 
+    private static MemorySegment segment(long handle) {
+        return MemorySegment.ofAddress(handle);
+    }
+
     private int rc(MethodHandle handle, Object... args) {
         Object[] withCtx = new Object[args.length + 1];
         withCtx[0] = ctx();
@@ -474,143 +478,143 @@ final class RealLibhegel implements Libhegel {
     // --- settings ---
 
     @Override
-    public MemorySegment settingsNew() {
+    public long settingsNew() {
         MemorySegment out = Arena.ofAuto().allocate(ADDRESS);
         check("hegel_settings_new", rc(settingsNew, out));
-        return out.get(ADDRESS, 0);
+        return out.get(ADDRESS, 0).address();
     }
 
     @Override
-    public void settingsFree(MemorySegment s) {
-        check("hegel_settings_free", rc(settingsFree, s));
+    public void settingsFree(long s) {
+        check("hegel_settings_free", rc(settingsFree, segment(s)));
     }
 
     @Override
-    public void settingsMode(MemorySegment s, int mode) {
-        check("hegel_settings_set_mode", rc(settingsSetMode, s, mode));
+    public void settingsMode(long s, int mode) {
+        check("hegel_settings_set_mode", rc(settingsSetMode, segment(s), mode));
     }
 
     @Override
-    public void settingsBackend(MemorySegment s, int backend) {
-        check("hegel_settings_set_backend", rc(settingsSetBackend, s, backend));
+    public void settingsBackend(long s, int backend) {
+        check("hegel_settings_set_backend", rc(settingsSetBackend, segment(s), backend));
     }
 
     @Override
-    public void settingsTestCases(MemorySegment s, long n) {
-        check("hegel_settings_set_test_cases", rc(settingsSetTestCases, s, n));
+    public void settingsTestCases(long s, long n) {
+        check("hegel_settings_set_test_cases", rc(settingsSetTestCases, segment(s), n));
     }
 
     @Override
-    public void settingsVerbosity(MemorySegment s, int v) {
-        check("hegel_settings_set_verbosity", rc(settingsSetVerbosity, s, v));
+    public void settingsVerbosity(long s, int v) {
+        check("hegel_settings_set_verbosity", rc(settingsSetVerbosity, segment(s), v));
     }
 
     @Override
-    public void settingsSeed(MemorySegment s, long seed, boolean hasSeed) {
-        check("hegel_settings_set_seed", rc(settingsSetSeed, s, seed, hasSeed));
+    public void settingsSeed(long s, long seed, boolean hasSeed) {
+        check("hegel_settings_set_seed", rc(settingsSetSeed, segment(s), seed, hasSeed));
     }
 
     @Override
-    public void settingsDerandomize(MemorySegment s, boolean derandomize) {
-        check("hegel_settings_set_derandomize", rc(settingsSetDerandomize, s, derandomize));
+    public void settingsDerandomize(long s, boolean derandomize) {
+        check("hegel_settings_set_derandomize", rc(settingsSetDerandomize, segment(s), derandomize));
     }
 
     @Override
-    public void settingsReportMultipleFailures(MemorySegment s, boolean yes) {
-        check("hegel_settings_set_report_multiple_failures", rc(settingsSetReportMultipleFailures, s, yes));
+    public void settingsReportMultipleFailures(long s, boolean yes) {
+        check("hegel_settings_set_report_multiple_failures", rc(settingsSetReportMultipleFailures, segment(s), yes));
     }
 
     @Override
-    public void settingsDatabase(MemorySegment s, String path) {
+    public void settingsDatabase(long s, String path) {
         // libhegel copies the string during the call, so a per-call auto arena suffices.
-        check("hegel_settings_set_database", rc(settingsSetDatabase, s, cstr(Arena.ofAuto(), path)));
+        check("hegel_settings_set_database", rc(settingsSetDatabase, segment(s), cstr(Arena.ofAuto(), path)));
     }
 
     @Override
-    public void settingsDatabaseKey(MemorySegment s, String key) {
-        check("hegel_settings_set_database_key", rc(settingsSetDatabaseKey, s, cstr(Arena.ofAuto(), key)));
+    public void settingsDatabaseKey(long s, String key) {
+        check("hegel_settings_set_database_key", rc(settingsSetDatabaseKey, segment(s), cstr(Arena.ofAuto(), key)));
     }
 
     @Override
-    public void settingsPhases(MemorySegment s, int mask) {
-        check("hegel_settings_set_phases", rc(settingsSetPhases, s, mask));
+    public void settingsPhases(long s, int mask) {
+        check("hegel_settings_set_phases", rc(settingsSetPhases, segment(s), mask));
     }
 
     @Override
-    public void settingsSuppressHealthCheck(MemorySegment s, int mask) {
-        check("hegel_settings_set_suppress_health_check", rc(settingsSetSuppressHealthCheck, s, mask));
+    public void settingsSuppressHealthCheck(long s, int mask) {
+        check("hegel_settings_set_suppress_health_check", rc(settingsSetSuppressHealthCheck, segment(s), mask));
     }
 
     // --- run lifecycle ---
 
     @Override
-    public MemorySegment runStart(MemorySegment settings, Consumer<String> output) {
+    public long runStart(long settings, Consumer<String> output) {
         Arena arena = Arena.ofConfined();
         MemorySegment callback = output == null ? MemorySegment.NULL : upcallStub(arena, output);
         MemorySegment out = arena.allocate(ADDRESS);
-        int code = rc(runStart, settings, callback, MemorySegment.NULL, out);
+        int code = rc(runStart, segment(settings), callback, MemorySegment.NULL, out);
         if (code != Abi.OK) {
             arena.close();
             throw new HegelException(
                     "hegel_run_start failed (rc=" + code + "): " + java.util.Objects.toString(lastErrorMessage(), ""));
         }
-        MemorySegment run = out.get(ADDRESS, 0);
-        runArenas.put(run.address(), arena);
+        long run = out.get(ADDRESS, 0).address();
+        runArenas.put(run, arena);
         return run;
     }
 
     @Override
-    public MemorySegment nextTestCase(MemorySegment run) {
+    public long nextTestCase(long run) {
         MemorySegment out = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_next_test_case", rc(nextTestCase, run, out));
-        return out.get(ADDRESS, 0);
+        check("hegel_next_test_case", rc(nextTestCase, segment(run), out));
+        return out.get(ADDRESS, 0).address();
     }
 
     @Override
-    public MemorySegment runResult(MemorySegment run) {
+    public long runResult(long run) {
         MemorySegment out = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_run_result", rc(runResult, run, out));
-        return out.get(ADDRESS, 0);
+        check("hegel_run_result", rc(runResult, segment(run), out));
+        return out.get(ADDRESS, 0).address();
     }
 
     @Override
-    public void runResultFree(MemorySegment result) {
-        check("hegel_run_result_free", rc(runResultFree, result));
+    public void runResultFree(long result) {
+        check("hegel_run_result_free", rc(runResultFree, segment(result)));
     }
 
     @Override
-    public void runFree(MemorySegment run) {
-        check("hegel_run_free", rc(runFree, run));
-        Arena arena = runArenas.remove(run.address());
+    public void runFree(long run) {
+        check("hegel_run_free", rc(runFree, segment(run)));
+        Arena arena = runArenas.remove(run);
         arena.close();
     }
 
     @Override
-    public int testCaseFromBlob(MemorySegment settings, String blob, Consumer<String> output, MemorySegment[] out) {
+    public int testCaseFromBlob(long settings, String blob, Consumer<String> output, long[] out) {
         // The blob replay's output is emitted synchronously during this call, so the stub only
         // needs to live for its duration.
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment callback = output == null ? MemorySegment.NULL : upcallStub(arena, output);
             MemorySegment outSeg = arena.allocate(ADDRESS);
-            int code = rc(testCaseFromBlob, settings, cstr(arena, blob), callback, MemorySegment.NULL, outSeg);
+            int code = rc(testCaseFromBlob, segment(settings), cstr(arena, blob), callback, MemorySegment.NULL, outSeg);
             if (code == Abi.OK) {
-                out[0] = outSeg.get(ADDRESS, 0);
+                out[0] = outSeg.get(ADDRESS, 0).address();
             }
             return code;
         }
     }
 
     @Override
-    public void testCaseFree(MemorySegment tc) {
-        check("hegel_test_case_free", rc(testCaseFree, tc));
+    public void testCaseFree(long tc) {
+        check("hegel_test_case_free", rc(testCaseFree, segment(tc)));
     }
 
     // --- draws ---
 
     @Override
-    public int generateBoolean(MemorySegment tc, double p, boolean[] out) {
+    public int generateBoolean(long tc, double p, boolean[] out) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_BOOLEAN);
-        int code = rc(generateBoolean, tc, p, false, false, seg);
+        int code = rc(generateBoolean, segment(tc), p, false, false, seg);
         if (code == Abi.OK) {
             out[0] = seg.get(JAVA_BOOLEAN, 0);
         }
@@ -618,9 +622,9 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateInteger(MemorySegment tc, long min, long max, long[] out) {
+    public int generateInteger(long tc, long min, long max, long[] out) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        int code = rc(generateInteger, tc, min, max, seg);
+        int code = rc(generateInteger, segment(tc), min, max, seg);
         if (code == Abi.OK) {
             out[0] = seg.get(JAVA_LONG, 0);
         }
@@ -629,7 +633,7 @@ final class RealLibhegel implements Libhegel {
 
     @Override
     public int generateFloat(
-            MemorySegment tc,
+            long tc,
             int width,
             double min,
             double max,
@@ -642,7 +646,7 @@ final class RealLibhegel implements Libhegel {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_DOUBLE);
         int code = rc(
                 generateFloat,
-                tc,
+                segment(tc),
                 width,
                 min,
                 max,
@@ -659,10 +663,10 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateBytes(MemorySegment tc, long minSize, long maxSize, byte[][] out) {
+    public int generateBytes(long tc, long minSize, long maxSize, byte[][] out) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment result = arena.allocate(BUFFER_RESULT_LAYOUT);
-            int code = rc(generateBytes, tc, minSize, maxSize, result);
+            int code = rc(generateBytes, segment(tc), minSize, maxSize, result);
             if (code == Abi.OK) {
                 out[0] = copyBuffer(result);
                 check("hegel_generate_bytes_result_free", rc(generateBytesResultFree, result));
@@ -672,10 +676,10 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateString(MemorySegment tc, MemorySegment generator, String[] out) {
+    public int generateString(long tc, long generator, String[] out) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment result = arena.allocate(BUFFER_RESULT_LAYOUT);
-            int code = rc(generateString, tc, generator, result);
+            int code = rc(generateString, segment(tc), segment(generator), result);
             if (code == Abi.OK) {
                 out[0] = new String(copyBuffer(result), StandardCharsets.UTF_8);
                 check("hegel_generate_string_result_free", rc(generateStringResultFree, result));
@@ -692,10 +696,10 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateDate(MemorySegment tc, LocalDate min, LocalDate max, LocalDate[] out) {
+    public int generateDate(long tc, LocalDate min, LocalDate max, LocalDate[] out) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSeg = arena.allocate(DATE_LAYOUT);
-            int code = rc(generateDate, tc, dateSegment(arena, min), dateSegment(arena, max), outSeg);
+            int code = rc(generateDate, segment(tc), dateSegment(arena, min), dateSegment(arena, max), outSeg);
             if (code == Abi.OK) {
                 out[0] = readDate(outSeg, 0);
             }
@@ -704,10 +708,10 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateTime(MemorySegment tc, LocalTime min, LocalTime max, LocalTime[] out) {
+    public int generateTime(long tc, LocalTime min, LocalTime max, LocalTime[] out) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSeg = arena.allocate(TIME_LAYOUT);
-            int code = rc(generateTime, tc, timeSegment(arena, min), timeSegment(arena, max), outSeg);
+            int code = rc(generateTime, segment(tc), timeSegment(arena, min), timeSegment(arena, max), outSeg);
             if (code == Abi.OK) {
                 out[0] = readTime(outSeg, 0);
             }
@@ -716,10 +720,11 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateDatetime(MemorySegment tc, LocalDateTime min, LocalDateTime max, LocalDateTime[] out) {
+    public int generateDatetime(long tc, LocalDateTime min, LocalDateTime max, LocalDateTime[] out) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSeg = arena.allocate(DATETIME_LAYOUT);
-            int code = rc(generateDatetime, tc, datetimeSegment(arena, min), datetimeSegment(arena, max), outSeg);
+            int code =
+                    rc(generateDatetime, segment(tc), datetimeSegment(arena, min), datetimeSegment(arena, max), outSeg);
             if (code == Abi.OK) {
                 out[0] = LocalDateTime.of(readDate(outSeg, 0), readTime(outSeg, DATE_LAYOUT.byteSize()));
             }
@@ -772,18 +777,18 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int generateUuid(MemorySegment tc, int version, boolean hasVersion, byte[] out16) {
-        return fixedBytesDraw(seg -> rc(generateUuid, tc, (byte) version, hasVersion, seg), out16);
+    public int generateUuid(long tc, int version, boolean hasVersion, byte[] out16) {
+        return fixedBytesDraw(seg -> rc(generateUuid, segment(tc), (byte) version, hasVersion, seg), out16);
     }
 
     @Override
-    public int generateIpv4(MemorySegment tc, byte[] out4) {
-        return fixedBytesDraw(seg -> rc(generateIpv4, tc, seg), out4);
+    public int generateIpv4(long tc, byte[] out4) {
+        return fixedBytesDraw(seg -> rc(generateIpv4, segment(tc), seg), out4);
     }
 
     @Override
-    public int generateIpv6(MemorySegment tc, byte[] out16) {
-        return fixedBytesDraw(seg -> rc(generateIpv6, tc, seg), out16);
+    public int generateIpv6(long tc, byte[] out16) {
+        return fixedBytesDraw(seg -> rc(generateIpv6, segment(tc), seg), out16);
     }
 
     @FunctionalInterface
@@ -816,7 +821,7 @@ final class RealLibhegel implements Libhegel {
             List<String> excludeCategories,
             String includeCharacters,
             String excludeCharacters,
-            MemorySegment[] out) {
+            long[] out) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment categoriesSeg = cstrArray(arena, categories);
             MemorySegment excludeSeg = cstrArray(arena, excludeCategories);
@@ -841,7 +846,7 @@ final class RealLibhegel implements Libhegel {
                     outSeg);
             // Read the (zero-initialised) out slot unconditionally: callers check the return code
             // before using it.
-            out[0] = outSeg.get(ADDRESS, 0);
+            out[0] = outSeg.get(ADDRESS, 0).address();
             return code;
         }
     }
@@ -872,75 +877,70 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int stringGeneratorRegex(String pattern, boolean fullmatch, MemorySegment alphabet, MemorySegment[] out) {
+    public int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment outSeg = arena.allocate(ADDRESS);
-            int code = rc(
-                    stringGeneratorRegex,
-                    cstr(arena, pattern),
-                    fullmatch,
-                    alphabet == null ? MemorySegment.NULL : alphabet,
-                    outSeg);
-            out[0] = outSeg.get(ADDRESS, 0);
+            int code = rc(stringGeneratorRegex, cstr(arena, pattern), fullmatch, segment(alphabet), outSeg);
+            out[0] = outSeg.get(ADDRESS, 0).address();
             return code;
         }
     }
 
     @Override
-    public int stringGeneratorEmail(MemorySegment[] out) {
+    public int stringGeneratorEmail(long[] out) {
         return handleConstructor(stringGeneratorEmail, out);
     }
 
     @Override
-    public int stringGeneratorUrl(MemorySegment[] out) {
+    public int stringGeneratorUrl(long[] out) {
         return handleConstructor(stringGeneratorUrl, out);
     }
 
     /** Run a no-argument string-generator constructor. */
-    private int handleConstructor(MethodHandle constructor, MemorySegment[] out) {
+    private int handleConstructor(MethodHandle constructor, long[] out) {
         MemorySegment outSeg = Arena.ofAuto().allocate(ADDRESS);
         int code = rc(constructor, outSeg);
-        out[0] = outSeg.get(ADDRESS, 0);
+        out[0] = outSeg.get(ADDRESS, 0).address();
         return code;
     }
 
     @Override
-    public int stringGeneratorDomain(long maxLength, MemorySegment[] out) {
+    public int stringGeneratorDomain(long maxLength, long[] out) {
         MemorySegment outSeg = Arena.ofAuto().allocate(ADDRESS);
         int code = rc(stringGeneratorDomain, maxLength, outSeg);
-        out[0] = outSeg.get(ADDRESS, 0);
+        out[0] = outSeg.get(ADDRESS, 0).address();
         return code;
     }
 
     @Override
-    public void stringGeneratorFree(MemorySegment generator) {
-        check("hegel_string_generator_free", rc(stringGeneratorFree, generator));
+    public void stringGeneratorFree(long generator) {
+        check("hegel_string_generator_free", rc(stringGeneratorFree, segment(generator)));
     }
 
     // --- structure ---
 
     @Override
-    public int startSpan(MemorySegment tc, long label) {
-        return rc(startSpan, tc, label);
+    public int startSpan(long tc, long label) {
+        return rc(startSpan, segment(tc), label);
     }
 
     @Override
-    public int stopSpan(MemorySegment tc, boolean discard) {
-        return rc(stopSpan, tc, discard);
+    public int stopSpan(long tc, boolean discard) {
+        return rc(stopSpan, segment(tc), discard);
     }
 
     @Override
-    public int newCollection(MemorySegment tc, long minSize, long maxSize, long[] outId) {
+    public int newCollection(long tc, long minSize, long maxSize, long[] outId) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        int code = rc(newCollection, tc, minSize, maxSize, seg);
+        int code = rc(newCollection, segment(tc), minSize, maxSize, seg);
         outId[0] = seg.get(JAVA_LONG, 0);
         return code;
     }
 
     @Override
-    public int collectionMore(MemorySegment tc, long id, boolean[] outMore) {
+    public int collectionMore(long tc, long id, boolean[] outMore) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_BOOLEAN);
-        int code = rc(collectionMore, tc, id, seg);
+        int code = rc(collectionMore, segment(tc), id, seg);
         if (code == Abi.OK) {
             outMore[0] = seg.get(JAVA_BOOLEAN, 0);
         }
@@ -948,51 +948,57 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int collectionReject(MemorySegment tc, long id, String why) {
-        return rc(collectionReject, tc, id, cstr(Arena.ofAuto(), why));
+    public int collectionReject(long tc, long id, String why) {
+        return rc(collectionReject, segment(tc), id, cstr(Arena.ofAuto(), why));
     }
 
     @Override
-    public int newPool(MemorySegment tc, long[] outId) {
+    public int newPool(long tc, long[] outId) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        int code = rc(newPool, tc, seg);
+        int code = rc(newPool, segment(tc), seg);
         outId[0] = seg.get(JAVA_LONG, 0);
         return code;
     }
 
     @Override
-    public int poolAdd(MemorySegment tc, long poolId, long[] outVariableId) {
+    public int poolAdd(long tc, long poolId, long[] outVariableId) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        int code = rc(poolAdd, tc, poolId, seg);
+        int code = rc(poolAdd, segment(tc), poolId, seg);
         outVariableId[0] = seg.get(JAVA_LONG, 0);
         return code;
     }
 
     @Override
-    public int poolGenerate(MemorySegment tc, long poolId, boolean consume, long[] outVariableId) {
+    public int poolGenerate(long tc, long poolId, boolean consume, long[] outVariableId) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        int code = rc(poolGenerate, tc, poolId, consume, seg);
+        int code = rc(poolGenerate, segment(tc), poolId, consume, seg);
         outVariableId[0] = seg.get(JAVA_LONG, 0);
         return code;
     }
 
     @Override
-    public int newStateMachine(MemorySegment tc, List<String> ruleNames, List<String> invariantNames, long[] outId) {
+    public int newStateMachine(long tc, List<String> ruleNames, List<String> invariantNames, long[] outId) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rules = cstrArray(arena, ruleNames);
             MemorySegment invariants = cstrArray(arena, invariantNames);
             MemorySegment seg = arena.allocate(JAVA_LONG);
             int code = rc(
-                    newStateMachine, tc, rules, (long) ruleNames.size(), invariants, (long) invariantNames.size(), seg);
+                    newStateMachine,
+                    segment(tc),
+                    rules,
+                    (long) ruleNames.size(),
+                    invariants,
+                    (long) invariantNames.size(),
+                    seg);
             outId[0] = seg.get(JAVA_LONG, 0);
             return code;
         }
     }
 
     @Override
-    public int stateMachineNextRule(MemorySegment tc, long stateMachineId, long[] outRuleIndex) {
+    public int stateMachineNextRule(long tc, long stateMachineId, long[] outRuleIndex) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        int code = rc(stateMachineNextRule, tc, stateMachineId, seg);
+        int code = rc(stateMachineNextRule, segment(tc), stateMachineId, seg);
         if (code == Abi.OK) {
             outRuleIndex[0] = seg.get(JAVA_LONG, 0);
         }
@@ -1000,42 +1006,42 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int target(MemorySegment tc, double value, String label) {
-        return rc(target, tc, value, cstr(Arena.ofAuto(), label));
+    public int target(long tc, double value, String label) {
+        return rc(target, segment(tc), value, cstr(Arena.ofAuto(), label));
     }
 
     @Override
-    public int markComplete(MemorySegment tc, int status, String origin) {
-        return rc(markComplete, tc, status, cstr(Arena.ofAuto(), origin));
+    public int markComplete(long tc, int status, String origin) {
+        return rc(markComplete, segment(tc), status, cstr(Arena.ofAuto(), origin));
     }
 
     // --- results ---
 
     @Override
-    public int runResultStatus(MemorySegment result) {
+    public int runResultStatus(long result) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_INT);
-        check("hegel_run_result_status", rc(runResultStatus, result, seg));
+        check("hegel_run_result_status", rc(runResultStatus, segment(result), seg));
         return seg.get(JAVA_INT, 0);
     }
 
     @Override
-    public String runResultError(MemorySegment result) {
+    public String runResultError(long result) {
         MemorySegment seg = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_run_result_error", rc(runResultError, result, seg));
+        check("hegel_run_result_error", rc(runResultError, segment(result), seg));
         return readCString(seg.get(ADDRESS, 0));
     }
 
     @Override
-    public long runResultFailureCount(MemorySegment result) {
+    public long runResultFailureCount(long result) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        check("hegel_run_result_failure_count", rc(runResultFailureCount, result, seg));
+        check("hegel_run_result_failure_count", rc(runResultFailureCount, segment(result), seg));
         return seg.get(JAVA_LONG, 0);
     }
 
     @Override
-    public String failureBlob(MemorySegment result, long index) {
+    public String failureBlob(long result, long index) {
         MemorySegment failureOut = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_run_result_failure", rc(runResultFailure, result, index, failureOut));
+        check("hegel_run_result_failure", rc(runResultFailure, segment(result), index, failureOut));
         MemorySegment failure = failureOut.get(ADDRESS, 0);
         MemorySegment blobOut = Arena.ofAuto().allocate(ADDRESS);
         check("hegel_failure_reproduction_blob", rc(failureReproductionBlob, failure, blobOut));

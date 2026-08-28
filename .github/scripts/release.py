@@ -27,6 +27,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 POM = ROOT / "pom.xml"
+MODULE_POMS = [ROOT / "hegel" / "pom.xml", ROOT / "hegel-jna" / "pom.xml"]
+PUBLISHED_ARTIFACTS = ["hegel", "hegel-jna"]
 
 # Printed by central-publishing-maven-plugin once the bundle is on the portal. From that point
 # the deployment validates and publishes server-side (autoPublish) no matter how the mvn
@@ -45,10 +47,13 @@ def git(*args: str) -> None:
 
 
 def is_source_file(path: str) -> bool:
-    # A PR that changes published source (src/main/**) or the pom must carry a RELEASE.md;
-    # test-only and tooling changes don't. Mirrors the per-library source definition the other
-    # Hegel libraries use (which likewise exclude their test trees).
-    return path.startswith("src/main/") or path == "pom.xml"
+    # A PR that changes published source (any module's src/main/**) or a build pom must carry a
+    # RELEASE.md; test-only and tooling changes don't. Mirrors the per-library source definition
+    # the other Hegel libraries use (which likewise exclude their test trees).
+    return (
+        path.startswith(("shared/src/main/", "hegel/src/main/", "hegel-jna/src/main/"))
+        or path in ("pom.xml", "hegel/pom.xml", "hegel-jna/pom.xml")
+    )
 
 
 def parse_release_file(path: Path) -> tuple[str, str]:
@@ -81,9 +86,9 @@ def bump_version(current: str, release_type: str) -> str:
 
 
 def pom_version() -> str:
-    """The last released version, read from the pom's project <version> (the first <version>
-    element; modelVersion uses a different tag). Seeded at ``0.0.0`` before the first release, so
-    the bootstrap ``RELEASE_TYPE: minor`` lands at ``0.1.0``."""
+    """The last released version, read from the parent pom's project <version> (the first
+    <version> element; modelVersion uses a different tag). Seeded at ``0.0.0`` before the first
+    release, so the bootstrap ``RELEASE_TYPE: minor`` lands at ``0.1.0``."""
     match = re.search(r"<version>([^<]+)</version>", POM.read_text())
     if match is None:
         raise ValueError("could not find <version> in pom.xml")
@@ -91,8 +96,12 @@ def pom_version() -> str:
 
 
 def set_pom_version(new_version: str) -> None:
-    text = POM.read_text()
-    POM.write_text(re.sub(r"<version>[^<]+</version>", f"<version>{new_version}</version>", text, count=1))
+    # The first <version> is the project version in the parent pom and the <parent> reference in
+    # each module pom (modelVersion uses a different tag, and modules declare no version of
+    # their own).
+    for pom in [POM, *MODULE_POMS]:
+        text = pom.read_text()
+        pom.write_text(re.sub(r"<version>[^<]+</version>", f"<version>{new_version}</version>", text, count=1))
 
 
 def add_changelog(path: Path, *, version: str, content: str) -> None:
@@ -123,18 +132,24 @@ def run_deploy(mvn_args: list[str]) -> tuple[int, bool]:
 
 
 def is_published(version: str) -> bool:
-    """Ask the Central Publisher API whether dev.hegel:hegel:{version} is live on Maven Central.
-    Network and server errors count as "not (yet) published", so a transiently failing status
-    endpoint — the very thing being recovered from — just means polling again."""
+    """Ask the Central Publisher API whether every published artifact (dev.hegel:hegel and
+    dev.hegel:hegel-jna) at {version} is live on Maven Central. Network and server errors count
+    as "not (yet) published", so a transiently failing status endpoint — the very thing being
+    recovered from — just means polling again."""
     credentials = f"{os.environ['CENTRAL_TOKEN_USER']}:{os.environ['CENTRAL_TOKEN_PASS']}"
     token = base64.b64encode(credentials.encode()).decode()
-    query = urllib.parse.urlencode({"namespace": "dev.hegel", "name": "hegel", "version": version})
-    request = urllib.request.Request(f"{CENTRAL_PUBLISHED_URL}?{query}", headers={"Authorization": f"Bearer {token}"})
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return bool(json.load(response).get("published"))
-    except (urllib.error.URLError, TimeoutError, ValueError):
-        return False
+    for name in PUBLISHED_ARTIFACTS:
+        query = urllib.parse.urlencode({"namespace": "dev.hegel", "name": name, "version": version})
+        request = urllib.request.Request(
+            f"{CENTRAL_PUBLISHED_URL}?{query}", headers={"Authorization": f"Bearer {token}"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                if not json.load(response).get("published"):
+                    return False
+        except (urllib.error.URLError, TimeoutError, ValueError):
+            return False
+    return True
 
 
 def deploy_and_verify(mvn_args: list[str], version: str) -> None:
@@ -246,7 +261,7 @@ def release() -> None:
     git("config", "user.name", f"{app_slug}[bot]")
     git("config", "user.email", f"{bot_user_id}+{app_slug}[bot]@users.noreply.github.com")
 
-    git("add", "pom.xml", "CHANGELOG.md")
+    git("add", "pom.xml", "hegel/pom.xml", "hegel-jna/pom.xml", "CHANGELOG.md")
     git("rm", "RELEASE.md")
     git("commit", "-m", f"Bump to version {new_version} and update changelog\n\n[skip ci]")
     git("tag", f"v{new_version}")

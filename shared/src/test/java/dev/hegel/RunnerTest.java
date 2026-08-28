@@ -394,9 +394,4 @@ class RunnerTest {
         t.setStackTrace(new StackTraceElement[] {});
         assertEquals(RuntimeException.class.getName(), Runner.originOf(t));
     }
-
-    @Test
-    void isNullHandlesJavaNull() {
-        assertTrue(Runner.isNull(null));
-    }
 }
