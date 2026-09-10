@@ -59,14 +59,4 @@ class OutputTest {
         });
         assertEquals("", out);
     }
-
-    @Test
-    void singleTestCaseModeReportsItsOnlyCase() {
-        // SINGLE_TEST_CASE mode has no replay phase, so its one (passing) case reports directly,
-        // exercising the `single` reporting branch end-to-end.
-        String out = run(
-                new Settings().mode(Mode.SINGLE_TEST_CASE).database(Database.disabled()),
-                tc -> tc.draw(integers().min(5).max(5), "only"));
-        assertTrue(out.contains("only = 5;"), out);
-    }
 }

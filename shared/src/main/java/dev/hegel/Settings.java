@@ -25,7 +25,6 @@ public final class Settings {
     final int suppressMask;
     final Integer phasesMask; // null = leave the engine default (all phases)
     final Verbosity verbosity;
-    final Mode mode;
     final Backend backend;
     // Default false: a single, directly-rethrown failure is far friendlier to debuggers and stack
     // traces than an aggregated report — and that matters more in Java than elsewhere.
@@ -48,7 +47,6 @@ public final class Settings {
         this.suppressMask = b.suppressMask;
         this.phasesMask = b.phasesMask;
         this.verbosity = b.verbosity;
-        this.mode = b.mode;
         this.backend = b.backend;
         this.reportMultipleFailures = b.reportMultipleFailures;
         this.printBlob = b.printBlob;
@@ -67,7 +65,6 @@ public final class Settings {
         b.suppressMask = suppressMask;
         b.phasesMask = phasesMask;
         b.verbosity = verbosity;
-        b.mode = mode;
         b.backend = backend;
         b.reportMultipleFailures = reportMultipleFailures;
         b.printBlob = printBlob;
@@ -87,7 +84,6 @@ public final class Settings {
         int suppressMask = 0;
         Integer phasesMask = null;
         Verbosity verbosity = Verbosity.NORMAL;
-        Mode mode = Mode.TEST_RUN;
         Backend backend = Backend.AUTO;
         boolean reportMultipleFailures = false;
         boolean printBlob = false;
@@ -181,17 +177,6 @@ public final class Settings {
      */
     public Settings verbosity(Verbosity verbosity) {
         return with(b -> b.verbosity = verbosity);
-    }
-
-    /**
-     * Set the execution mode (default {@link Mode#TEST_RUN}). {@link Mode#SINGLE_TEST_CASE} runs
-     * exactly one test case with no shrinking, replay, or database (an exploratory probe).
-     *
-     * @param mode the execution mode
-     * @return a new settings instance
-     */
-    public Settings mode(Mode mode) {
-        return with(b -> b.mode = mode);
     }
 
     /**

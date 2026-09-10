@@ -50,10 +50,6 @@ final class Runner {
             }
             long run = lib.runStart(s, out::println);
             try {
-                if (settings.mode == Mode.SINGLE_TEST_CASE) {
-                    driveSingleCase(lib, run, body, out);
-                    return;
-                }
                 while (true) {
                     long tc = lib.nextTestCase(run);
                     if (isNull(tc)) {
@@ -83,12 +79,18 @@ final class Runner {
                 return;
             case Abi.RUN_STATUS_ERROR:
                 // The run produced no verdict on the property: a failed health check (surfaced as
-                // its own type), nondeterminism, or an engine panic.
+                // its own type), a nondeterminism mismatch, or an engine panic.
                 String message = nullToEmpty(lib.runResultError(result));
                 if (message.startsWith("FailedHealthCheck")) {
                     throw new HealthCheckFailure(message);
                 }
                 throw new HegelException(message);
+            case Abi.RUN_STATUS_FAILED_NONDETERMINISTIC:
+                // Only a state machine created with max_concurrency > 1 declares a run
+                // nondeterministic, and this binding drives every machine sequentially, so the
+                // engine should never report this: its failures carry no reproduce blob to replay.
+                throw new HegelException("internal error: the engine reported a failure on a nondeterministic run,"
+                        + " but this binding never declares a run nondeterministic");
             default:
                 throw replayFailures(lib, s, result, settings, body, out);
         }
@@ -145,22 +147,6 @@ final class Runner {
             aggregate.addSuppressed(failure);
         }
         return aggregate;
-    }
-
-    /**
-     * Drive a {@link Mode#SINGLE_TEST_CASE} run: the engine emits exactly one case and the run's
-     * verdict is that case's outcome. There is no shrinking or replay, so a failure re-raises
-     * straight away.
-     */
-    private static void driveSingleCase(Libhegel lib, long run, Consumer<TestCase> body, PrintStream out) {
-        long tc = lib.nextTestCase(run);
-        if (isNull(tc)) {
-            throw new HegelException("hegel_next_test_case produced no case for a single-test-case run");
-        }
-        Throwable failure = driveOneCase(lib, tc, true, body, out);
-        if (failure != null) {
-            throw asUnchecked(failure);
-        }
     }
 
     /**
@@ -246,7 +232,6 @@ final class Runner {
         }
         lib.settingsDerandomize(s, st.derandomize != null ? st.derandomize : ci);
         lib.settingsReportMultipleFailures(s, st.reportMultipleFailures);
-        lib.settingsMode(s, st.mode.code);
         lib.settingsBackend(s, st.backend.code);
         if (st.suppressMask != 0) {
             lib.settingsSuppressHealthCheck(s, st.suppressMask);

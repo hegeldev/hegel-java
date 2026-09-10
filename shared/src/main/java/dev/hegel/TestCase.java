@@ -266,12 +266,33 @@ public final class TestCase {
         return source.poolGenerate(poolId, consume);
     }
 
-    long newStateMachine(List<String> ruleNames, List<String> invariantNames) {
-        return source.newStateMachine(ruleNames, invariantNames);
+    long newStateMachine(List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck) {
+        return source.newStateMachine(ruleNames, invariantNames, invariantAlwaysCheck);
+    }
+
+    long stateMachineNextGroup(long stateMachineId) {
+        return source.stateMachineNextGroup(stateMachineId);
     }
 
     long stateMachineNextRule(long stateMachineId) {
         return source.stateMachineNextRule(stateMachineId);
+    }
+
+    void stateMachineRuleRejected(long stateMachineId) {
+        source.stateMachineRuleRejected(stateMachineId);
+    }
+
+    boolean stateMachineShouldCheckInvariant(long stateMachineId, long invariantIndex) {
+        return source.stateMachineShouldCheckInvariant(stateMachineId, invariantIndex);
+    }
+
+    void stateMachineFree(long stateMachineId) {
+        source.stateMachineFree(stateMachineId);
+    }
+
+    /** Whether the engine has concluded this case (overrun or invalid), so its body must unwind. */
+    boolean isAborted() {
+        return source.isAborted();
     }
 
     static String repr(Object value) {

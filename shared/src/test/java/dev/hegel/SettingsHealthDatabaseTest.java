@@ -26,8 +26,8 @@ class SettingsHealthDatabaseTest {
         assertEquals(first, second);
     }
 
-    // Exercises HEGEL_MODE_SINGLE_TEST_CASE.
-    @HegelTest(mode = Mode.SINGLE_TEST_CASE, database = Database.DISABLED)
+    // A one-case budget: the engine skips the simplest-example probe and generates one random case.
+    @HegelTest(testCases = 1, database = Database.DISABLED)
     void singleTestCaseRunsOnce(TestCase tc) {
         tc.draw(integers());
     }

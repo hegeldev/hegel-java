@@ -119,8 +119,8 @@ class GeneratorValidationTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> times().min(LocalTime.of(2, 0)).max(LocalTime.of(1, 0)));
-        // A lower time bound above the last representable microsecond cannot be satisfied.
-        assertThrows(IllegalArgumentException.class, () -> times().min(LocalTime.MAX));
+        // Bounds are nanosecond-exact, so the last instant of the day is a valid (one-value) range.
+        times().min(LocalTime.MAX);
         assertThrows(
                 IllegalArgumentException.class,
                 () -> datetimes().min(LocalDateTime.of(2020, 1, 1, 0, 0)).max(LocalDateTime.of(2019, 1, 1, 0, 0)));

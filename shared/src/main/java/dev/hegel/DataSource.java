@@ -90,10 +90,27 @@ interface DataSource {
 
     long poolGenerate(long poolId, boolean consume);
 
-    long newStateMachine(List<String> ruleNames, List<String> invariantNames);
+    // Stateful testing. Machines are driven sequentially (one worker, one concurrency group).
 
-    /** The next rule index, or {@link Abi#STATE_MACHINE_DONE} when the step budget is exhausted. */
+    long newStateMachine(List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck);
+
+    /** Start the next round: its group id, or {@link Abi#STATE_MACHINE_DONE} when the machine is done. */
+    long stateMachineNextGroup(long stateMachineId);
+
+    /** The next rule index for this round, or {@link Abi#STATE_MACHINE_DONE} at the round's join point. */
     long stateMachineNextRule(long stateMachineId);
+
+    /** The rule most recently handed out failed an assumption: do not count it as a step. */
+    void stateMachineRuleRejected(long stateMachineId);
+
+    /** The engine's sampling decision for invariant {@code invariantIndex} at this join point. */
+    boolean stateMachineShouldCheckInvariant(long stateMachineId, long invariantIndex);
+
+    /** Release the machine handle. Safe once the case is aborted. */
+    void stateMachineFree(long stateMachineId);
+
+    /** Whether the case has been concluded (overrun or invalid) and its primitives now short-circuit. */
+    boolean isAborted();
 
     void target(double value, String label);
 }

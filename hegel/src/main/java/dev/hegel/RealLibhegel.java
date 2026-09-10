@@ -58,13 +58,13 @@ final class RealLibhegel implements Libhegel {
             JAVA_BYTE.withName("day"),
             MemoryLayout.paddingLayout(2));
 
-    // struct hegel_time_t { uint8_t hour; uint8_t minute; uint8_t second; uint32_t microsecond; }
+    // struct hegel_time_t { uint8_t hour; uint8_t minute; uint8_t second; uint32_t nanosecond; }
     private static final StructLayout TIME_LAYOUT = MemoryLayout.structLayout(
             JAVA_BYTE.withName("hour"),
             JAVA_BYTE.withName("minute"),
             JAVA_BYTE.withName("second"),
             MemoryLayout.paddingLayout(1),
-            JAVA_INT.withName("microsecond"));
+            JAVA_INT.withName("nanosecond"));
 
     // struct hegel_datetime_t { hegel_date_t date; hegel_time_t time; }
     private static final StructLayout DATETIME_LAYOUT =
@@ -97,7 +97,6 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle contextLastError;
     private final MethodHandle settingsNew;
     private final MethodHandle settingsFree;
-    private final MethodHandle settingsSetMode;
     private final MethodHandle settingsSetBackend;
     private final MethodHandle settingsSetTestCases;
     private final MethodHandle settingsSetVerbosity;
@@ -143,7 +142,11 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle poolAdd;
     private final MethodHandle poolGenerate;
     private final MethodHandle newStateMachine;
+    private final MethodHandle stateMachineNextGroup;
     private final MethodHandle stateMachineNextRule;
+    private final MethodHandle stateMachineRuleRejected;
+    private final MethodHandle stateMachineShouldCheckInvariant;
+    private final MethodHandle stateMachineFree;
     private final MethodHandle target;
     private final MethodHandle markComplete;
     private final MethodHandle runResultStatus;
@@ -170,8 +173,6 @@ final class RealLibhegel implements Libhegel {
         this.contextLastError = h(linker, lookup, "hegel_context_last_error", FunctionDescriptor.of(ADDRESS, ADDRESS));
         this.settingsNew = h(linker, lookup, "hegel_settings_new", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.settingsFree = h(linker, lookup, "hegel_settings_free", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
-        this.settingsSetMode = h(
-                linker, lookup, "hegel_settings_set_mode", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_INT));
         this.settingsSetBackend = h(
                 linker,
                 lookup,
@@ -359,16 +360,36 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_pool_generate",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, JAVA_BOOLEAN, ADDRESS));
+        // State-machine handles cross as raw addresses (JAVA_LONG), like every other opaque handle.
         this.newStateMachine = h(
                 linker,
                 lookup,
                 "hegel_new_state_machine",
-                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG, ADDRESS, JAVA_LONG, ADDRESS));
+                FunctionDescriptor.of(
+                        JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG, ADDRESS, ADDRESS, JAVA_LONG, JAVA_LONG,
+                        JAVA_LONG, ADDRESS, ADDRESS));
+        this.stateMachineNextGroup = h(
+                linker,
+                lookup,
+                "hegel_state_machine_next_group",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, ADDRESS));
         this.stateMachineNextRule = h(
                 linker,
                 lookup,
                 "hegel_state_machine_next_rule",
-                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, ADDRESS));
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, JAVA_LONG, ADDRESS));
+        this.stateMachineRuleRejected = h(
+                linker,
+                lookup,
+                "hegel_state_machine_rule_rejected",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, JAVA_LONG));
+        this.stateMachineShouldCheckInvariant = h(
+                linker,
+                lookup,
+                "hegel_state_machine_should_check_invariant",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, JAVA_LONG, ADDRESS));
+        this.stateMachineFree =
+                h(linker, lookup, "hegel_state_machine_free", FunctionDescriptor.of(JAVA_INT, ADDRESS, JAVA_LONG));
         this.target = h(
                 linker,
                 lookup,
@@ -487,11 +508,6 @@ final class RealLibhegel implements Libhegel {
     @Override
     public void settingsFree(long s) {
         check("hegel_settings_free", rc(settingsFree, segment(s)));
-    }
-
-    @Override
-    public void settingsMode(long s, int mode) {
-        check("hegel_settings_set_mode", rc(settingsSetMode, segment(s), mode));
     }
 
     @Override
@@ -765,7 +781,7 @@ final class RealLibhegel implements Libhegel {
         seg.set(JAVA_BYTE, offset, (byte) time.getHour());
         seg.set(JAVA_BYTE, offset + 1, (byte) time.getMinute());
         seg.set(JAVA_BYTE, offset + 2, (byte) time.getSecond());
-        seg.set(JAVA_INT, offset + 4, time.getNano() / 1_000);
+        seg.set(JAVA_INT, offset + 4, time.getNano());
     }
 
     private static LocalTime readTime(MemorySegment seg, long offset) {
@@ -773,7 +789,7 @@ final class RealLibhegel implements Libhegel {
                 seg.get(JAVA_BYTE, offset),
                 seg.get(JAVA_BYTE, offset + 1),
                 seg.get(JAVA_BYTE, offset + 2),
-                seg.get(JAVA_INT, offset + 4) * 1_000);
+                seg.get(JAVA_INT, offset + 4));
     }
 
     @Override
@@ -977,32 +993,89 @@ final class RealLibhegel implements Libhegel {
     }
 
     @Override
-    public int newStateMachine(long tc, List<String> ruleNames, List<String> invariantNames, long[] outId) {
+    public int newStateMachine(
+            long tc,
+            List<String> ruleNames,
+            long[] ruleGroups,
+            List<String> invariantNames,
+            boolean[] invariantAlwaysCheck,
+            long minConcurrency,
+            long maxConcurrency,
+            long[] outId,
+            long[] outConcurrency) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment rules = cstrArray(arena, ruleNames);
+            MemorySegment groups = arena.allocate(JAVA_LONG, Math.max(ruleGroups.length, 1));
+            for (int i = 0; i < ruleGroups.length; i++) {
+                groups.setAtIndex(JAVA_LONG, i, ruleGroups[i]);
+            }
             MemorySegment invariants = cstrArray(arena, invariantNames);
-            MemorySegment seg = arena.allocate(JAVA_LONG);
+            MemorySegment alwaysCheck = arena.allocate(JAVA_BOOLEAN, Math.max(invariantAlwaysCheck.length, 1));
+            for (int i = 0; i < invariantAlwaysCheck.length; i++) {
+                alwaysCheck.setAtIndex(JAVA_BOOLEAN, i, invariantAlwaysCheck[i]);
+            }
+            MemorySegment id = arena.allocate(JAVA_LONG);
+            MemorySegment concurrency = arena.allocate(JAVA_LONG);
             int code = rc(
                     newStateMachine,
                     segment(tc),
                     rules,
+                    groups,
                     (long) ruleNames.size(),
                     invariants,
+                    alwaysCheck,
                     (long) invariantNames.size(),
-                    seg);
-            outId[0] = seg.get(JAVA_LONG, 0);
+                    minConcurrency,
+                    maxConcurrency,
+                    id,
+                    concurrency);
+            if (code == Abi.OK) {
+                outId[0] = id.get(JAVA_LONG, 0);
+                outConcurrency[0] = concurrency.get(JAVA_LONG, 0);
+            }
             return code;
         }
     }
 
     @Override
-    public int stateMachineNextRule(long tc, long stateMachineId, long[] outRuleIndex) {
+    public int stateMachineNextGroup(long tc, long stateMachineId, long[] outGroupId) {
         MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
-        int code = rc(stateMachineNextRule, segment(tc), stateMachineId, seg);
+        int code = rc(stateMachineNextGroup, segment(tc), stateMachineId, seg);
+        if (code == Abi.OK) {
+            outGroupId[0] = seg.get(JAVA_LONG, 0);
+        }
+        return code;
+    }
+
+    @Override
+    public int stateMachineNextRule(long tc, long stateMachineId, long workerIndex, long[] outRuleIndex) {
+        MemorySegment seg = Arena.ofAuto().allocate(JAVA_LONG);
+        int code = rc(stateMachineNextRule, segment(tc), stateMachineId, workerIndex, seg);
         if (code == Abi.OK) {
             outRuleIndex[0] = seg.get(JAVA_LONG, 0);
         }
         return code;
+    }
+
+    @Override
+    public int stateMachineRuleRejected(long tc, long stateMachineId, long workerIndex) {
+        return rc(stateMachineRuleRejected, segment(tc), stateMachineId, workerIndex);
+    }
+
+    @Override
+    public int stateMachineShouldCheckInvariant(
+            long tc, long stateMachineId, long invariantIndex, boolean[] outShouldCheck) {
+        MemorySegment seg = Arena.ofAuto().allocate(JAVA_BOOLEAN);
+        int code = rc(stateMachineShouldCheckInvariant, segment(tc), stateMachineId, invariantIndex, seg);
+        if (code == Abi.OK) {
+            outShouldCheck[0] = seg.get(JAVA_BOOLEAN, 0);
+        }
+        return code;
+    }
+
+    @Override
+    public void stateMachineFree(long stateMachineId) {
+        check("hegel_state_machine_free", rc(stateMachineFree, stateMachineId));
     }
 
     @Override

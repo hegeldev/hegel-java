@@ -317,29 +317,14 @@ class RunnerTest {
     }
 
     @Test
-    void singleTestCaseModePassesAndFails() {
+    void nondeterministicRunFailureIsAnInternalError() {
+        // Only a concurrent state machine declares a run nondeterministic, and this binding never
+        // creates one, so the engine reporting that status (whose failures carry no blob) is a bug.
         FakeLibhegel fake = new FakeLibhegel();
-        run(fake, new Settings().mode(Mode.SINGLE_TEST_CASE).database(Database.disabled()), tc -> {});
-        assertEquals(List.of(Abi.STATUS_VALID), fake.markedStatuses);
-
-        FakeLibhegel failing = new FakeLibhegel();
-        IllegalStateException rt = new IllegalStateException("single boom");
-        assertSame(
-                rt,
-                assertThrows(
-                        IllegalStateException.class,
-                        () -> run(failing, new Settings().mode(Mode.SINGLE_TEST_CASE), tc -> {
-                            throw rt;
-                        })));
-    }
-
-    @Test
-    void singleTestCaseModeWithNoCaseIsAnError() {
-        FakeLibhegel fake = new FakeLibhegel();
-        fake.caseCount = 0;
-        HegelException e = assertThrows(
-                HegelException.class, () -> run(fake, new Settings().mode(Mode.SINGLE_TEST_CASE), tc -> {}));
-        assertTrue(e.getMessage().contains("no case"), e.getMessage());
+        fake.runStatus = Abi.RUN_STATUS_FAILED_NONDETERMINISTIC;
+        HegelException e = assertThrows(HegelException.class, () -> run(fake, new Settings(), tc -> {}));
+        assertTrue(e.getMessage().contains("nondeterministic"), e.getMessage());
+        assertTrue(fake.replayedBlobs.isEmpty());
     }
 
     @Test
@@ -350,7 +335,6 @@ class RunnerTest {
                 .seed(7)
                 .derandomize(true)
                 .reportMultipleFailures(false)
-                .mode(Mode.SINGLE_TEST_CASE)
                 .backend(Backend.URANDOM)
                 .suppressHealthCheck(HealthCheck.FILTER_TOO_MUCH, HealthCheck.TOO_SLOW)
                 .phases(Phase.GENERATE, Phase.SHRINK)
@@ -362,7 +346,6 @@ class RunnerTest {
         assertEquals(Phase.GENERATE.bit | Phase.SHRINK.bit, fake.phasesMask);
         assertEquals(HealthCheck.FILTER_TOO_MUCH.bit | HealthCheck.TOO_SLOW.bit, fake.suppressMask);
         assertEquals(Abi.BACKEND_URANDOM, fake.backendCode);
-        assertEquals(Abi.MODE_SINGLE_TEST_CASE, fake.modeCode);
         assertEquals("/tmp/hegel-db", fake.databasePath);
         assertEquals("myTest", fake.databaseKey);
     }

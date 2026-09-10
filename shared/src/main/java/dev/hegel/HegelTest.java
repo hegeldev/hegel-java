@@ -107,14 +107,6 @@ public @interface HegelTest {
     String database() default "";
 
     /**
-     * Execution mode. {@link Mode#SINGLE_TEST_CASE} runs exactly one test case with no shrinking,
-     * replay, or database (an exploratory probe); the default {@link Mode#TEST_RUN} runs a full test.
-     *
-     * @return the execution mode
-     */
-    Mode mode() default Mode.TEST_RUN;
-
-    /**
      * The source of randomness. The default, {@link Backend#AUTO}, selects {@link Backend#URANDOM}
      * automatically when running inside Antithesis and {@link Backend#DEFAULT} otherwise.
      *

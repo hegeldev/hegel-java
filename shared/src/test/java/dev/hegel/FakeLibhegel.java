@@ -49,7 +49,6 @@ final class FakeLibhegel implements Libhegel {
     // Captured settings.
     int phasesMask = -1; // -1 means settingsPhases was never called
     int suppressMask = -1;
-    Integer modeCode;
     Integer backendCode;
     Long testCases;
     String databasePath = "unset";
@@ -116,13 +115,30 @@ final class FakeLibhegel implements Libhegel {
     private long nextVariableId;
     int poolGenerateRc = Abi.OK;
     Long poolGenerateValue; // null = the first added variable id (0)
+    // State machines. The fake plays the engine's sequential protocol: each round (next_group)
+    // hands out exactly one rule from `ruleSequence` (next_rule), then the join point; once the
+    // sequence is exhausted next_group reports DONE.
     int newStateMachineRc = Abi.OK;
     long stateMachineId = 5;
     List<String> stateMachineRules;
+    long[] stateMachineRuleGroups;
     List<String> stateMachineInvariants;
+    boolean[] stateMachineAlwaysCheck;
+    long stateMachineMinConcurrency = -1;
+    long stateMachineMaxConcurrency = -1;
+    long stateMachineConcurrency = 1; // what new_state_machine writes to out_concurrency
+    int stateMachineNextGroupRc = Abi.OK;
+    long stateMachineGroupId = 0;
     int stateMachineNextRuleRc = Abi.OK;
-    long[] ruleSequence = {Abi.STATE_MACHINE_DONE};
+    long[] ruleSequence = {}; // the rule index handed out each round
     private int ruleIndex;
+    private boolean roundOpen;
+    int stateMachineRuleRejectedRc = Abi.OK;
+    int rejectedRules;
+    int stateMachineShouldCheckInvariantRc = Abi.OK;
+    boolean shouldCheckInvariant = true; // the sampling decision for every invariant
+    final List<Long> invariantChecksAsked = new ArrayList<>();
+    int freedStateMachines;
 
     @Override
     public long settingsNew() {
@@ -132,11 +148,6 @@ final class FakeLibhegel implements Libhegel {
     @Override
     public void settingsFree(long s) {
         settingsFreed = true;
-    }
-
-    @Override
-    public void settingsMode(long s, int mode) {
-        modeCode = mode;
     }
 
     @Override
@@ -460,21 +471,68 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int newStateMachine(long tc, List<String> ruleNames, List<String> invariantNames, long[] outId) {
+    public int newStateMachine(
+            long tc,
+            List<String> ruleNames,
+            long[] ruleGroups,
+            List<String> invariantNames,
+            boolean[] invariantAlwaysCheck,
+            long minConcurrency,
+            long maxConcurrency,
+            long[] outId,
+            long[] outConcurrency) {
         if (newStateMachineRc == Abi.OK) {
             stateMachineRules = ruleNames;
+            stateMachineRuleGroups = ruleGroups;
             stateMachineInvariants = invariantNames;
+            stateMachineAlwaysCheck = invariantAlwaysCheck;
+            stateMachineMinConcurrency = minConcurrency;
+            stateMachineMaxConcurrency = maxConcurrency;
             outId[0] = stateMachineId;
+            outConcurrency[0] = stateMachineConcurrency;
         }
         return newStateMachineRc;
     }
 
     @Override
-    public int stateMachineNextRule(long tc, long stateMachineId, long[] outRuleIndex) {
+    public int stateMachineNextGroup(long tc, long stateMachineId, long[] outGroupId) {
+        if (stateMachineNextGroupRc == Abi.OK) {
+            roundOpen = ruleIndex < ruleSequence.length;
+            outGroupId[0] = roundOpen ? stateMachineGroupId : Abi.STATE_MACHINE_DONE;
+        }
+        return stateMachineNextGroupRc;
+    }
+
+    @Override
+    public int stateMachineNextRule(long tc, long stateMachineId, long workerIndex, long[] outRuleIndex) {
         if (stateMachineNextRuleRc == Abi.OK) {
-            outRuleIndex[0] = ruleIndex < ruleSequence.length ? ruleSequence[ruleIndex++] : Abi.STATE_MACHINE_DONE;
+            outRuleIndex[0] = roundOpen ? ruleSequence[ruleIndex++] : Abi.STATE_MACHINE_DONE;
+            roundOpen = false;
         }
         return stateMachineNextRuleRc;
+    }
+
+    @Override
+    public int stateMachineRuleRejected(long tc, long stateMachineId, long workerIndex) {
+        if (stateMachineRuleRejectedRc == Abi.OK) {
+            rejectedRules++;
+        }
+        return stateMachineRuleRejectedRc;
+    }
+
+    @Override
+    public int stateMachineShouldCheckInvariant(
+            long tc, long stateMachineId, long invariantIndex, boolean[] outShouldCheck) {
+        if (stateMachineShouldCheckInvariantRc == Abi.OK) {
+            invariantChecksAsked.add(invariantIndex);
+            outShouldCheck[0] = shouldCheckInvariant;
+        }
+        return stateMachineShouldCheckInvariantRc;
+    }
+
+    @Override
+    public void stateMachineFree(long stateMachineId) {
+        freedStateMachines++;
     }
 
     @Override

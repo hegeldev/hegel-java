@@ -52,8 +52,13 @@ class BindingErrorPathsTest {
         assertEquals(3, ds.newPool());
         assertEquals(0, ds.poolAdd(3));
         assertEquals(0, ds.poolGenerate(3, true));
-        assertEquals(5, ds.newStateMachine(List.of("r"), List.of()));
+        assertEquals(5, ds.newStateMachine(List.of("r"), List.of("i"), new boolean[] {false}));
+        assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextGroup(5));
         assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextRule(5));
+        ds.stateMachineRuleRejected(5);
+        assertTrue(ds.stateMachineShouldCheckInvariant(5, 0));
+        ds.stateMachineFree(5);
+        assertEquals(1, fake.freedStateMachines);
     }
 
     @Test
@@ -106,8 +111,14 @@ class BindingErrorPathsTest {
         assertThrows(StopTest.class, () -> ds.newPool());
         assertThrows(StopTest.class, () -> ds.poolAdd(1));
         assertThrows(StopTest.class, () -> ds.poolGenerate(1, false));
-        assertThrows(StopTest.class, () -> ds.newStateMachine(List.of("r"), List.of()));
+        assertThrows(StopTest.class, () -> ds.newStateMachine(List.of("r"), List.of(), new boolean[0]));
+        assertThrows(StopTest.class, () -> ds.stateMachineNextGroup(1));
         assertThrows(StopTest.class, () -> ds.stateMachineNextRule(1));
+        assertThrows(StopTest.class, () -> ds.stateMachineRuleRejected(1));
+        assertThrows(StopTest.class, () -> ds.stateMachineShouldCheckInvariant(1, 0));
+        // Freeing the machine is not a draw: it must still work once the case is aborted.
+        ds.stateMachineFree(1);
+        assertEquals(1, fake.freedStateMachines);
         assertThrows(StopTest.class, () -> ds.target(1.0, "l"));
         // stopSpan is a no-op once aborted (used by span-closing finally blocks).
         ds.stopSpan(false);
@@ -204,10 +215,24 @@ class BindingErrorPathsTest {
 
         FakeLibhegel sm = new FakeLibhegel();
         sm.newStateMachineRc = Abi.E_INVALID_ARG;
-        assertThrows(IllegalArgumentException.class, () -> source(sm).newStateMachine(List.of("r"), List.of()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> source(sm).newStateMachine(List.of("r"), List.of(), new boolean[0]));
+
+        FakeLibhegel group = new FakeLibhegel();
+        group.stateMachineNextGroupRc = Abi.E_STOP_TEST;
+        assertThrows(StopTest.class, () -> source(group).stateMachineNextGroup(1));
 
         FakeLibhegel next = new FakeLibhegel();
         next.stateMachineNextRuleRc = Abi.E_STOP_TEST;
         assertThrows(StopTest.class, () -> source(next).stateMachineNextRule(1));
+
+        FakeLibhegel rejected = new FakeLibhegel();
+        rejected.stateMachineRuleRejectedRc = Abi.E_INVALID_ARG;
+        assertThrows(IllegalArgumentException.class, () -> source(rejected).stateMachineRuleRejected(1));
+
+        FakeLibhegel check = new FakeLibhegel();
+        check.stateMachineShouldCheckInvariantRc = Abi.E_STOP_TEST;
+        assertThrows(StopTest.class, () -> source(check).stateMachineShouldCheckInvariant(1, 0));
     }
 }

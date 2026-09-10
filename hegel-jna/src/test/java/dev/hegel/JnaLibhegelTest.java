@@ -12,6 +12,7 @@ import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
@@ -132,14 +133,29 @@ class JnaLibhegelTest {
     }
 
     @Test
-    void stateMachineNextRuleReportsNullHandle() {
+    void stateMachineCallsReportNullHandle() {
         JnaLibhegel lib = real();
         // Both handles are NULL: the engine rejects the call on the test case before it
         // dereferences the state machine, so this is a clean error rather than undefined behaviour.
+        // Out-parameters are read only on success, so a failed call leaves the caller's values alone.
         long[] out = {7};
-        assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineNextRule(0, 0, out));
-        // The rule index is read only on success, so a failed call leaves the caller's value alone.
+        long[] concurrency = {9};
+        boolean[] check = {true};
+        assertEquals(
+                Abi.E_INVALID_HANDLE,
+                lib.newStateMachine(
+                        0, List.of("r"), new long[] {0}, List.of("i"), new boolean[] {true}, 1, 1, out, concurrency));
         assertEquals(7, out[0]);
+        assertEquals(9, concurrency[0]);
+        assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineNextGroup(0, 0, out));
+        assertEquals(7, out[0]);
+        assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineNextRule(0, 0, 0, out));
+        assertEquals(7, out[0]);
+        assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineRuleRejected(0, 0, 0));
+        assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineShouldCheckInvariant(0, 0, 0, check));
+        assertTrue(check[0]);
+        // Freeing NULL is a documented no-op.
+        lib.stateMachineFree(0);
     }
 
     @Test

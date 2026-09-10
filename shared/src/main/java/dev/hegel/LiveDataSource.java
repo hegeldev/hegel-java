@@ -24,7 +24,8 @@ final class LiveDataSource implements DataSource {
         this.tc = tc;
     }
 
-    boolean isAborted() {
+    @Override
+    public boolean isAborted() {
         return aborted;
     }
 
@@ -299,19 +300,55 @@ final class LiveDataSource implements DataSource {
     }
 
     @Override
-    public long newStateMachine(List<String> ruleNames, List<String> invariantNames) {
+    public long newStateMachine(List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck) {
         checkLive();
+        // Sequential: every rule in group 0 and exactly one worker, so the drawn concurrency level
+        // is always 1 and every rule/rejection call below is made on behalf of worker 0.
+        long[] groups = new long[ruleNames.size()];
         long[] id = new long[1];
-        translate(lib.newStateMachine(tc, ruleNames, invariantNames, id), "new_state_machine");
+        long[] concurrency = new long[1];
+        translate(
+                lib.newStateMachine(tc, ruleNames, groups, invariantNames, invariantAlwaysCheck, 1, 1, id, concurrency),
+                "new_state_machine");
         return id[0];
+    }
+
+    @Override
+    public long stateMachineNextGroup(long stateMachineId) {
+        checkLive();
+        long[] group = new long[1];
+        translate(lib.stateMachineNextGroup(tc, stateMachineId, group), "state_machine_next_group");
+        return group[0];
     }
 
     @Override
     public long stateMachineNextRule(long stateMachineId) {
         checkLive();
         long[] index = new long[1];
-        translate(lib.stateMachineNextRule(tc, stateMachineId, index), "state_machine_next_rule");
+        translate(lib.stateMachineNextRule(tc, stateMachineId, 0, index), "state_machine_next_rule");
         return index[0];
+    }
+
+    @Override
+    public void stateMachineRuleRejected(long stateMachineId) {
+        checkLive();
+        translate(lib.stateMachineRuleRejected(tc, stateMachineId, 0), "state_machine_rule_rejected");
+    }
+
+    @Override
+    public boolean stateMachineShouldCheckInvariant(long stateMachineId, long invariantIndex) {
+        checkLive();
+        boolean[] check = new boolean[1];
+        translate(
+                lib.stateMachineShouldCheckInvariant(tc, stateMachineId, invariantIndex, check),
+                "state_machine_should_check_invariant");
+        return check[0];
+    }
+
+    @Override
+    public void stateMachineFree(long stateMachineId) {
+        // Not gated on `aborted`: the handle outlives the case and must be released exactly once.
+        lib.stateMachineFree(stateMachineId);
     }
 
     @Override
