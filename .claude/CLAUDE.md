@@ -104,9 +104,10 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   draws and re-raising the body's own exception (a replay that no longer fails is reported as a
   flaky test). On ERROR the engine's message surfaces directly (`FailedHealthCheck: ...` becomes
   `HealthCheckFailure`). `Settings` is the immutable config; its closed-state setting types live
-  alongside it — `Mode`, `Backend` (auto / default / urandom for Antithesis), `Database`,
-  `OptBoolean` — plus `printBlob` (print a copy-pasteable reproducer per failure) and
-  `reproduceFailure` (replay a stored blob instead of running the property).
+  alongside it — `Backend` (auto / default / urandom for Antithesis), `Database`, `OptBoolean` —
+  plus `printBlob` (print a copy-pasteable reproducer per failure) and `reproduceFailure` (replay
+  a stored blob instead of running the property). There is no single-test-case mode (the engine
+  dropped it in 0.35); `testCases(1)` is the one-case configuration.
 - **Generators** — `Generator<T>` (public) with `map`/`filter`/`flatMap`. Leaf generators call the
   typed draw bridges on `TestCase` (`generateInteger`, `generateFloat`, `generateString`, …);
   composite generators (collections via the engine's `new_collection`/`collection_more` protocol,
@@ -119,10 +120,18 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   annotation + `HegelTestExtension` (a JUnit 5 `TestTemplateInvocationContextProvider` that drives
   the engine loop and invokes the user method per case).
 - **Stateful testing** — `Stateful.run(machine, tc)` reflects `@Rule`/`@Invariant` methods (sorted
-  by name for determinism), registers them via `hegel_new_state_machine`, and polls
-  `hegel_state_machine_next_rule` until `HEGEL_STATE_MACHINE_DONE`, wrapping each step in a
-  STATEFUL_RULE span (discarded when the rule fails an assumption). `Pool<T>` tracks previously
-  generated values over the engine's pool primitives so rules can reuse or consume them.
+  by name for determinism) and registers them via `hegel_new_state_machine` as a *sequential*
+  machine (every rule in group 0, concurrency fixed at `1, 1`, worker index 0). It then drives the
+  engine's round protocol: `hegel_state_machine_next_group` opens each round (or reports
+  `HEGEL_STATE_MACHINE_DONE`, which is `INT64_MIN`), `hegel_state_machine_next_rule` hands out the
+  round's rules until the join point, a rule that fails its own assumption is reported with
+  `hegel_state_machine_rule_rejected` (and the round's STATEFUL_RULE span discarded), and at each
+  join point `hegel_state_machine_should_check_invariant` decides which invariants run — always
+  for `@Invariant(alwaysRun = true)`, sampled otherwise; the initial and final checks run every
+  invariant unconditionally. The machine handle is freed in a `finally`. An engine-level
+  `E_ASSUME` inside a rule (the data source is aborted) unwinds the whole case as invalid instead
+  of being reported as the rule's rejection. `Pool<T>` tracks previously generated values over
+  the engine's pool primitives so rules can reuse or consume them.
 - **Derivation** — `dev.hegel.generators.Derive` + `RecordGenerator` build generators from records,
   enums, scalars, and generic `List`/`Set`/`Optional`/`Map` by reflection.
 

@@ -43,8 +43,12 @@ import java.util.List;
  * }</pre>
  *
  * <p>Each test case enables a random subset of rules (swarm testing) and runs an engine-chosen
- * number of steps. A rule that fails an assumption is skipped without counting as a step. Use a
- * {@link Pool} to act on previously generated values.
+ * number of steps. A rule that fails an assumption is skipped without counting as a step. Invariants
+ * are checked in full on the machine's initial and final state and sampled in between: after any
+ * given rule each invariant runs with probability {@code 1 / stepCount}, so its expected cost per
+ * test case stays constant as the step count grows. Mark an invariant {@code @Invariant(alwaysRun =
+ * true)} to check it after every rule instead. Use a {@link Pool} to act on previously generated
+ * values.
  */
 public final class Stateful {
     private Stateful() {}
@@ -67,48 +71,93 @@ public final class Stateful {
             throw new IllegalArgumentException(
                     machine.getClass().getName() + " has no @Rule methods; a state machine needs at least one");
         }
-        long machineId = tc.newStateMachine(names(rules), names(invariants));
+        long machineId = tc.newStateMachine(names(rules), names(invariants), alwaysRun(invariants));
+        try {
+            drive(machine, rules, invariants, tc, machineId);
+        } finally {
+            tc.stateMachineFree(machineId);
+        }
+    }
 
-        tc.note("Initial invariant check.");
-        checkInvariants(machine, invariants, tc);
+    /**
+     * The engine's round-based protocol, driven sequentially: each round the engine picks the
+     * current group ({@code next_group}), hands out that round's rules one at a time ({@code
+     * next_rule} until the join point), and then samples which invariants to check. The start and
+     * end of the machine are unconditional join points where every invariant runs.
+     */
+    private static void drive(
+            Object machine, List<Method> rules, List<Method> invariants, TestCase tc, long machineId) {
+        if (!invariants.isEmpty()) {
+            tc.note("Checking invariants on the initial state.");
+        }
+        checkInvariants(machine, invariants, tc, machineId, false);
 
         int step = 0;
         while (true) {
             tc.startSpan(Abi.LABEL_STATEFUL_RULE);
-            long index = tc.stateMachineNextRule(machineId);
-            if (index == Abi.STATE_MACHINE_DONE) {
+            if (tc.stateMachineNextGroup(machineId) == Abi.STATE_MACHINE_DONE) {
                 tc.stopSpan(false);
-                return;
+                break;
             }
-            if (index < 0 || index >= rules.size()) {
-                throw new HegelException("internal error: state machine chose out-of-range rule index " + index);
+            // At concurrency 1 the engine hands out one rule per round, but that is engine policy,
+            // not protocol: pull rules until the join point.
+            boolean roundRejected = false;
+            while (true) {
+                long index = tc.stateMachineNextRule(machineId);
+                if (index == Abi.STATE_MACHINE_DONE) {
+                    break;
+                }
+                if (index < 0 || index >= rules.size()) {
+                    throw new HegelException("internal error: state machine chose out-of-range rule index " + index);
+                }
+                Method rule = rules.get((int) index);
+                step++;
+                tc.note("Step " + step + ": " + rule.getName());
+                try {
+                    invokeMachineMethod(machine, rule, tc);
+                } catch (AssumeRejected e) {
+                    if (tc.isAborted()) {
+                        // The engine itself concluded the case invalid (e.g. a draw inside the
+                        // rule was rejected): the whole body unwinds, as for any failed assumption.
+                        throw e;
+                    }
+                    // The rule's own precondition failed: tell the engine not to count it as a
+                    // step, discard the round's span so it retries from before the step, and pull
+                    // the next rule.
+                    tc.stateMachineRuleRejected(machineId);
+                    roundRejected = true;
+                    tc.note("Rule stopped early due to violated assumption.");
+                } catch (RuntimeException | Error e) {
+                    // Everything else — including StopTest, so an out-of-data case is reported as
+                    // an overrun instead of returning normally with a half-applied rule — unwinds
+                    // through the caller. stopSpan is a no-op when the case is already being torn
+                    // down.
+                    tc.stopSpan(false);
+                    throw e;
+                }
             }
-            Method rule = rules.get((int) index);
-            step++;
-            tc.note("Step " + step + ": " + rule.getName());
-            try {
-                invokeMachineMethod(machine, rule, tc);
-            } catch (AssumeRejected e) {
-                // The rule's precondition failed: discard its span so the engine retries from
-                // before the step, and move on to the next rule.
-                tc.stopSpan(true);
-                tc.note("Rule stopped early due to violated assumption.");
-                continue;
-            } catch (RuntimeException | Error e) {
-                // Everything else — including StopTest, so an out-of-data case is reported as an
-                // overrun instead of returning normally with a half-applied rule — unwinds through
-                // the caller. stopSpan is a no-op when the case is already being torn down.
-                tc.stopSpan(false);
-                throw e;
-            }
-            tc.stopSpan(false);
-            checkInvariants(machine, invariants, tc);
+            tc.stopSpan(roundRejected);
+            checkInvariants(machine, invariants, tc, machineId, true);
         }
+
+        if (!invariants.isEmpty()) {
+            tc.note("Checking invariants on the final state.");
+        }
+        checkInvariants(machine, invariants, tc, machineId, false);
     }
 
-    private static void checkInvariants(Object machine, List<Method> invariants, TestCase tc) {
-        for (Method invariant : invariants) {
-            invokeMachineMethod(machine, invariant, tc);
+    /**
+     * Run the invariants at a join point: all of them for the guaranteed initial/final checks, or
+     * only those the engine samples in (always-run invariants unconditionally) when {@code
+     * sampled}.
+     */
+    private static void checkInvariants(
+            Object machine, List<Method> invariants, TestCase tc, long machineId, boolean sampled) {
+        for (int i = 0; i < invariants.size(); i++) {
+            if (sampled && !tc.stateMachineShouldCheckInvariant(machineId, i)) {
+                continue;
+            }
+            invokeMachineMethod(machine, invariants.get(i), tc);
         }
     }
 
@@ -161,5 +210,13 @@ public final class Stateful {
 
     private static List<String> names(List<Method> methods) {
         return methods.stream().map(Method::getName).toList();
+    }
+
+    private static boolean[] alwaysRun(List<Method> invariants) {
+        boolean[] flags = new boolean[invariants.size()];
+        for (int i = 0; i < flags.length; i++) {
+            flags[i] = invariants.get(i).getAnnotation(Invariant.class).alwaysRun();
+        }
+        return flags;
     }
 }

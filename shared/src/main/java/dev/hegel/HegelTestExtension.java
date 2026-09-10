@@ -85,7 +85,6 @@ public final class HegelTestExtension implements TestTemplateInvocationContextPr
         Settings s = new Settings()
                 .testCases(ann.testCases())
                 .verbosity(ann.verbosity())
-                .mode(ann.mode())
                 .backend(ann.backend())
                 .reportMultipleFailures(ann.reportMultipleFailures())
                 .printBlob(ann.printBlob())

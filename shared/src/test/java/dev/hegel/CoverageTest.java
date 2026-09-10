@@ -1,5 +1,6 @@
 package dev.hegel;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -52,10 +53,12 @@ class CoverageTest {
             }
         }
         FakeLibhegel fake = new FakeLibhegel();
-        fake.ruleSequence = new long[] {0, Abi.STATE_MACHINE_DONE};
+        fake.ruleSequence = new long[] {0};
         TestCase tc = fakeTestCase(fake);
         RuntimeException e = assertThrows(RuntimeException.class, () -> Stateful.run(new ThrowsChecked(), tc));
         assertTrue(e.getCause() instanceof java.io.IOException, String.valueOf(e.getCause()));
+        // The machine handle is released even when a rule fails.
+        assertEquals(1, fake.freedStateMachines);
     }
 
     // --- HegelTestExtension static helpers ---
@@ -72,7 +75,6 @@ class CoverageTest {
                 derandomize = OptBoolean.TRUE,
                 phases = {Phase.GENERATE},
                 suppressHealthCheck = {HealthCheck.TOO_SLOW},
-                mode = Mode.SINGLE_TEST_CASE,
                 backend = Backend.URANDOM,
                 reportMultipleFailures = true,
                 printBlob = true,
@@ -115,7 +117,6 @@ class CoverageTest {
         assertNull(noSeed.phasesMask);
         assertEquals(Database.Kind.UNSET, noSeed.database.kind);
         assertEquals(0, noSeed.suppressMask);
-        assertEquals(Mode.TEST_RUN, noSeed.mode);
         assertEquals(Backend.AUTO, noSeed.backend);
         assertFalse(noSeed.reportMultipleFailures);
         assertFalse(noSeed.printBlob);
@@ -123,13 +124,12 @@ class CoverageTest {
         assertEquals("u", noSeed.name);
 
         // Fully-configured: derandomize forced on, a single explicit phase, a suppressed check,
-        // single-case mode, explicit backend, multi-failure and blob options, and a name override.
+        // explicit backend, multi-failure and blob options, and a name override.
         Method configured = Holder.class.getDeclaredMethod("configured", TestCase.class);
         Settings c = HegelTestExtension.settingsFrom(configured.getAnnotation(HegelTest.class), "ignored");
         assertEquals(Boolean.TRUE, c.derandomize);
         assertEquals(Integer.valueOf(Phase.GENERATE.bit), c.phasesMask);
         assertEquals(HealthCheck.TOO_SLOW.bit, c.suppressMask);
-        assertEquals(Mode.SINGLE_TEST_CASE, c.mode);
         assertEquals(Backend.URANDOM, c.backend);
         assertTrue(c.reportMultipleFailures);
         assertTrue(c.printBlob);
@@ -240,23 +240,76 @@ class CoverageTest {
             tc.assume(false); // exercises the rejected-rule path
         }
 
+        int sampledChecks;
+        int alwaysChecks;
+
         @Invariant
-        void alwaysFine(TestCase tc) {}
+        void sampled(TestCase tc) {
+            sampledChecks++;
+        }
+
+        @Invariant(alwaysRun = true)
+        void unsampled(TestCase tc) {
+            alwaysChecks++;
+        }
     }
 
     @Test
     void statefulDriverFollowsTheEngineRuleSequence() {
         FakeLibhegel fake = new FakeLibhegel();
-        fake.ruleSequence = new long[] {0, 1, 0, Abi.STATE_MACHINE_DONE};
+        fake.ruleSequence = new long[] {0, 1, 0};
         TwoRuleMachine machine = new TwoRuleMachine();
-        TestCase tc = new TestCase(
-                new LiveDataSource(fake, FakeLibhegel.TC),
-                false,
-                new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        TestCase tc = fakeTestCase(fake);
         Stateful.run(machine, tc);
         assertEquals(List.of("alpha", "beta", "alpha"), machine.applied);
+        // Registered sequentially: every rule in group 0, exactly one worker.
         assertEquals(List.of("alpha", "beta"), fake.stateMachineRules);
-        assertEquals(List.of("alwaysFine"), fake.stateMachineInvariants);
+        assertArrayEquals(new long[] {0, 0}, fake.stateMachineRuleGroups);
+        assertEquals(1, fake.stateMachineMinConcurrency);
+        assertEquals(1, fake.stateMachineMaxConcurrency);
+        // Invariants are ordered by name and carry their always-run flags.
+        assertEquals(List.of("sampled", "unsampled"), fake.stateMachineInvariants);
+        assertArrayEquals(new boolean[] {false, true}, fake.stateMachineAlwaysCheck);
+        // beta's failed assumption was reported to the engine, and the machine was released.
+        assertEquals(1, fake.rejectedRules);
+        assertEquals(1, fake.freedStateMachines);
+        // With the fake sampling everything in: initial + 3 join points + final for both.
+        assertEquals(5, machine.sampledChecks);
+        assertEquals(5, machine.alwaysChecks);
+        assertEquals(List.of(0L, 1L, 0L, 1L, 0L, 1L), fake.invariantChecksAsked);
+    }
+
+    @Test
+    void statefulDriverHonoursTheEngineSamplingDecision() {
+        // When the engine samples an invariant out, only the guaranteed initial and final checks run.
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.ruleSequence = new long[] {0, 0};
+        fake.shouldCheckInvariant = false;
+        TwoRuleMachine machine = new TwoRuleMachine();
+        Stateful.run(machine, fakeTestCase(fake));
+        assertEquals(2, machine.sampledChecks);
+        assertEquals(2, machine.alwaysChecks);
+        assertEquals(0, fake.rejectedRules);
+    }
+
+    @Test
+    void statefulDriverRethrowsAnEngineLevelRejection() {
+        // A draw inside a rule that the engine itself rejects concludes the whole case invalid: the
+        // rejection unwinds out of the driver instead of being reported as the rule's own
+        // precondition, and the machine handle is still released.
+        class Drawing {
+            @Rule
+            void draw(TestCase t) {
+                t.draw(Generators.integers());
+            }
+        }
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.ruleSequence = new long[] {0};
+        fake.generateIntegerRc = Abi.E_ASSUME;
+        TestCase tc = fakeTestCase(fake);
+        assertThrows(AssumeRejected.class, () -> Stateful.run(new Drawing(), tc));
+        assertEquals(0, fake.rejectedRules);
+        assertEquals(1, fake.freedStateMachines);
     }
 
     @Test
@@ -302,7 +355,7 @@ class CoverageTest {
     @Test
     void statefulRuleFailuresUnwind() {
         FakeLibhegel fake = new FakeLibhegel();
-        fake.ruleSequence = new long[] {0, Abi.STATE_MACHINE_DONE};
+        fake.ruleSequence = new long[] {0};
         class Failing {
             @Rule
             void explode(TestCase t) {

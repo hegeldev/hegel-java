@@ -59,8 +59,6 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_settings_free(Pointer ctx, Pointer s);
 
-        int hegel_settings_set_mode(Pointer ctx, Pointer s, int mode);
-
         int hegel_settings_set_backend(Pointer ctx, Pointer s, int backend);
 
         int hegel_settings_set_test_cases(Pointer ctx, Pointer s, long n);
@@ -184,16 +182,32 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_pool_generate(Pointer ctx, Pointer tc, long poolId, byte consume, LongByReference out);
 
+        // State-machine handles cross as raw addresses (long), like every other opaque handle.
         int hegel_new_state_machine(
                 Pointer ctx,
                 Pointer tc,
                 Pointer ruleNames,
+                Pointer ruleGroups,
                 long ruleNamesLen,
                 Pointer invariantNames,
+                Pointer invariantAlwaysCheck,
                 long invariantNamesLen,
-                LongByReference out);
+                long minConcurrency,
+                long maxConcurrency,
+                LongByReference outStateMachine,
+                LongByReference outConcurrency);
 
-        int hegel_state_machine_next_rule(Pointer ctx, Pointer tc, long stateMachineId, LongByReference out);
+        int hegel_state_machine_next_group(Pointer ctx, Pointer tc, long stateMachineId, LongByReference out);
+
+        int hegel_state_machine_next_rule(
+                Pointer ctx, Pointer tc, long stateMachineId, long workerIndex, LongByReference out);
+
+        int hegel_state_machine_rule_rejected(Pointer ctx, Pointer tc, long stateMachineId, long workerIndex);
+
+        int hegel_state_machine_should_check_invariant(
+                Pointer ctx, Pointer tc, long stateMachineId, long invariantIndex, ByteByReference out);
+
+        int hegel_state_machine_free(Pointer ctx, long stateMachineId);
 
         int hegel_target(Pointer ctx, Pointer tc, double value, String label);
 
@@ -224,13 +238,13 @@ final class JnaLibhegel implements Libhegel {
         public static class ByValue extends HegelDate implements Structure.ByValue {}
     }
 
-    /** {@code struct hegel_time_t { uint8_t hour; uint8_t minute; uint8_t second; uint32_t microsecond; }} */
-    @Structure.FieldOrder({"hour", "minute", "second", "microsecond"})
+    /** {@code struct hegel_time_t { uint8_t hour; uint8_t minute; uint8_t second; uint32_t nanosecond; }} */
+    @Structure.FieldOrder({"hour", "minute", "second", "nanosecond"})
     public static class HegelTime extends Structure {
         public byte hour;
         public byte minute;
         public byte second;
-        public int microsecond;
+        public int nanosecond;
 
         public static class ByValue extends HegelTime implements Structure.ByValue {}
     }
@@ -324,11 +338,6 @@ final class JnaLibhegel implements Libhegel {
     @Override
     public void settingsFree(long s) {
         check("hegel_settings_free", lib.hegel_settings_free(ctx(), pointer(s)));
-    }
-
-    @Override
-    public void settingsMode(long s, int mode) {
-        check("hegel_settings_set_mode", lib.hegel_settings_set_mode(ctx(), pointer(s), mode));
     }
 
     @Override
@@ -593,11 +602,11 @@ final class JnaLibhegel implements Libhegel {
         value.hour = (byte) time.getHour();
         value.minute = (byte) time.getMinute();
         value.second = (byte) time.getSecond();
-        value.microsecond = time.getNano() / 1_000;
+        value.nanosecond = time.getNano();
     }
 
     private static LocalTime readTime(HegelTime value) {
-        return LocalTime.of(value.hour, value.minute, value.second, value.microsecond * 1_000);
+        return LocalTime.of(value.hour, value.minute, value.second, value.nanosecond);
     }
 
     @Override
@@ -787,28 +796,86 @@ final class JnaLibhegel implements Libhegel {
     }
 
     @Override
-    public int newStateMachine(long tc, List<String> ruleNames, List<String> invariantNames, long[] outId) {
-        LongByReference ref = new LongByReference();
+    public int newStateMachine(
+            long tc,
+            List<String> ruleNames,
+            long[] ruleGroups,
+            List<String> invariantNames,
+            boolean[] invariantAlwaysCheck,
+            long minConcurrency,
+            long maxConcurrency,
+            long[] outId,
+            long[] outConcurrency) {
+        Memory groups = new Memory(8L * Math.max(ruleGroups.length, 1));
+        groups.write(0, ruleGroups, 0, ruleGroups.length);
+        byte[] flags = new byte[invariantAlwaysCheck.length];
+        for (int i = 0; i < flags.length; i++) {
+            flags[i] = cbool(invariantAlwaysCheck[i]);
+        }
+        Memory alwaysCheck = new Memory(Math.max(flags.length, 1));
+        alwaysCheck.write(0, flags, 0, flags.length);
+        LongByReference id = new LongByReference();
+        LongByReference concurrency = new LongByReference();
         int code = lib.hegel_new_state_machine(
                 ctx(),
                 pointer(tc),
                 cstrArray(ruleNames),
+                groups,
                 ruleNames.size(),
                 cstrArray(invariantNames),
+                alwaysCheck,
                 invariantNames.size(),
-                ref);
-        outId[0] = ref.getValue();
+                minConcurrency,
+                maxConcurrency,
+                id,
+                concurrency);
+        if (code == Abi.OK) {
+            outId[0] = id.getValue();
+            outConcurrency[0] = concurrency.getValue();
+        }
         return code;
     }
 
     @Override
-    public int stateMachineNextRule(long tc, long stateMachineId, long[] outRuleIndex) {
+    public int stateMachineNextGroup(long tc, long stateMachineId, long[] outGroupId) {
         LongByReference ref = new LongByReference();
-        int code = lib.hegel_state_machine_next_rule(ctx(), pointer(tc), stateMachineId, ref);
+        int code = lib.hegel_state_machine_next_group(ctx(), pointer(tc), stateMachineId, ref);
+        if (code == Abi.OK) {
+            outGroupId[0] = ref.getValue();
+        }
+        return code;
+    }
+
+    @Override
+    public int stateMachineNextRule(long tc, long stateMachineId, long workerIndex, long[] outRuleIndex) {
+        LongByReference ref = new LongByReference();
+        int code = lib.hegel_state_machine_next_rule(ctx(), pointer(tc), stateMachineId, workerIndex, ref);
         if (code == Abi.OK) {
             outRuleIndex[0] = ref.getValue();
         }
         return code;
+    }
+
+    @Override
+    public int stateMachineRuleRejected(long tc, long stateMachineId, long workerIndex) {
+        return lib.hegel_state_machine_rule_rejected(ctx(), pointer(tc), stateMachineId, workerIndex);
+    }
+
+    @Override
+    public int stateMachineShouldCheckInvariant(
+            long tc, long stateMachineId, long invariantIndex, boolean[] outShouldCheck) {
+        ByteByReference ref = new ByteByReference();
+        int code =
+                lib.hegel_state_machine_should_check_invariant(ctx(), pointer(tc), stateMachineId, invariantIndex, ref);
+        if (code == Abi.OK) {
+            outShouldCheck[0] = ref.getValue() != 0;
+        }
+        return code;
+    }
+
+    @Override
+    public void stateMachineFree(long stateMachineId) {
+        check("hegel_state_machine_free", lib.hegel_state_machine_free(ctx(), stateMachineId));
     }
 
     @Override

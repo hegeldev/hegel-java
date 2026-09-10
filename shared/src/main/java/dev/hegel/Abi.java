@@ -22,11 +22,13 @@ public final class Abi {
     public static final int E_NOT_COMPLETE = -7;
     public static final int E_INTERNAL = -8;
     public static final int E_CONCURRENT_USE = -9;
+    public static final int E_RETRY = -10;
 
     // Aggregate run outcome (hegel_run_status_t).
     public static final int RUN_STATUS_PASSED = 0;
     public static final int RUN_STATUS_FAILED = 1;
     public static final int RUN_STATUS_ERROR = 2;
+    public static final int RUN_STATUS_FAILED_NONDETERMINISTIC = 3;
 
     // Phases (bitmask for hegel_settings_set_phases).
     public static final int PHASE_EXPLICIT = 1 << 0;
@@ -63,10 +65,6 @@ public final class Abi {
     // The label space is open beyond the reserved values: any stable u64 works.
     public static final long LABEL_COMPOSITE = fnv1a("dev.hegel.composite");
 
-    // hegel_mode_t.
-    public static final int MODE_TEST_RUN = 0;
-    public static final int MODE_SINGLE_TEST_CASE = 1;
-
     // hegel_backend_t.
     public static final int BACKEND_AUTO = 0;
     public static final int BACKEND_DEFAULT = 1;
@@ -84,7 +82,8 @@ public final class Abi {
     public static final int STATUS_OVERRUN = 2;
     public static final int STATUS_INTERESTING = 3;
 
-    public static final long STATE_MACHINE_DONE = -1;
+    // Sentinel written by hegel_state_machine_next_group / hegel_state_machine_next_rule (INT64_MIN).
+    public static final long STATE_MACHINE_DONE = Long.MIN_VALUE;
     public static final long UNBOUNDED = -1L; // 0xFFFFFFFFFFFFFFFF as a Java long
     public static final long NO_MAX_CODEPOINT = 0xFFFFFFFFL;
 

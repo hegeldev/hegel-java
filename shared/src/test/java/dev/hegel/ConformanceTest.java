@@ -231,7 +231,7 @@ class ConformanceTest {
         java.time.LocalDate dateLo = java.time.LocalDate.of(2020, 2, 5);
         java.time.LocalDate dateHi = java.time.LocalDate.of(2021, 3, 9);
         assertAllExamples(dates().min(dateLo).max(dateHi), d -> !d.isBefore(dateLo) && !d.isAfter(dateHi));
-        // A sub-microsecond lower bound is snapped up to the engine's resolution.
+        // Bounds are honoured at nanosecond resolution.
         java.time.LocalTime timeLo = java.time.LocalTime.of(10, 30, 0, 4);
         java.time.LocalTime timeHi = java.time.LocalTime.of(11, 0);
         assertAllExamples(times().min(timeLo).max(timeHi), t -> !t.isBefore(timeLo) && !t.isAfter(timeHi));

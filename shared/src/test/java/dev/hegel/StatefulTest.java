@@ -77,6 +77,36 @@ class StatefulTest {
         assertTrue(output.contains("Step 1: increment"), output);
     }
 
+    /** A counter whose always-run invariant records every intermediate state it observes. */
+    static final class ObservedCounter {
+        private int n = 0;
+        final List<Integer> seen = new ArrayList<>();
+
+        @Rule
+        void increment(TestCase tc) {
+            n++;
+        }
+
+        @Invariant(alwaysRun = true)
+        void observe(TestCase tc) {
+            seen.add(n);
+        }
+    }
+
+    @HegelTest(database = Database.DISABLED)
+    void alwaysRunInvariantsSeeEveryStep(TestCase tc) {
+        // Sampled invariants may skip steps; an always-run one is checked on the initial state,
+        // after every rule, and again on the final state.
+        ObservedCounter machine = new ObservedCounter();
+        Stateful.run(machine, tc);
+        List<Integer> expected = new ArrayList<>();
+        for (int i = 0; i <= machine.n; i++) {
+            expected.add(i);
+        }
+        expected.add(machine.n);
+        assertEquals(expected, machine.seen);
+    }
+
     /** Rules act on previously generated values through a {@link Pool}. */
     static final class PoolMachine {
         private final List<Integer> live = new ArrayList<>();

@@ -42,8 +42,6 @@ interface Libhegel {
 
     void settingsFree(long s);
 
-    void settingsMode(long s, int mode);
-
     void settingsBackend(long s, int backend);
 
     void settingsTestCases(long s, long n);
@@ -175,10 +173,36 @@ interface Libhegel {
 
     int poolGenerate(long tc, long poolId, boolean consume, long[] outVariableId);
 
-    int newStateMachine(long tc, List<String> ruleNames, List<String> invariantNames, long[] outId);
+    /**
+     * {@code hegel_new_state_machine}: {@code ruleGroups} is parallel to {@code ruleNames} (any
+     * value but {@link Abi#STATE_MACHINE_DONE}), {@code invariantAlwaysCheck} parallel to {@code
+     * invariantNames}. The engine draws the concurrency level in {@code [minConcurrency,
+     * maxConcurrency]} and writes it to {@code outConcurrency}; pass {@code 1, 1} for a sequential
+     * machine.
+     */
+    int newStateMachine(
+            long tc,
+            List<String> ruleNames,
+            long[] ruleGroups,
+            List<String> invariantNames,
+            boolean[] invariantAlwaysCheck,
+            long minConcurrency,
+            long maxConcurrency,
+            long[] outId,
+            long[] outConcurrency);
+
+    /** The id of the group current for the new round, or {@link Abi#STATE_MACHINE_DONE}. */
+    int stateMachineNextGroup(long tc, long stateMachineId, long[] outGroupId);
 
     /** {@code outRuleIndex[0]} receives the rule index, or {@link Abi#STATE_MACHINE_DONE}. */
-    int stateMachineNextRule(long tc, long stateMachineId, long[] outRuleIndex);
+    int stateMachineNextRule(long tc, long stateMachineId, long workerIndex, long[] outRuleIndex);
+
+    int stateMachineRuleRejected(long tc, long stateMachineId, long workerIndex);
+
+    int stateMachineShouldCheckInvariant(long tc, long stateMachineId, long invariantIndex, boolean[] outShouldCheck);
+
+    /** {@code hegel_state_machine_free}: the handle is independent of its test case and run. */
+    void stateMachineFree(long stateMachineId);
 
     int target(long tc, double value, String label);
 

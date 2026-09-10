@@ -10,10 +10,10 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
 /**
- * Generates {@link LocalDateTime} values within an inclusive {@code [min, max]} range, at the
- * engine's microsecond resolution.
+ * Generates {@link LocalDateTime} values within an inclusive {@code [min, max]} range, at
+ * nanosecond resolution.
  *
- * <p>The default range is {@code 0001-01-01T00:00} to {@code 9999-12-31T23:59:59.999999}; narrow it
+ * <p>The default range is {@code 0001-01-01T00:00} to {@code 9999-12-31T23:59:59.999999999}; narrow it
  * with the fluent {@link #min(LocalDateTime)} / {@link #max(LocalDateTime)} methods. Values shrink
  * toward 2000-01-01T00:00:00, or the nearest bound when that is out of range.
  *
@@ -29,37 +29,23 @@ public final class DateTimeGenerator implements Generator<LocalDateTime> {
     public DateTimeGenerator() {
         this(
                 LocalDateTime.of(DateGenerator.DEFAULT_MIN, java.time.LocalTime.MIDNIGHT),
-                LocalDateTime.of(DateGenerator.DEFAULT_MAX, TimeGenerator.DEFAULT_MAX));
+                LocalDateTime.of(DateGenerator.DEFAULT_MAX, java.time.LocalTime.MAX));
     }
 
     public DateTimeGenerator(LocalDateTime min, LocalDateTime max) {
-        // Bounds are snapped inward to whole microseconds (the engine's resolution): the lower
-        // bound rounds up (carrying across midnight if needed), the upper bound truncates.
-        LocalDateTime lo = roundUp(min);
-        LocalDateTime hi = truncate(max);
-        validateYear(lo);
-        validateYear(hi);
-        if (lo.isAfter(hi)) {
-            throw new IllegalArgumentException(
-                    "datetimes: min (" + min + ") > max (" + max + ") at microsecond resolution");
+        validateYear(min);
+        validateYear(max);
+        if (min.isAfter(max)) {
+            throw new IllegalArgumentException("datetimes: min (" + min + ") > max (" + max + ")");
         }
-        this.min = lo;
-        this.max = hi;
+        this.min = min;
+        this.max = max;
     }
 
     private static void validateYear(LocalDateTime dt) {
         if (dt.getYear() < -999_999 || dt.getYear() > 999_999) {
             throw new IllegalArgumentException("datetimes: year of " + dt + " is outside [-999999, 999999]");
         }
-    }
-
-    private static LocalDateTime truncate(LocalDateTime t) {
-        return t.withNano(t.getNano() / 1_000 * 1_000);
-    }
-
-    private static LocalDateTime roundUp(LocalDateTime t) {
-        LocalDateTime truncated = truncate(t);
-        return truncated.equals(t) ? t : truncated.plusNanos(1_000);
     }
 
     /**
