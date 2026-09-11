@@ -1,13 +1,15 @@
 package dev.hegel;
 
-import java.io.PrintStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * The handle a property test body uses to draw values and steer the engine.
@@ -16,20 +18,38 @@ import java.util.UUID;
  * {@link #draw(Generator)}, reject uninteresting inputs with {@link #assume(boolean)}, attach debug
  * context with {@link #note(String)}, and guide the search with {@link #target(double)}.
  *
- * <p>On the replay of a minimal failing example, each top-level {@code draw} is printed as an
- * assignment (for example {@code x = 42;}) so the counterexample is readable.
+ * <p>On the replay of a minimal failing example ({@link #isFinal()}), each top-level {@code draw}
+ * and each note is handed to the run's {@link Reporter} (the default prints {@code x = 42;}) and
+ * recorded on the resulting {@link Failure}, so the counterexample is readable.
+ *
+ * <p>Frontends implementing their own composite generators enclose their draws in a labelled
+ * {@link #span(long, Supplier) span} so the engine can shrink the structure they build.
  */
 public final class TestCase {
     private final DataSource source;
-    private final boolean reporting;
-    private final PrintStream out;
+    private final boolean finalReplay;
+    private final Reporter reporter;
+    private final Map<String, Object> draws = new LinkedHashMap<>();
+    private final List<String> notes = new ArrayList<>();
     private int drawDepth;
     private int drawCounter;
 
-    TestCase(DataSource source, boolean reporting, PrintStream out) {
+    TestCase(DataSource source, boolean finalReplay, Reporter reporter) {
         this.source = source;
-        this.reporting = reporting;
-        this.out = out;
+        this.finalReplay = finalReplay;
+        this.reporter = reporter;
+    }
+
+    /**
+     * Whether this case is the final replay of a minimal counterexample (or of a {@link
+     * Settings#reproduceFailure(String)} blob), as opposed to one of the many cases the engine runs
+     * while generating and shrinking. Draws and notes are reported only on a final replay; a test
+     * body can use this to do its own expensive diagnostics only where they will be seen.
+     *
+     * @return {@code true} on a final replay
+     */
+    public boolean isFinal() {
+        return finalReplay;
     }
 
     /**
@@ -62,9 +82,10 @@ public final class TestCase {
         }
         if (top) {
             drawCounter++;
-            if (reporting) {
+            if (finalReplay) {
                 String name = (label != null) ? label : "draw_" + drawCounter;
-                out.println(name + " = " + repr(value) + ";");
+                draws.put(name, value);
+                reporter.draw(name, value);
             }
         }
         return value;
@@ -83,13 +104,14 @@ public final class TestCase {
     }
 
     /**
-     * Record a debug message, shown only on the replay of a failing case.
+     * Record a debug message, reported only on the final replay of a failing case.
      *
      * @param message the message to record
      */
     public void note(String message) {
-        if (reporting) {
-            out.println(message);
+        if (finalReplay) {
+            notes.add(message);
+            reporter.note(message);
         }
     }
 
@@ -227,12 +249,45 @@ public final class TestCase {
         return source.ownsStringGenerator(generator);
     }
 
-    /** @hidden */
+    /**
+     * Draw a structured value inside a labelled span: open the span, run {@code body}, and close
+     * the span whether or not the body completes. This is how composite generators tell the engine
+     * which draws belong together, so it can shrink the structure as a unit; {@link Label} lists
+     * the engine's structural labels and {@link Label#of(String)} mints custom ones.
+     *
+     * @param label the span's label
+     * @param body the draws making up the value
+     * @param <T> the value type
+     * @return the body's result
+     */
+    public <T> T span(long label, Supplier<T> body) {
+        startSpan(label);
+        try {
+            return body.get();
+        } finally {
+            stopSpan(false);
+        }
+    }
+
+    /**
+     * Open a labelled span. Every {@code startSpan} must be matched by a {@link #stopSpan(boolean)}
+     * on every exit path, including exceptional ones; prefer {@link #span(long, Supplier)}, which
+     * handles that.
+     *
+     * @param label the span's label (see {@link Label})
+     */
     public void startSpan(long label) {
         source.startSpan(label);
     }
 
-    /** @hidden */
+    /**
+     * Close the innermost open span. Passing {@code discard = true} tells the engine the span's
+     * draws were rejected (for example, a filtered value that failed its predicate) and will be
+     * retried. A no-op once the case has been concluded by the engine, so span-closing {@code
+     * finally} blocks are safe while a case unwinds.
+     *
+     * @param discard whether the span's draws were rejected
+     */
     public void stopSpan(boolean discard) {
         source.stopSpan(discard);
     }
@@ -293,6 +348,16 @@ public final class TestCase {
     /** Whether the engine has concluded this case (overrun or invalid), so its body must unwind. */
     boolean isAborted() {
         return source.isAborted();
+    }
+
+    /** The top-level draws recorded on a final replay, in draw order. */
+    Map<String, Object> draws() {
+        return draws;
+    }
+
+    /** The notes recorded on a final replay, in order. */
+    List<String> notes() {
+        return notes;
     }
 
     static String repr(Object value) {

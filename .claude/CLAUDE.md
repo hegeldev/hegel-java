@@ -100,10 +100,16 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   `hegel_next_test_case` → `hegel_mark_complete`. The engine only *explores* (generation and
   shrinking), so every pumped case is non-final; after the loop drains, `hegel_run_result` yields
   PASSED, FAILED, or ERROR. On FAILED the runner replays each distinct counterexample's
-  **reproduce blob** (`hegel_test_case_from_blob`) with reporting enabled — printing the shrunk
-  draws and re-raising the body's own exception (a replay that no longer fails is reported as a
-  flaky test). On ERROR the engine's message surfaces directly (`FailedHealthCheck: ...` becomes
-  `HealthCheckFailure`). `Settings` is the immutable config; its closed-state setting types live
+  **reproduce blob** (`hegel_test_case_from_blob`) with reporting enabled — capturing the shrunk
+  draws, notes, and the body's own exception into a `Failure` (a replay that no longer fails is a
+  *flaky* failure). The runner returns a `RunReport` (status, client-side `RunStatistics` counted
+  per `mark_complete` — the C ABI has no counter accessor — engine error, failures) and never
+  prints: everything goes through the run's `Reporter` (`Reporter.printing(System.err)` is the
+  default and reproduces the classic output; `Reporter.silent()` for library use). `Hegel.run`
+  returns the report; `Hegel.test` = `run` + `RunReport.throwIfFailed()`, which rethrows a single
+  failure as-is (checked exceptions included), aggregates several into an `AssertionError`, and
+  maps ERROR to `HealthCheckFailure`/`HegelException`. `HegelException` (binding/engine errors) is
+  always thrown, never reported. `Settings` is the immutable config; its closed-state setting types live
   alongside it — `Backend` (auto / default / urandom for Antithesis), `Database`, `OptBoolean` —
   plus `printBlob` (print a copy-pasteable reproducer per failure) and `reproduceFailure` (replay
   a stored blob instead of running the property). There is no single-test-case mode (the engine
@@ -116,7 +122,10 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   domain) build a validated `hegel_string_generator_t` handle once per configuration and cache it
   (`HandleCache`, rebuilt if a test swaps the `Engine` binding); `StringGeneratorHandle` frees the
   engine allocation via a `Cleaner` when unreachable. `Generators` is the factory facade.
-- **Public API** — `Hegel.test`, `TestCase` (`draw`/`assume`/`note`/`target`), the `@HegelTest`
+- **Public API** — `Hegel.test`/`Hegel.run`, `TestCase` (`draw`/`assume`/`note`/`target`/`isFinal`/
+  `span`), `Label` (span labels; `Label.of(name)` mints FNV-1a labels), `Reporter`, `RunReport`,
+  `Settings.infrastructurePackages` (extra class-name prefixes skipped by `Runner.originOf`), the
+  `@HegelTest`
   annotation + `HegelTestExtension` (a JUnit 5 `TestTemplateInvocationContextProvider` that drives
   the engine loop and invokes the user method per case).
 - **Stateful testing** — `Stateful.run(machine, tc)` reflects `@Rule`/`@Invariant` methods (sorted
@@ -144,3 +153,9 @@ suites. A few genuinely-unreachable defensive blocks are excluded via `@Generate
 output-callback bridge method, and the `IllegalAccessException` after `setAccessible(true)`
 succeeded in `Stateful`. Everything else is covered by real-engine integration tests plus
 `FakeLibhegel`-driven error-path tests.
+
+JaCoCo gotcha: a call to a helper that *always* throws leaves the call site's own instructions
+uncovered (they are attributed to the next probe, which never runs), and `throw helper(x)` leaves
+a dead `athrow`. Make such helpers return on some tested path (see `RunReport.unchecked`). Also
+note the test suite lives in `dev.hegel`, so `Runner.originOf` treats test frames as
+infrastructure — origin assertions cannot name a test file.

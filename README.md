@@ -94,3 +94,23 @@ org.opentest4j.AssertionFailedError: expected: <2> but was: <1>
 Hegel reports the minimal example showing that our sort is incorrectly dropping duplicates: `[0, 0]`, two equal elements, which `mySort` collapses into one. If we replace the `TreeSet`-based body of `mySort()` with a sort that keeps duplicates, this test will then pass.
 
 The optional `"xs"` label passed to `draw` names the value in the falsifying-example output. See the [API documentation](https://javadoc.io/doc/dev.hegel/hegel) for a full tour of generators, combinators, control functions, and settings.
+
+## Using Hegel as a library
+
+Frontends for other JVM languages (or custom runners) use `Hegel.run` instead of `Hegel.test`. It
+returns a `RunReport` rather than throwing, and a `Reporter` lets you own every line of output:
+
+```java
+RunReport report = Hegel.run(tc -> { ... }, new Settings().testCases(200), Reporter.silent());
+report.status();                        // PASSED, FAILED, or ERROR
+report.statistics();                    // valid / invalid / overrun / interesting case counts
+for (Failure f : report.failures()) {   // one per distinct counterexample
+  f.draws();                            // labelled draws of the minimal example, as Java values
+  f.exception();                        // the body's own throwable
+  f.reproduceBlob();                    // replay it later with Settings.reproduceFailure
+}
+```
+
+`TestCase.isFinal()` identifies the final replay of a counterexample, `TestCase.span` and `Label`
+let custom composite generators tell the engine about their structure, and
+`Settings.infrastructurePackages` keeps a frontend's own stack frames out of failure origins.

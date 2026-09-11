@@ -225,6 +225,8 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_failure_reproduction_blob(Pointer ctx, Pointer failure, PointerByReference out);
 
+        int hegel_failure_origin(Pointer ctx, Pointer failure, PointerByReference out);
+
         int hegel_version(Pointer ctx, PointerByReference out);
     }
 
@@ -921,6 +923,18 @@ final class JnaLibhegel implements Libhegel {
         String blob = readCString(blobOut.getValue());
         check("hegel_failure_free", lib.hegel_failure_free(ctx(), failure));
         return blob;
+    }
+
+    @Override
+    public String failureOrigin(long result, long index) {
+        PointerByReference failureOut = new PointerByReference();
+        check("hegel_run_result_failure", lib.hegel_run_result_failure(ctx(), pointer(result), index, failureOut));
+        Pointer failure = failureOut.getValue();
+        PointerByReference originOut = new PointerByReference();
+        check("hegel_failure_origin", lib.hegel_failure_origin(ctx(), failure, originOut));
+        String origin = readCString(originOut.getValue());
+        check("hegel_failure_free", lib.hegel_failure_free(ctx(), failure));
+        return origin;
     }
 
     // --- diagnostics ---

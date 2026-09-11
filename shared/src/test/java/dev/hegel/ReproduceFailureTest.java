@@ -21,7 +21,10 @@ class ReproduceFailureTest {
     private static String runCapturing(Settings settings, Consumer<TestCase> body, Class<? extends Throwable> want) {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
-        assertThrows(want, () -> Runner.run(Engine.get(), settings, body, Map.of(), out));
+        assertThrows(
+                want,
+                () -> Runner.run(Engine.get(), settings, body, Map.of(), Reporter.printing(out))
+                        .throwIfFailed());
         return buf.toString(StandardCharsets.UTF_8);
     }
 

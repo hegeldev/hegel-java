@@ -68,11 +68,12 @@ class StatefulTest {
         assertThrows(
                 AssertionError.class,
                 () -> Runner.run(
-                        Engine.get(),
-                        new Settings().database(Database.disabled()).seed(11),
-                        tc -> Stateful.run(new BuggyCounter(), tc),
-                        Map.of(),
-                        out));
+                                Engine.get(),
+                                new Settings().database(Database.disabled()).seed(11),
+                                tc -> Stateful.run(new BuggyCounter(), tc),
+                                Map.of(),
+                                Reporter.printing(out))
+                        .throwIfFailed());
         String output = buf.toString(StandardCharsets.UTF_8);
         assertTrue(output.contains("Step 1: increment"), output);
     }

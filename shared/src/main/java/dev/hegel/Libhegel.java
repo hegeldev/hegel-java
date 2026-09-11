@@ -222,6 +222,9 @@ interface Libhegel {
      */
     String failureBlob(long result, long index);
 
+    /** The origin string the shrinker grouped the {@code index}-th distinct failure under. */
+    String failureOrigin(long result, long index);
+
     // Diagnostics.
     String lastErrorMessage();
 

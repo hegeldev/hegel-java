@@ -17,7 +17,7 @@ class TestCaseTest {
         return new TestCase(
                 new LiveDataSource(fake, FakeLibhegel.TC),
                 reporting,
-                new PrintStream(buf, true, StandardCharsets.UTF_8));
+                Reporter.printing(new PrintStream(buf, true, StandardCharsets.UTF_8)));
     }
 
     @Test
@@ -66,6 +66,44 @@ class TestCaseTest {
         ByteArrayOutputStream quiet = new ByteArrayOutputStream();
         newCase(new FakeLibhegel(), false, quiet).note("nope");
         assertEquals("", quiet.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void finalReplayRecordsDrawsAndNotes() {
+        TestCase tc = newCase(new FakeLibhegel(), true, new ByteArrayOutputStream());
+        assertTrue(tc.isFinal());
+        tc.draw(constant(1), "x");
+        tc.note("first");
+        tc.draw(constant(2));
+        java.util.LinkedHashMap<String, Object> want = new java.util.LinkedHashMap<>();
+        want.put("x", 1);
+        want.put("draw_2", 2);
+        assertEquals(want, tc.draws());
+        assertEquals(List.of("x", "draw_2"), List.copyOf(tc.draws().keySet()));
+        assertEquals(List.of("first"), tc.notes());
+
+        TestCase exploring = newCase(new FakeLibhegel(), false, new ByteArrayOutputStream());
+        assertTrue(!exploring.isFinal());
+        exploring.draw(constant(1), "x");
+        exploring.note("ignored");
+        assertTrue(exploring.draws().isEmpty());
+        assertTrue(exploring.notes().isEmpty());
+    }
+
+    @Test
+    void spanOpensAndClosesAroundTheBody() {
+        FakeLibhegel fake = new FakeLibhegel();
+        TestCase tc = newCase(fake, false, new ByteArrayOutputStream());
+        assertEquals(7, tc.span(Label.of("test.pair"), () -> 7));
+        assertEquals(List.of(Label.of("test.pair")), fake.startedSpans);
+        assertEquals(1, fake.stoppedSpans);
+        // The span is closed on the exceptional path too.
+        assertThrows(
+                IllegalStateException.class,
+                () -> tc.span(Label.TUPLE, () -> {
+                    throw new IllegalStateException("inside");
+                }));
+        assertEquals(2, fake.stoppedSpans);
     }
 
     @Test

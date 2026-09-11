@@ -98,6 +98,7 @@ final class FakeLibhegel implements Libhegel {
 
     int startSpanRc = Abi.OK;
     int stopSpanRc = Abi.OK;
+    int stoppedSpans;
     final List<Long> startedSpans = new ArrayList<>();
     int newCollectionRc = Abi.OK;
     long collectionId = 7;
@@ -420,6 +421,7 @@ final class FakeLibhegel implements Libhegel {
 
     @Override
     public int stopSpan(long tc, boolean discard) {
+        stoppedSpans++;
         return stopSpanRc;
     }
 
@@ -565,6 +567,11 @@ final class FakeLibhegel implements Libhegel {
     @Override
     public String failureBlob(long result, long index) {
         return failureBlobs.get((int) index);
+    }
+
+    @Override
+    public String failureOrigin(long result, long index) {
+        return "fake-origin-" + index;
     }
 
     @Override

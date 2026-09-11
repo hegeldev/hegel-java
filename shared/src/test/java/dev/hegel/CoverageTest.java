@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -166,10 +165,7 @@ class CoverageTest {
     }
 
     private static <T> T drawWith(FakeLibhegel fake, Generator<T> gen) {
-        TestCase tc = new TestCase(
-                new LiveDataSource(fake, FakeLibhegel.TC),
-                false,
-                new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        TestCase tc = new TestCase(new LiveDataSource(fake, FakeLibhegel.TC), false, Reporter.silent());
         return tc.draw(gen);
     }
 
@@ -205,10 +201,7 @@ class CoverageTest {
     @Test
     void poolTracksValuesByVariableId() {
         FakeLibhegel fake = new FakeLibhegel();
-        TestCase tc = new TestCase(
-                new LiveDataSource(fake, FakeLibhegel.TC),
-                false,
-                new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        TestCase tc = new TestCase(new LiveDataSource(fake, FakeLibhegel.TC), false, Reporter.silent());
         Pool<String> pool = new Pool<>(tc);
         assertTrue(pool.isEmpty());
         pool.add("first");
@@ -346,10 +339,7 @@ class CoverageTest {
     }
 
     private static TestCase fakeTestCase(FakeLibhegel fake) {
-        return new TestCase(
-                new LiveDataSource(fake, FakeLibhegel.TC),
-                false,
-                new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        return new TestCase(new LiveDataSource(fake, FakeLibhegel.TC), false, Reporter.silent());
     }
 
     @Test
@@ -362,10 +352,7 @@ class CoverageTest {
                 throw new AssertionError("rule failed");
             }
         }
-        TestCase tc = new TestCase(
-                new LiveDataSource(fake, FakeLibhegel.TC),
-                false,
-                new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        TestCase tc = new TestCase(new LiveDataSource(fake, FakeLibhegel.TC), false, Reporter.silent());
         AssertionError e = assertThrows(AssertionError.class, () -> Stateful.run(new Failing(), tc));
         assertEquals("rule failed", e.getMessage());
 
@@ -379,10 +366,7 @@ class CoverageTest {
             }
         }
         FakeLibhegel fake2 = new FakeLibhegel();
-        TestCase tc2 = new TestCase(
-                new LiveDataSource(fake2, FakeLibhegel.TC),
-                false,
-                new java.io.PrintStream(new java.io.ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        TestCase tc2 = new TestCase(new LiveDataSource(fake2, FakeLibhegel.TC), false, Reporter.silent());
         assertThrows(AssertionError.class, () -> Stateful.run(new FailingInvariant(), tc2));
     }
 

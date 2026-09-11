@@ -26,7 +26,8 @@ class RunnerTest {
     }
 
     private static void run(FakeLibhegel fake, Settings s, Consumer<TestCase> body) {
-        Runner.run(fake, s, body, NO_CI, capture(new ByteArrayOutputStream()));
+        Runner.run(fake, s, body, NO_CI, Reporter.printing(capture(new ByteArrayOutputStream())))
+                .throwIfFailed();
     }
 
     @Test
@@ -200,16 +201,17 @@ class RunnerTest {
         AssertionError e = assertThrows(
                 AssertionError.class,
                 () -> Runner.run(
-                        fake,
-                        new Settings().database(Database.disabled()).reportMultipleFailures(true),
-                        tc -> {
-                            if (replay.incrementAndGet() % 2 == 1) {
-                                throw new AssertionError("bug one");
-                            }
-                            throw new IllegalStateException("bug two");
-                        },
-                        NO_CI,
-                        capture(buf)));
+                                fake,
+                                new Settings().database(Database.disabled()).reportMultipleFailures(true),
+                                tc -> {
+                                    if (replay.incrementAndGet() % 2 == 1) {
+                                        throw new AssertionError("bug one");
+                                    }
+                                    throw new IllegalStateException("bug two");
+                                },
+                                NO_CI,
+                                Reporter.printing(capture(buf)))
+                        .throwIfFailed());
         assertTrue(e.getMessage().contains("2 distinct failing examples"), e.getMessage());
         assertTrue(e.getMessage().contains("bug one"), e.getMessage());
         assertTrue(e.getMessage().contains("bug two"), e.getMessage());
@@ -240,13 +242,14 @@ class RunnerTest {
         assertThrows(
                 AssertionError.class,
                 () -> Runner.run(
-                        fake,
-                        new Settings().database(Database.disabled()).printBlob(true),
-                        tc -> {
-                            throw new AssertionError("always");
-                        },
-                        NO_CI,
-                        capture(buf)));
+                                fake,
+                                new Settings().database(Database.disabled()).printBlob(true),
+                                tc -> {
+                                    throw new AssertionError("always");
+                                },
+                                NO_CI,
+                                Reporter.printing(capture(buf)))
+                        .throwIfFailed());
         String out = buf.toString(StandardCharsets.UTF_8);
         assertTrue(out.contains("reproduceFailure = \"blob-b64\""), out);
     }
@@ -360,13 +363,18 @@ class RunnerTest {
 
         // CI default disables the database and derandomizes.
         FakeLibhegel ci = new FakeLibhegel();
-        Runner.run(ci, new Settings(), tc -> {}, CI, capture(new ByteArrayOutputStream()));
+        Runner.run(ci, new Settings(), tc -> {}, CI, Reporter.printing(capture(new ByteArrayOutputStream())));
         assertEquals("", ci.databasePath);
         assertEquals(Boolean.TRUE, ci.derandomize);
 
         // Non-CI default leaves the engine database enabled; a name derives a key.
         FakeLibhegel named = new FakeLibhegel();
-        Runner.run(named, new Settings().name("t"), tc -> {}, NO_CI, capture(new ByteArrayOutputStream()));
+        Runner.run(
+                named,
+                new Settings().name("t"),
+                tc -> {},
+                NO_CI,
+                Reporter.printing(capture(new ByteArrayOutputStream())));
         assertEquals("unset", named.databasePath);
         assertEquals("t", named.databaseKey);
     }
@@ -375,6 +383,45 @@ class RunnerTest {
     void originFallsBackToClassNameWithoutUserFrame() {
         Throwable t = new RuntimeException("x");
         t.setStackTrace(new StackTraceElement[] {});
-        assertEquals(RuntimeException.class.getName(), Runner.originOf(t));
+        assertEquals(RuntimeException.class.getName(), Runner.originOf(t, List.of()));
+    }
+
+    @Test
+    void infrastructurePackagesAreSkippedWhenLocatingTheOrigin() {
+        RuntimeException t = new RuntimeException("x");
+        t.setStackTrace(new StackTraceElement[] {
+            new StackTraceElement("my.infra.Glue", "call", "Glue.java", 5),
+            new StackTraceElement("com.example.Body", "prop", "Body.java", 42),
+        });
+        assertEquals("RuntimeException at Glue.java:5", Runner.originOf(t, List.of()));
+        assertEquals("RuntimeException at Body.java:42", Runner.originOf(t, List.of("my.infra.")));
+
+        // The setting reaches the origin handed to the engine.
+        FakeLibhegel fake = new FakeLibhegel();
+        run(fake, new Settings().database(Database.disabled()).infrastructurePackages("my.infra."), tc -> {
+            throw t;
+        });
+        assertEquals(List.of("RuntimeException at Body.java:42"), fake.markedOrigins);
+    }
+
+    @Test
+    void printBlobIsSkippedForAFlakyReplay() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add("blob-b64");
+        AtomicInteger calls = new AtomicInteger();
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        RunReport report = Runner.run(
+                fake,
+                new Settings().database(Database.disabled()).printBlob(true),
+                tc -> {
+                    if (calls.incrementAndGet() == 1) {
+                        throw new AssertionError("only once");
+                    }
+                },
+                NO_CI,
+                Reporter.printing(capture(buf)));
+        assertTrue(report.failures().get(0).flaky());
+        assertEquals("", buf.toString(StandardCharsets.UTF_8));
     }
 }

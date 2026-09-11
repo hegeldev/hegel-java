@@ -155,6 +155,7 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle runResultFailure;
     private final MethodHandle failureFree;
     private final MethodHandle failureReproductionBlob;
+    private final MethodHandle failureOrigin;
     private final MethodHandle version;
 
     RealLibhegel(Path libraryPath) {
@@ -420,6 +421,8 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_failure_reproduction_blob",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        this.failureOrigin =
+                h(linker, lookup, "hegel_failure_origin", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.version = h(linker, lookup, "hegel_version", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.context = ThreadLocal.withInitial(() -> (MemorySegment) invoke(contextNew));
     }
@@ -1113,14 +1116,24 @@ final class RealLibhegel implements Libhegel {
 
     @Override
     public String failureBlob(long result, long index) {
+        return readFailureString(result, index, failureReproductionBlob, "hegel_failure_reproduction_blob");
+    }
+
+    @Override
+    public String failureOrigin(long result, long index) {
+        return readFailureString(result, index, failureOrigin, "hegel_failure_origin");
+    }
+
+    /** Fetch the {@code index}-th failure, read one of its strings with {@code reader}, free it. */
+    private String readFailureString(long result, long index, MethodHandle reader, String op) {
         MemorySegment failureOut = Arena.ofAuto().allocate(ADDRESS);
         check("hegel_run_result_failure", rc(runResultFailure, segment(result), index, failureOut));
         MemorySegment failure = failureOut.get(ADDRESS, 0);
-        MemorySegment blobOut = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_failure_reproduction_blob", rc(failureReproductionBlob, failure, blobOut));
-        String blob = readCString(blobOut.get(ADDRESS, 0));
+        MemorySegment strOut = Arena.ofAuto().allocate(ADDRESS);
+        check(op, rc(reader, failure, strOut));
+        String value = readCString(strOut.get(ADDRESS, 0));
         check("hegel_failure_free", rc(failureFree, failure));
-        return blob;
+        return value;
     }
 
     // --- diagnostics ---
