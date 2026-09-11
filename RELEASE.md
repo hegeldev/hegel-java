@@ -32,3 +32,12 @@ Hegel can now be used as a library by other JVM frontends (hegeldev/hegel-java#1
   replay's.
 - A checked exception thrown from a test body (possible from Kotlin, Clojure, and other frontends)
   is now rethrown as-is instead of failing with a `ClassCastException`.
+
+New artifact `dev.hegel:hegel-lowlevel` (Java 17+), for people binding Hegel or building a frontend
+from scratch. It holds only the binding contract: the `Libhegel` interface (one method per
+`hegel_*` function, raw handles and return codes), the `Abi` constants, `LibraryLoader`,
+`LibhegelException`, and the `LibhegelBackend` service provider interface. `Libhegel.load()` finds
+whichever binding is on the classpath. Both `dev.hegel:hegel` and `dev.hegel:hegel-jna` now depend
+on it and register their bindings as service providers; nothing changes for their users. The
+package is marked experimental: implementors should expect new methods as the engine grows.
+`HegelException` now extends `LibhegelException`.

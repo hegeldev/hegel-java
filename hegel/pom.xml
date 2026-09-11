@@ -16,6 +16,14 @@
   <name>hegel-java</name>
   <description>Property-based testing for Java, built on Hypothesis (FFM binding, Java 22+)</description>
 
+  <dependencies>
+    <dependency>
+      <groupId>dev.hegel</groupId>
+      <artifactId>hegel-lowlevel</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+
   <build>
     <plugins>
       <plugin>
@@ -28,11 +36,6 @@
             </manifestEntries>
           </archive>
         </configuration>
-      </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-resources-plugin</artifactId>
       </plugin>
 
       <plugin>

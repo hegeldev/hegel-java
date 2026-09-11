@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.hegel.lowlevel.Abi;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;

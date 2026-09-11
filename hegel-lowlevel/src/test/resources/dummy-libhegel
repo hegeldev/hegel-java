@@ -1,0 +1,1 @@
+not a real library; HEGEL_LIBHEGEL_PATH points here so Libhegel.load() resolves without a bundled native

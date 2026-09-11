@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Libhegel;
+import dev.hegel.lowlevel.LibraryLoader;
 import java.nio.file.Path;
 
 /**
@@ -19,9 +21,11 @@ final class Engine {
 
     static synchronized Libhegel get() {
         if (instance == null) {
+            // Each frontend jar bundles exactly one binding, registered as a LibhegelBackend
+            // service provider; Libhegel.load finds it.
             Path path = LibraryLoader.fromEnvironment().resolve();
-            Libhegel lib = LibhegelBackend.open(path);
-            LibraryLoader.warnOnVersionMismatch(lib, LibraryLoader.targetEngineVersion(), System.err);
+            Libhegel lib = Libhegel.load(path);
+            LibraryLoader.warnOnVersionMismatch(lib.version(), LibraryLoader.targetEngineVersion(), System.err);
             instance = lib;
         }
         return instance;

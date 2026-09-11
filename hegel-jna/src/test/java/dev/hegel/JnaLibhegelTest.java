@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.jna.Memory;
 import com.sun.jna.Pointer;
+import dev.hegel.lowlevel.Abi;
+import dev.hegel.lowlevel.LibraryLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;

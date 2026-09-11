@@ -1,9 +1,9 @@
 package dev.hegel.generators;
 
-import dev.hegel.Abi;
 import dev.hegel.AssumeRejected;
 import dev.hegel.Generator;
 import dev.hegel.TestCase;
+import dev.hegel.lowlevel.Abi;
 import java.util.function.Predicate;
 
 /**

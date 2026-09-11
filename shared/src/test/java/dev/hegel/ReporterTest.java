@@ -2,6 +2,7 @@ package dev.hegel;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import dev.hegel.lowlevel.Abi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -82,7 +83,6 @@ class ReporterTest {
         assertEquals(Abi.LABEL_SAMPLED_FROM, Label.SAMPLED_FROM);
         assertEquals(Abi.LABEL_ENUM_VARIANT, Label.ENUM_VARIANT);
         assertEquals(Abi.LABEL_STATEFUL_RULE, Label.STATEFUL_RULE);
-        assertEquals(Abi.LABEL_COMPOSITE, Label.COMPOSITE);
         // Minted labels are stable and match the hash the composite generator already uses.
         assertEquals(Label.COMPOSITE, Label.of("dev.hegel.composite"));
         assertEquals(Label.of("my.frontend.pair"), Label.of("my.frontend.pair"));

@@ -7,6 +7,7 @@ import static dev.hegel.Generators.longs;
 import static dev.hegel.Generators.text;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import dev.hegel.lowlevel.Abi;
 import org.junit.jupiter.api.Test;
 
 /**

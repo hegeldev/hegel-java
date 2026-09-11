@@ -1,5 +1,8 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
+import dev.hegel.lowlevel.Libhegel;
+import dev.hegel.lowlevel.LibhegelException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -226,7 +229,7 @@ final class Runner {
                 outcome = CaseOutcome.INVALID;
             } catch (StopTest e) {
                 outcome = CaseOutcome.OVERRUN;
-            } catch (HegelException e) {
+            } catch (LibhegelException e) {
                 // A binding/engine error, not a property failure: abort the whole run.
                 throw e;
             } catch (Throwable e) {

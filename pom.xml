@@ -43,6 +43,7 @@
   </issueManagement>
 
   <modules>
+    <module>hegel-lowlevel</module>
     <module>hegel</module>
     <module>hegel-jna</module>
   </modules>
@@ -108,9 +109,9 @@
           <version>3.4.2</version>
         </plugin>
 
-        <!-- Filter the shared java-templates into generated-sources, substituting
-             ${libhegel.version} into BuildInfo.ENGINE_VERSION. build-helper (below) adds the
-             output to the compile path. -->
+        <!-- Filter a module's java-templates into generated-sources, substituting
+             ${libhegel.version} into BuildInfo.ENGINE_VERSION (hegel-lowlevel). build-helper
+             (below) adds the output to the compile path. -->
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-resources-plugin</artifactId>
@@ -126,7 +127,7 @@
                 <outputDirectory>${project.build.directory}/generated-sources/java-templates</outputDirectory>
                 <resources>
                   <resource>
-                    <directory>${hegel.shared}/src/main/java-templates</directory>
+                    <directory>${project.basedir}/src/main/java-templates</directory>
                     <filtering>true</filtering>
                   </resource>
                 </resources>
@@ -300,7 +301,7 @@
           <java>
             <includes>
               <include>shared/src/main/java/**/*.java</include>
-              <include>shared/src/main/java-templates/**/*.java</include>
+              <include>hegel-lowlevel/src/main/java-templates/**/*.java</include>
               <include>shared/src/test/java/**/*.java</include>
             </includes>
             <palantirJavaFormat>
