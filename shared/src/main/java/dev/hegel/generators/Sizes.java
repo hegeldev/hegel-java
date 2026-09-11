@@ -1,6 +1,6 @@
 package dev.hegel.generators;
 
-import dev.hegel.Abi;
+import dev.hegel.lowlevel.Abi;
 
 /** Validation and defaulting helpers for size bounds. */
 final class Sizes {

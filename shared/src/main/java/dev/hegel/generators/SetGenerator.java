@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
-import dev.hegel.Abi;
 import dev.hegel.Generator;
 import dev.hegel.TestCase;
+import dev.hegel.lowlevel.Abi;
 import java.util.LinkedHashSet;
 import java.util.Set;
 

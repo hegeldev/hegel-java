@@ -1,4 +1,4 @@
-package dev.hegel;
+package dev.hegel.lowlevel;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -43,13 +43,13 @@ class LibraryLoaderTest {
         assertEquals("darwin", LibraryLoader.mapOs("Mac OS X"));
         assertEquals("darwin", LibraryLoader.mapOs("Darwin"));
         assertEquals("windows", LibraryLoader.mapOs("Windows 11"));
-        assertThrows(HegelException.class, () -> LibraryLoader.mapOs("FreeBSD"));
+        assertThrows(LibhegelException.class, () -> LibraryLoader.mapOs("FreeBSD"));
 
         assertEquals("amd64", LibraryLoader.mapArch("amd64"));
         assertEquals("amd64", LibraryLoader.mapArch("x86_64"));
         assertEquals("arm64", LibraryLoader.mapArch("aarch64"));
         assertEquals("arm64", LibraryLoader.mapArch("arm64"));
-        assertThrows(HegelException.class, () -> LibraryLoader.mapArch("ppc64"));
+        assertThrows(LibhegelException.class, () -> LibraryLoader.mapArch("ppc64"));
     }
 
     @Test
@@ -129,7 +129,7 @@ class LibraryLoaderTest {
     @Test
     void overrideMissingFails(@TempDir Path dir) {
         LibraryLoader l = loader(Map.of("HEGEL_LIBHEGEL_PATH", "/no/such.so"), dir, NO_RESOURCES);
-        assertThrows(HegelException.class, l::resolve);
+        assertThrows(LibhegelException.class, l::resolve);
     }
 
     @Test
@@ -231,7 +231,7 @@ class LibraryLoaderTest {
     @Test
     void noBundledNativeFails(@TempDir Path dir) {
         LibraryLoader l = loader(Map.of(), dir.resolve("cache"), NO_RESOURCES);
-        HegelException e = assertThrows(HegelException.class, l::resolve);
+        LibhegelException e = assertThrows(LibhegelException.class, l::resolve);
         assertTrue(e.getMessage().contains(LINUX_RESOURCE));
     }
 
@@ -244,7 +244,7 @@ class LibraryLoaderTest {
             }
         };
         LibraryLoader l = loader(Map.of(), dir.resolve("cache"), failing);
-        HegelException e = assertThrows(HegelException.class, l::resolve);
+        LibhegelException e = assertThrows(LibhegelException.class, l::resolve);
         assertTrue(e.getMessage().contains("Failed to read bundled libhegel"));
     }
 
@@ -258,22 +258,15 @@ class LibraryLoaderTest {
 
     @Test
     void warnOnVersionMismatchOnlyWarnsOnRealMismatch() {
-        FakeLibhegel fake = new FakeLibhegel();
-
-        fake.version = "9.9.9";
-        assertTrue(warnOutput(fake, "0.30.4").contains("9.9.9"));
-
-        fake.version = "0.30.4";
-        assertEquals("", warnOutput(fake, "0.30.4")); // matching: silent
-        assertEquals("", warnOutput(fake, null)); // expected unknown: silent
-
-        fake.version = null;
-        assertEquals("", warnOutput(fake, "0.30.4")); // loaded unknown: silent
+        assertTrue(warnOutput("9.9.9", "0.30.4").contains("9.9.9"));
+        assertEquals("", warnOutput("0.30.4", "0.30.4")); // matching: silent
+        assertEquals("", warnOutput("0.30.4", null)); // expected unknown: silent
+        assertEquals("", warnOutput(null, "0.30.4")); // loaded unknown: silent
     }
 
-    private static String warnOutput(FakeLibhegel lib, String expected) {
+    private static String warnOutput(String loaded, String expected) {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
-        LibraryLoader.warnOnVersionMismatch(lib, expected, new PrintStream(buf, true));
+        LibraryLoader.warnOnVersionMismatch(loaded, expected, new PrintStream(buf, true));
         return buf.toString();
     }
 
@@ -297,7 +290,7 @@ class LibraryLoaderTest {
                 new LibraryLoader(Map.of(), cacheAsFile, "linux", "amd64", bundled(LINUX_RESOURCE, payload), () -> {
                     throw new IOException("temp denied");
                 });
-        HegelException e = assertThrows(HegelException.class, l::resolve);
+        LibhegelException e = assertThrows(LibhegelException.class, l::resolve);
         // The terminal error reports both causes: the temp failure as the cause, the cache failure
         // in the message (and suppressed on the cause, so both stack traces survive).
         assertTrue(e.getCause().getMessage().contains("temp denied"));

@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
+
 /** How a single test case concluded, as reported to the engine. */
 public enum CaseOutcome {
     /** The body returned normally: the property held for this input. */

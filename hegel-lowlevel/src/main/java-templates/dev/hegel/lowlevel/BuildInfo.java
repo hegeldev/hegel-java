@@ -1,4 +1,4 @@
-package dev.hegel;
+package dev.hegel.lowlevel;
 
 /**
  * Build-time constants filtered in by Maven from {@code src/main/java-templates}. Generated; do not

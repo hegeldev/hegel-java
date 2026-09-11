@@ -1,5 +1,6 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;

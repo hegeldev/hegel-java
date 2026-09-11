@@ -1,9 +1,9 @@
 package dev.hegel.generators;
 
-import dev.hegel.Abi;
 import dev.hegel.Generator;
 import dev.hegel.HegelException;
 import dev.hegel.TestCase;
+import dev.hegel.lowlevel.Abi;
 import java.lang.reflect.RecordComponent;
 import java.util.HashMap;
 import java.util.Map;

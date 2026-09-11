@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.hegel.lowlevel.Abi;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -30,8 +31,8 @@ class CoverageTest {
     @Test
     void fnv1aMatchesKnownVector() {
         // FNV-1a 64-bit of the empty string is the offset basis.
-        assertEquals(0xcbf29ce484222325L, Abi.fnv1a(""));
-        assertTrue(Abi.LABEL_COMPOSITE == Abi.fnv1a("dev.hegel.composite"));
+        assertEquals(0xcbf29ce484222325L, Label.of(""));
+        assertTrue(Label.COMPOSITE == Label.of("dev.hegel.composite"));
     }
 
     // --- StringGeneratorHandle cleanup ---

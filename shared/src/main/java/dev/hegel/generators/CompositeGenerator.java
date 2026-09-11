@@ -1,7 +1,7 @@
 package dev.hegel.generators;
 
-import dev.hegel.Abi;
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
 import java.util.function.Function;
 
@@ -21,7 +21,7 @@ public final class CompositeGenerator<T> implements Generator<T> {
 
     @Override
     public T doDraw(TestCase tc) {
-        tc.startSpan(Abi.LABEL_COMPOSITE);
+        tc.startSpan(Label.COMPOSITE);
         try {
             return body.apply(tc);
         } finally {

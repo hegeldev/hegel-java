@@ -1,42 +1,91 @@
-package dev.hegel;
+package dev.hegel.lowlevel;
 
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ServiceLoader;
 import java.util.function.Consumer;
 
 /**
- * The libhegel binding surface, as a table of operations.
+ * The libhegel binding surface, as a table of operations: one method per {@code hegel_*} function
+ * in {@code hegel.h}.
  *
- * <p>Modelled as an interface so tests can substitute a fake binding that returns chosen return
- * codes, exercising every error path without the real engine. The production implementation is
- * {@code RealLibhegel} (Foreign Function and Memory API, in {@code hegel}) or {@code JnaLibhegel}
- * (JNA, in {@code hegel-jna}).
+ * <p>This is the contract between a <em>binding</em> (an implementation over some FFI mechanism)
+ * and a <em>frontend</em> (code that drives the engine). Hegel ships two bindings — the Foreign
+ * Function and Memory API binding in {@code dev.hegel:hegel} and the JNA binding in {@code
+ * dev.hegel:hegel-jna} — each registered as a {@link LibhegelBackend}; {@link #load()} picks up
+ * whichever is on the classpath. Frontends may also substitute a fake for tests.
  *
  * <p>Opaque handles ({@code hegel_settings_t*}, {@code hegel_run_t*}, {@code hegel_test_case_t*},
  * {@code hegel_run_result_t*}, {@code hegel_string_generator_t*}) are passed as raw addresses
  * ({@code long}; {@code 0} is NULL); callers treat them as opaque and never dereference them.
  * Handles are caller-owned: every handle a method returns must be released with its matching
- * {@code *Free} method.
+ * {@code *Free} method. A binding keeps one {@code hegel_context_t} per thread internally, so the
+ * C API's leading context argument does not appear here; its last error message is read with
+ * {@link #lastErrorMessage()}.
  *
- * <p>Two calling conventions coexist here, mirroring how the frontend consumes the ABI:
+ * <p>Two calling conventions coexist here, mirroring how a frontend consumes the ABI:
  *
  * <ul>
  *   <li>Per-test-case primitives (draws, spans, collections, pools, state machines, {@code target},
  *       {@code markComplete}) and the string-generator constructors return the raw libhegel return
- *       code; {@link LiveDataSource} translates it and reads {@link #lastErrorMessage()} immediately
- *       on a non-OK code. Out-values are written into caller-supplied one-element arrays only on
- *       {@link Abi#OK} (except where noted).
+ *       code ({@link Abi#OK}, {@link Abi#E_STOP_TEST}, {@link Abi#E_ASSUME}, ...); the frontend
+ *       translates it and reads {@link #lastErrorMessage()} immediately on a non-OK code.
+ *       Out-values are written into caller-supplied one-element arrays only on {@link Abi#OK}
+ *       (except where noted).
  *   <li>Infrastructure calls (settings construction and setters, run lifecycle, result readers,
- *       frees) cannot legitimately fail with the arguments this binding passes, so implementations
- *       check the return code themselves and throw {@link HegelException} on an unexpected non-OK
- *       code.
+ *       frees) cannot legitimately fail with well-formed arguments, so implementations check the
+ *       return code themselves and throw {@link LibhegelException} on an unexpected non-OK code.
  * </ul>
  *
  * <p>Strings the engine returns are copied out before the method returns, so they remain valid.
+ * Implementations are thread-safe; a process needs one instance.
  */
-interface Libhegel {
+public interface Libhegel {
+    /**
+     * Resolve {@code libhegel} (see {@link LibraryLoader}) and open it with the binding registered
+     * on the classpath.
+     *
+     * @return a binding over the resolved library
+     * @throws LibhegelException if no library can be resolved or no binding is registered
+     */
+    static Libhegel load() {
+        return load(LibraryLoader.fromEnvironment().resolve());
+    }
+
+    /**
+     * Open the shared library at {@code library} with the binding registered on the classpath
+     * (through {@link ServiceLoader}). With several registered, the first one found wins.
+     *
+     * @param library the path of the {@code libhegel} shared object
+     * @return a binding over that library
+     * @throws LibhegelException if no binding is registered
+     */
+    static Libhegel load(Path library) {
+        return load(library, ServiceLoader.load(LibhegelBackend.class));
+    }
+
+    /**
+     * Open the shared library at {@code library} with the first of {@code backends}.
+     *
+     * @param library the path of the {@code libhegel} shared object
+     * @param backends candidate bindings, in preference order
+     * @return a binding over that library
+     * @throws LibhegelException if {@code backends} is empty
+     */
+    static Libhegel load(Path library, Iterable<? extends LibhegelBackend> backends) {
+        Iterator<? extends LibhegelBackend> it = backends.iterator();
+        if (!it.hasNext()) {
+            throw new LibhegelException("No libhegel binding is registered on the classpath. Add dev.hegel:hegel"
+                    + " (FFM, Java 22+) or dev.hegel:hegel-jna (JNA, Java 17+), or register your own"
+                    + " dev.hegel.lowlevel.LibhegelBackend service provider.");
+        }
+        return it.next().open(library);
+    }
+
     // Settings. Setters cannot fail with this binding's inputs; implementations throw on non-OK.
     long settingsNew();
 

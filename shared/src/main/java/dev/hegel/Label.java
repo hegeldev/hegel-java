@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
+
 /**
  * Span labels for {@link TestCase#span(long, java.util.function.Supplier)} and {@link
  * TestCase#startSpan(long)}.
@@ -63,7 +65,7 @@ public final class Label {
     public static final long STATEFUL_RULE = Abi.LABEL_STATEFUL_RULE;
 
     /** A value built imperatively from several draws ({@link Generators#composite}). */
-    public static final long COMPOSITE = Abi.LABEL_COMPOSITE;
+    public static final long COMPOSITE = of("dev.hegel.composite");
 
     /**
      * Mint a stable label from a name, hashing it with 64-bit FNV-1a. The same name always yields
@@ -73,6 +75,11 @@ public final class Label {
      * @return the label
      */
     public static long of(String name) {
-        return Abi.fnv1a(name);
+        long hash = 0xcbf29ce484222325L;
+        for (byte b : name.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
+            hash ^= (b & 0xffL);
+            hash *= 0x100000001b3L;
+        }
+        return hash;
     }
 }

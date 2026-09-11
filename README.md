@@ -44,7 +44,9 @@ testImplementation("dev.hegel:hegel:0.1.0") // or "dev.hegel:hegel-jna:0.1.0"
 
 Depend on exactly one of the two — they contain the same classes and differ only in how they call
 the native engine. The engine is bundled in both jars for Linux (x86-64 and arm64), macOS (Apple
-Silicon), and Windows (x86-64 and arm64).
+Silicon), and Windows (x86-64 and arm64). Both pull in a third, small artifact,
+`dev.hegel:hegel-lowlevel`, which holds the binding contract; you never need to depend on it
+directly unless you are [binding Hegel yourself](#binding-hegel-yourself).
 
 Because Hegel calls native code, pass `--enable-native-access=ALL-UNNAMED` to silence the JVM's
 native-access warning — printed by JDK 22+ for `hegel` (FFM) and by JDK 24+ for `hegel-jna` (JNA,
@@ -114,3 +116,18 @@ for (Failure f : report.failures()) {   // one per distinct counterexample
 `TestCase.isFinal()` identifies the final replay of a counterexample, `TestCase.span` and `Label`
 let custom composite generators tell the engine about their structure, and
 `Settings.infrastructurePackages` keeps a frontend's own stack frames out of failure origins.
+
+## Binding Hegel yourself
+
+`dev.hegel:hegel-lowlevel` (Java 17+, no dependencies) is the binding contract on its own, for two
+audiences that do not want the Java frontend:
+
+- **Writing a binding** — implement `dev.hegel.lowlevel.Libhegel` (one method per `hegel_*`
+  function in `hegel.h`, with raw handles and return codes) over your FFI mechanism, and register
+  it as a `dev.hegel.lowlevel.LibhegelBackend` service provider. The two bundled bindings are
+  registered the same way.
+- **Building a frontend from scratch** — depend on `hegel-lowlevel` plus one binding, call
+  `Libhegel.load()` to get the engine, and drive the run loop and per-case primitives yourself.
+  `Abi` holds the constants; `LibraryLoader` resolves the shared library.
+
+The package is experimental: new engine functions become new `Libhegel` methods.

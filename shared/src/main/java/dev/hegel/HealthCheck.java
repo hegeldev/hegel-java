@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
+
 /**
  * Health checks the engine runs to catch tests that are misbehaving rather than buggy. Suppress one
  * via {@link Settings#suppressHealthCheck} when its behaviour is intentional.

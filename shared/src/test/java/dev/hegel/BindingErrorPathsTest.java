@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.hegel.lowlevel.Abi;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;

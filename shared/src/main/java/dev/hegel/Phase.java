@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
+
 /**
  * A phase of a Hegel run. Pass a subset to {@link Settings#phases} to enable only those phases;
  * phases not listed are disabled. The default is all phases.

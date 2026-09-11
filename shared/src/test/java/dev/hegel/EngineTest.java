@@ -3,6 +3,7 @@ package dev.hegel;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import dev.hegel.lowlevel.Libhegel;
 import org.junit.jupiter.api.Test;
 
 class EngineTest {

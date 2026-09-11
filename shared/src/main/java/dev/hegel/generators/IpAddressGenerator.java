@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
-import dev.hegel.Abi;
 import dev.hegel.Generator;
 import dev.hegel.TestCase;
+import dev.hegel.lowlevel.Abi;
 
 /**
  * Generates IP address strings. By default produces a mix of IPv4 and IPv6; restrict to one family

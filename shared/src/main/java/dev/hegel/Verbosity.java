@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
+
 /** Engine output verbosity. */
 public enum Verbosity {
     /** Nothing besides the final result. */
