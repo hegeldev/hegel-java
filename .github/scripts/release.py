@@ -27,8 +27,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 POM = ROOT / "pom.xml"
-MODULE_POMS = [ROOT / "hegel" / "pom.xml", ROOT / "hegel-jna" / "pom.xml"]
-PUBLISHED_ARTIFACTS = ["hegel", "hegel-jna"]
+# Every module pom carries a <parent><version> that must move with the release; a module left
+# behind resolves the previous parent from the repository instead of the reactor.
+MODULE_POMS = [ROOT / "hegel-lowlevel" / "pom.xml", ROOT / "hegel" / "pom.xml", ROOT / "hegel-jna" / "pom.xml"]
+PUBLISHED_ARTIFACTS = ["hegel-lowlevel", "hegel", "hegel-jna"]
 
 # Printed by central-publishing-maven-plugin once the bundle is on the portal. From that point
 # the deployment validates and publishes server-side (autoPublish) no matter how the mvn
@@ -51,8 +53,8 @@ def is_source_file(path: str) -> bool:
     # RELEASE.md; test-only and tooling changes don't. Mirrors the per-library source definition
     # the other Hegel libraries use (which likewise exclude their test trees).
     return (
-        path.startswith(("shared/src/main/", "hegel/src/main/", "hegel-jna/src/main/"))
-        or path in ("pom.xml", "hegel/pom.xml", "hegel-jna/pom.xml")
+        path.startswith(("shared/src/main/", "hegel-lowlevel/src/main/", "hegel/src/main/", "hegel-jna/src/main/"))
+        or path in ("pom.xml", "hegel-lowlevel/pom.xml", "hegel/pom.xml", "hegel-jna/pom.xml")
     )
 
 
@@ -132,8 +134,8 @@ def run_deploy(mvn_args: list[str]) -> tuple[int, bool]:
 
 
 def is_published(version: str) -> bool:
-    """Ask the Central Publisher API whether every published artifact (dev.hegel:hegel and
-    dev.hegel:hegel-jna) at {version} is live on Maven Central. Network and server errors count
+    """Ask the Central Publisher API whether every published artifact (dev.hegel:hegel-lowlevel,
+    dev.hegel:hegel, and dev.hegel:hegel-jna) at {version} is live on Maven Central. Network and server errors count
     as "not (yet) published", so a transiently failing status endpoint — the very thing being
     recovered from — just means polling again."""
     credentials = f"{os.environ['CENTRAL_TOKEN_USER']}:{os.environ['CENTRAL_TOKEN_PASS']}"
@@ -261,7 +263,7 @@ def release() -> None:
     git("config", "user.name", f"{app_slug}[bot]")
     git("config", "user.email", f"{bot_user_id}+{app_slug}[bot]@users.noreply.github.com")
 
-    git("add", "pom.xml", "hegel/pom.xml", "hegel-jna/pom.xml", "CHANGELOG.md")
+    git("add", "pom.xml", *[str(pom.relative_to(ROOT)) for pom in MODULE_POMS], "CHANGELOG.md")
     git("rm", "RELEASE.md")
     git("commit", "-m", f"Bump to version {new_version} and update changelog\n\n[skip ci]")
     git("tag", f"v{new_version}")
