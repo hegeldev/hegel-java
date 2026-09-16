@@ -261,7 +261,9 @@ final class Runner {
         }
         lib.settingsDerandomize(s, st.derandomize != null ? st.derandomize : ci);
         lib.settingsReportMultipleFailures(s, st.reportMultipleFailures);
-        lib.settingsBackend(s, st.backend.code);
+        if (st.backend.code != null) {
+            lib.settingsBackend(s, st.backend.code);
+        }
         if (st.suppressMask != 0) {
             lib.settingsSuppressHealthCheck(s, st.suppressMask);
         }

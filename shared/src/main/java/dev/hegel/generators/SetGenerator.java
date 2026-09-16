@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -44,7 +44,7 @@ public final class SetGenerator<T> implements Generator<Set<T>> {
     /** @hidden */
     @Override
     public Set<T> doDraw(TestCase tc) {
-        tc.startSpan(Abi.LABEL_SET);
+        tc.startSpan(Label.SET);
         try {
             long id = tc.newCollection(minSize, maxSize);
             Set<T> out = new LinkedHashSet<>();

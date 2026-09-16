@@ -129,6 +129,7 @@ final class FakeLibhegel implements Libhegel {
     boolean[] stateMachineAlwaysCheck;
     long stateMachineMinConcurrency = -1;
     long stateMachineMaxConcurrency = -1;
+    long stateMachineStepCount = -1;
     long stateMachineConcurrency = 1; // what new_state_machine writes to out_concurrency
     int stateMachineNextGroupRc = Abi.OK;
     long stateMachineGroupId = 0;
@@ -483,6 +484,7 @@ final class FakeLibhegel implements Libhegel {
             boolean[] invariantAlwaysCheck,
             long minConcurrency,
             long maxConcurrency,
+            long stepCount,
             long[] outId,
             long[] outConcurrency) {
         if (newStateMachineRc == Abi.OK) {
@@ -492,6 +494,7 @@ final class FakeLibhegel implements Libhegel {
             stateMachineAlwaysCheck = invariantAlwaysCheck;
             stateMachineMinConcurrency = minConcurrency;
             stateMachineMaxConcurrency = maxConcurrency;
+            stateMachineStepCount = stepCount;
             outId[0] = stateMachineId;
             outConcurrency[0] = stateMachineConcurrency;
         }

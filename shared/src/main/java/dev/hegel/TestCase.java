@@ -379,8 +379,9 @@ public final class TestCase {
         return source.poolGenerate(poolId, consume);
     }
 
-    long newStateMachine(List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck) {
-        return source.newStateMachine(ruleNames, invariantNames, invariantAlwaysCheck);
+    long newStateMachine(
+            List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck, int stepCount) {
+        return source.newStateMachine(ruleNames, invariantNames, invariantAlwaysCheck, stepCount);
     }
 
     long stateMachineNextGroup(long stateMachineId) {

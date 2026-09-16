@@ -146,7 +146,16 @@ class JnaLibhegelTest {
         assertEquals(
                 Abi.E_INVALID_HANDLE,
                 lib.newStateMachine(
-                        0, List.of("r"), new long[] {0}, List.of("i"), new boolean[] {true}, 1, 1, out, concurrency));
+                        0,
+                        List.of("r"),
+                        new long[] {0},
+                        List.of("i"),
+                        new boolean[] {true},
+                        1,
+                        1,
+                        50,
+                        out,
+                        concurrency));
         assertEquals(7, out[0]);
         assertEquals(9, concurrency[0]);
         assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineNextGroup(0, 0, out));

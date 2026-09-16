@@ -2,8 +2,8 @@ package dev.hegel.generators;
 
 import dev.hegel.Generator;
 import dev.hegel.HegelException;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.lang.reflect.RecordComponent;
 import java.util.HashMap;
 import java.util.Map;
@@ -54,7 +54,7 @@ public final class RecordGenerator<T> implements Generator<T> {
         RecordComponent[] components = type.getRecordComponents();
         Object[] values = new Object[components.length];
         Class<?>[] paramTypes = new Class<?>[components.length];
-        tc.startSpan(Abi.LABEL_FIXED_DICT);
+        tc.startSpan(Label.FIXED_DICT);
         try {
             for (int i = 0; i < components.length; i++) {
                 RecordComponent rc = components[i];

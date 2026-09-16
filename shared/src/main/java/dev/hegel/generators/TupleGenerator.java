@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
@@ -26,7 +26,7 @@ public final class TupleGenerator<T> implements Generator<T> {
     /** @hidden */
     @Override
     public T doDraw(TestCase tc) {
-        tc.startSpan(Abi.LABEL_TUPLE);
+        tc.startSpan(Label.TUPLE);
         try {
             List<Object> out = new ArrayList<>(elements.size());
             for (Generator<?> g : elements) {

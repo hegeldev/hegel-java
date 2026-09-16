@@ -332,6 +332,16 @@ class RunnerTest {
     }
 
     @Test
+    void autoBackendLeavesTheChoiceToTheEngineProfile() {
+        FakeLibhegel fake = new FakeLibhegel();
+        run(fake, new Settings().backend(Backend.AUTO), tc -> {});
+        assertNull(fake.backendCode);
+        FakeLibhegel explicit = new FakeLibhegel();
+        run(explicit, new Settings().backend(Backend.DEFAULT), tc -> {});
+        assertEquals(Abi.BACKEND_DEFAULT, explicit.backendCode);
+    }
+
+    @Test
     void settingsBranchesAllApplied() {
         FakeLibhegel fake = new FakeLibhegel();
         Settings s = new Settings()

@@ -47,13 +47,13 @@ class BindingErrorPathsTest {
         assertEquals(7, ds.newCollection(0, 5));
         assertFalse(ds.collectionMore(7));
         ds.collectionReject(7, "dup");
-        ds.startSpan(Abi.LABEL_LIST);
+        ds.startSpan(Label.LIST);
         ds.stopSpan(false);
         ds.target(1.0, "l");
         assertEquals(3, ds.newPool());
         assertEquals(0, ds.poolAdd(3));
         assertEquals(0, ds.poolGenerate(3, true));
-        assertEquals(5, ds.newStateMachine(List.of("r"), List.of("i"), new boolean[] {false}));
+        assertEquals(5, ds.newStateMachine(List.of("r"), List.of("i"), new boolean[] {false}, 50));
         assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextGroup(5));
         assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextRule(5));
         ds.stateMachineRuleRejected(5);
@@ -105,14 +105,14 @@ class BindingErrorPathsTest {
         assertThrows(StopTest.class, () -> ds.emailGenerator());
         assertThrows(StopTest.class, () -> ds.urlGenerator());
         assertThrows(StopTest.class, () -> ds.domainGenerator(10));
-        assertThrows(StopTest.class, () -> ds.startSpan(Abi.LABEL_LIST));
+        assertThrows(StopTest.class, () -> ds.startSpan(Label.LIST));
         assertThrows(StopTest.class, () -> ds.newCollection(0, 1));
         assertThrows(StopTest.class, () -> ds.collectionMore(1));
         assertThrows(StopTest.class, () -> ds.collectionReject(1, "x"));
         assertThrows(StopTest.class, () -> ds.newPool());
         assertThrows(StopTest.class, () -> ds.poolAdd(1));
         assertThrows(StopTest.class, () -> ds.poolGenerate(1, false));
-        assertThrows(StopTest.class, () -> ds.newStateMachine(List.of("r"), List.of(), new boolean[0]));
+        assertThrows(StopTest.class, () -> ds.newStateMachine(List.of("r"), List.of(), new boolean[0], 50));
         assertThrows(StopTest.class, () -> ds.stateMachineNextGroup(1));
         assertThrows(StopTest.class, () -> ds.stateMachineNextRule(1));
         assertThrows(StopTest.class, () -> ds.stateMachineRuleRejected(1));
@@ -171,7 +171,7 @@ class BindingErrorPathsTest {
     void spanAndCollectionErrorsPropagate() {
         FakeLibhegel startSpan = new FakeLibhegel();
         startSpan.startSpanRc = Abi.E_STOP_TEST;
-        assertThrows(StopTest.class, () -> source(startSpan).startSpan(Abi.LABEL_LIST));
+        assertThrows(StopTest.class, () -> source(startSpan).startSpan(Label.LIST));
 
         FakeLibhegel stopSpan = new FakeLibhegel();
         stopSpan.stopSpanRc = Abi.E_INVALID_HANDLE;
@@ -218,7 +218,7 @@ class BindingErrorPathsTest {
         sm.newStateMachineRc = Abi.E_INVALID_ARG;
         assertThrows(
                 IllegalArgumentException.class,
-                () -> source(sm).newStateMachine(List.of("r"), List.of(), new boolean[0]));
+                () -> source(sm).newStateMachine(List.of("r"), List.of(), new boolean[0], 50));
 
         FakeLibhegel group = new FakeLibhegel();
         group.stateMachineNextGroupRc = Abi.E_STOP_TEST;

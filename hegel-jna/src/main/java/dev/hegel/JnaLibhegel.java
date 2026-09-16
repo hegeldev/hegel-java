@@ -196,6 +196,7 @@ final class JnaLibhegel implements Libhegel {
                 long invariantNamesLen,
                 long minConcurrency,
                 long maxConcurrency,
+                long stepCount,
                 LongByReference outStateMachine,
                 LongByReference outConcurrency);
 
@@ -808,6 +809,7 @@ final class JnaLibhegel implements Libhegel {
             boolean[] invariantAlwaysCheck,
             long minConcurrency,
             long maxConcurrency,
+            long stepCount,
             long[] outId,
             long[] outConcurrency) {
         Memory groups = new Memory(8L * Math.max(ruleGroups.length, 1));
@@ -831,6 +833,7 @@ final class JnaLibhegel implements Libhegel {
                 invariantNames.size(),
                 minConcurrency,
                 maxConcurrency,
+                stepCount,
                 id,
                 concurrency);
         if (code == Abi.OK) {

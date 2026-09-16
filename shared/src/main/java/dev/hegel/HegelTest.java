@@ -107,8 +107,8 @@ public @interface HegelTest {
     String database() default "";
 
     /**
-     * The source of randomness. The default, {@link Backend#AUTO}, selects {@link Backend#URANDOM}
-     * automatically when running inside Antithesis and {@link Backend#DEFAULT} otherwise.
+     * The source of randomness. The default, {@link Backend#AUTO}, leaves the choice to the engine's
+     * settings profile: {@link Backend#URANDOM} inside Antithesis and {@link Backend#DEFAULT} otherwise.
      *
      * @return the randomness backend
      */

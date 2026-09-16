@@ -185,8 +185,8 @@ public final class Settings {
     }
 
     /**
-     * Select the source of randomness (default {@link Backend#AUTO}: {@link Backend#URANDOM} when
-     * running inside Antithesis, otherwise {@link Backend#DEFAULT}).
+     * Select the source of randomness (default {@link Backend#AUTO}: the engine's settings profile
+     * decides, {@link Backend#URANDOM} inside Antithesis and {@link Backend#DEFAULT} otherwise).
      *
      * @param backend the randomness backend
      * @return a new settings instance

@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -46,7 +46,7 @@ public final class MapGenerator<K, V> implements Generator<Map<K, V>> {
     /** @hidden */
     @Override
     public Map<K, V> doDraw(TestCase tc) {
-        tc.startSpan(Abi.LABEL_MAP);
+        tc.startSpan(Label.MAP);
         try {
             long id = tc.newCollection(minSize, maxSize);
             Map<K, V> out = new LinkedHashMap<>();

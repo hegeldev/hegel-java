@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,7 +45,7 @@ public final class ListGenerator<T> implements Generator<List<T>> {
     /** @hidden */
     @Override
     public List<T> doDraw(TestCase tc) {
-        tc.startSpan(Abi.LABEL_LIST);
+        tc.startSpan(Label.LIST);
         try {
             long id = tc.newCollection(minSize, maxSize);
             List<T> out = new ArrayList<>();
