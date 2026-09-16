@@ -11,6 +11,11 @@ import org.junit.jupiter.api.Test;
 
 /** The built-in reporters and the {@link Label} constants. */
 class ReporterTest {
+    /** The captured output with platform line endings normalised, so exact comparisons hold on Windows. */
+    private static String text(ByteArrayOutputStream buf) {
+        return buf.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
+    }
+
     @Test
     void silentReporterIgnoresEveryCallback() {
         Reporter silent = Reporter.silent();
@@ -38,7 +43,7 @@ class ReporterTest {
         printing.note("a note", true);
         printing.caseFinished(CaseOutcome.INTERESTING, true);
         printing.failure(new Failure("o", "b64", new AssertionError("x"), Map.of(), List.of())); // printBlob off
-        assertEquals("engine line\nxs = [1, 2];\na note\n", buf.toString(StandardCharsets.UTF_8));
+        assertEquals("engine line\nxs = [1, 2];\na note\n", text(buf));
     }
 
     @Test
@@ -56,7 +61,7 @@ class ReporterTest {
         verbose.runStarted(new Settings().verbosity(Verbosity.VERBOSE));
         verbose.draw("x", 1, false);
         verbose.note("shown", false);
-        assertEquals("x = 1;\nshown\n", verboseBuf.toString(StandardCharsets.UTF_8));
+        assertEquals("x = 1;\nshown\n", text(verboseBuf));
     }
 
     @Test

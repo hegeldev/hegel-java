@@ -12,6 +12,11 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class TestCaseTest {
+    /** The captured output with platform line endings normalised, so exact comparisons hold on Windows. */
+    private static String text(ByteArrayOutputStream buf) {
+        return buf.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
+    }
+
     /** A TestCase over a fake binding; only the reporting/target plumbing is under test here. */
     private TestCase newCase(FakeLibhegel fake, boolean reporting, ByteArrayOutputStream buf) {
         return new TestCase(
@@ -103,7 +108,7 @@ class TestCaseTest {
                 List.of("x", "x_2", "x_3", "draw_1", "draw_2"),
                 List.copyOf(tc.draws().keySet()));
         assertEquals(3, tc.draws().get("x_3"));
-        assertEquals("x = 1;\nx_2 = 2;\nx_3 = 3;\ndraw_1 = 8;\ndraw_2 = 9;\n", buf.toString(StandardCharsets.UTF_8));
+        assertEquals("x = 1;\nx_2 = 2;\nx_3 = 3;\ndraw_1 = 8;\ndraw_2 = 9;\n", text(buf));
     }
 
     @Test
@@ -120,7 +125,7 @@ class TestCaseTest {
         tc.note("before");
         tc.draw(noisy, "v");
         tc.note("after");
-        assertEquals("before\nv = 7;\ninside\nafter\n", buf.toString(StandardCharsets.UTF_8));
+        assertEquals("before\nv = 7;\ninside\nafter\n", text(buf));
         assertEquals(List.of("before", "inside", "after"), tc.notes());
     }
 
@@ -136,7 +141,7 @@ class TestCaseTest {
             }
         };
         assertThrows(IllegalStateException.class, () -> tc.draw(failing, "v"));
-        assertEquals("about to fail\n", buf.toString(StandardCharsets.UTF_8));
+        assertEquals("about to fail\n", text(buf));
     }
 
     @Test
@@ -150,7 +155,7 @@ class TestCaseTest {
         assertTrue(!tc.isFinal());
         tc.draw(constant(1), "x");
         tc.note("n");
-        assertEquals("x = 1;\nn\n", buf.toString(StandardCharsets.UTF_8));
+        assertEquals("x = 1;\nn\n", text(buf));
         assertTrue(tc.draws().isEmpty());
         assertTrue(tc.notes().isEmpty());
     }
