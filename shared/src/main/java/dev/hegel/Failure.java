@@ -75,7 +75,9 @@ public final class Failure {
 
     /**
      * Every top-level draw of the final replay, in draw order, keyed by the label passed to {@link
-     * TestCase#draw(Generator, String)} (or {@code draw_N} for the N-th unlabelled draw).
+     * TestCase#draw(Generator, String)} — numbered from its second use in the case ({@code x},
+     * {@code x_2}, ...) so repeated draws are all kept — or {@code draw_N} for the N-th unlabelled
+     * draw.
      *
      * @return an unmodifiable, insertion-ordered map of label to generated value
      */

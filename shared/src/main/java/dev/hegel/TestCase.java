@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,10 @@ import java.util.function.Supplier;
  *
  * <p>On the replay of a minimal failing example ({@link #isFinal()}), each top-level {@code draw}
  * and each note is handed to the run's {@link Reporter} (the default prints {@code x = 42;}) and
- * recorded on the resulting {@link Failure}, so the counterexample is readable.
+ * recorded on the resulting {@link Failure}, so the counterexample is readable. Under {@link
+ * Verbosity#VERBOSE} or higher the reporter also sees every other case's draws and notes. A
+ * label drawn more than once in a case is numbered from its second use ({@code x}, {@code x_2},
+ * {@code x_3}); unlabelled draws are {@code draw_1}, {@code draw_2}, ...
  *
  * <p>Frontends implementing their own composite generators enclose their draws in a labelled
  * {@link #span(long, Supplier) span} so the engine can shrink the structure they build.
@@ -28,15 +32,27 @@ import java.util.function.Supplier;
 public final class TestCase {
     private final DataSource source;
     private final boolean finalReplay;
+    /** Whether draws and notes reach the reporter: on a final replay, or on every case when verbose. */
+    private final boolean reporting;
+
     private final Reporter reporter;
     private final Map<String, Object> draws = new LinkedHashMap<>();
     private final List<String> notes = new ArrayList<>();
+    /** Uses per draw name, for numbering repeats ({@code x}, {@code x_2}, ...; {@code draw_N}). */
+    private final Map<String, Integer> nameUses = new HashMap<>();
+    /** Notes made while a top-level draw is in progress; flushed after that draw's line. */
+    private final List<String> pendingNotes = new ArrayList<>();
+
     private int drawDepth;
-    private int drawCounter;
 
     TestCase(DataSource source, boolean finalReplay, Reporter reporter) {
+        this(source, finalReplay, false, reporter);
+    }
+
+    TestCase(DataSource source, boolean finalReplay, boolean verbose, Reporter reporter) {
         this.source = source;
         this.finalReplay = finalReplay;
+        this.reporting = finalReplay || verbose;
         this.reporter = reporter;
     }
 
@@ -75,20 +91,56 @@ public final class TestCase {
         boolean top = drawDepth == 0;
         drawDepth++;
         T value;
+        boolean completed = false;
         try {
             value = generator.doDraw(this);
+            completed = true;
         } finally {
             drawDepth--;
-        }
-        if (top) {
-            drawCounter++;
-            if (finalReplay) {
-                String name = (label != null) ? label : "draw_" + drawCounter;
-                draws.put(name, value);
-                reporter.draw(name, value);
+            if (top && !completed) {
+                // No draw line will follow; do not lose the notes made on the way to the failure.
+                flushPendingNotes();
             }
         }
+        if (top) {
+            if (reporting) {
+                String name = displayName(label);
+                if (finalReplay) {
+                    draws.put(name, value);
+                }
+                reporter.draw(name, value, finalReplay);
+            }
+            flushPendingNotes();
+        }
         return value;
+    }
+
+    /**
+     * The name a top-level draw reports under: a label prints bare the first time and numbered from
+     * its second use ({@code x}, {@code x_2}, ...); an unlabelled draw is {@code draw_N}, counting
+     * unlabelled draws only.
+     */
+    private String displayName(String label) {
+        String base = label != null ? label : "draw";
+        int uses = nameUses.merge(base, 1, Integer::sum);
+        if (label == null) {
+            return base + "_" + uses;
+        }
+        return uses == 1 ? label : label + "_" + uses;
+    }
+
+    private void flushPendingNotes() {
+        for (String message : pendingNotes) {
+            emitNote(message);
+        }
+        pendingNotes.clear();
+    }
+
+    private void emitNote(String message) {
+        if (finalReplay) {
+            notes.add(message);
+        }
+        reporter.note(message, finalReplay);
     }
 
     /**
@@ -104,14 +156,20 @@ public final class TestCase {
     }
 
     /**
-     * Record a debug message, reported only on the final replay of a failing case.
+     * Record a debug message, reported on the final replay of a failing case (and on every case
+     * under {@link Verbosity#VERBOSE}). A note made while a top-level draw is in progress — from
+     * inside a composite generator — is reported after that draw's value, never before it.
      *
      * @param message the message to record
      */
     public void note(String message) {
-        if (finalReplay) {
-            notes.add(message);
-            reporter.note(message);
+        if (!reporting) {
+            return;
+        }
+        if (drawDepth > 0) {
+            pendingNotes.add(message);
+        } else {
+            emitNote(message);
         }
     }
 

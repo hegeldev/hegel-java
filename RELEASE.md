@@ -22,5 +22,13 @@ Hegel can now be used as a library by other JVM frontends (hegeldev/hegel-java#1
   the engine shrinks the structure as a unit. `TestCase.startSpan`/`stopSpan` are now documented.
 - New `Settings.infrastructurePackages(prefixes...)` lists a frontend's own class-name prefixes so
   they are skipped, like Hegel's and JUnit's, when locating the user frame a failure was thrown from.
+- Reported draw names now follow the other Hegel frontends: a label drawn more than once in a case
+  is numbered from its second use (`x`, `x_2`, `x_3`) so no value is lost, and unlabelled draws are
+  numbered among themselves (`draw_1`, `draw_2`, ... — previously a labelled draw also advanced the
+  counter). A note made inside a composite generator is now reported after the enclosing draw's
+  value rather than before it.
+- `Settings.verbosity` now governs the frontend's own output as documented: `QUIET` prints no
+  draws or notes, and `VERBOSE`/`DEBUG` report every case's draws and notes, not only the final
+  replay's.
 - A checked exception thrown from a test body (possible from Kotlin, Clojure, and other frontends)
   is now rethrown as-is instead of failing with a `ClassCastException`.

@@ -213,7 +213,8 @@ final class Runner {
             Reporter reporter,
             RunStatistics.Counter counts) {
         try {
-            TestCase testCase = new TestCase(new LiveDataSource(lib, tc), finalReplay, reporter);
+            boolean verbose = settings.verbosity.code >= Verbosity.VERBOSE.code;
+            TestCase testCase = new TestCase(new LiveDataSource(lib, tc), finalReplay, verbose, reporter);
             reporter.caseStarted(finalReplay);
             CaseOutcome outcome;
             String origin = null;

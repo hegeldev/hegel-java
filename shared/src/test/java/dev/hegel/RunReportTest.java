@@ -40,13 +40,13 @@ class RunReportTest {
         }
 
         @Override
-        public void draw(String label, Object value) {
-            events.add("draw:" + label + "=" + value);
+        public void draw(String label, Object value, boolean finalReplay) {
+            events.add("draw:" + label + "=" + value + ":" + finalReplay);
         }
 
         @Override
-        public void note(String message) {
-            events.add("note:" + message);
+        public void note(String message, boolean finalReplay) {
+            events.add("note:" + message + ":" + finalReplay);
         }
 
         @Override
@@ -147,7 +147,7 @@ class RunReportTest {
         assertFalse(f.flaky());
         // Only the final replay records draws and notes, so one exploration case plus one replay
         // yields a single set of each.
-        assertEquals(List.of("x", "draw_2"), List.copyOf(f.draws().keySet()));
+        assertEquals(List.of("x", "draw_1"), List.copyOf(f.draws().keySet()));
         assertEquals(7, f.draws().get("x"));
         assertEquals(List.of("saw 7"), f.notes());
         assertThrows(UnsupportedOperationException.class, () -> f.draws().put("y", 1));
@@ -244,13 +244,37 @@ class RunReportTest {
                         "caseFinished:INTERESTING:false",
                         "failuresFound:1",
                         "caseStarted:true",
-                        "draw:x=3",
-                        "note:hi",
+                        "draw:x=3:true",
+                        "note:hi:true",
                         "caseFinished:INTERESTING:true",
                         "failure:fake-origin-0",
                         "runFinished:FAILED",
                         "engineOutput:engine says hi"),
                 reporter.events);
+    }
+
+    @Test
+    void verboseRunsReportEveryCaseButRecordOnlyTheReplay() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add("blob-1");
+        RecordingReporter reporter = new RecordingReporter();
+        RunReport r = report(
+                fake,
+                new Settings().database(Database.disabled()).verbosity(Verbosity.VERBOSE),
+                tc -> {
+                    tc.draw(integers().min(3), "x");
+                    tc.note("hi");
+                    throw new AssertionError("boom");
+                },
+                reporter);
+        // The exploration case's draws and notes are reported (flagged non-final) ...
+        assertTrue(reporter.events.contains("draw:x=3:false"), reporter.events.toString());
+        assertTrue(reporter.events.contains("note:hi:false"), reporter.events.toString());
+        assertTrue(reporter.events.contains("draw:x=3:true"), reporter.events.toString());
+        // ... but the failure captures the final replay only.
+        assertEquals(Map.of("x", 3), r.failures().get(0).draws());
+        assertEquals(List.of("hi"), r.failures().get(0).notes());
     }
 
     @Test
@@ -304,7 +328,7 @@ class RunReportTest {
         assertEquals(1, r.statistics().interesting());
         // No exploration loop: straight to the replay.
         assertEquals(
-                List.of("runStarted:100", "caseStarted:true", "draw:x=1", "caseFinished:INTERESTING:true"),
+                List.of("runStarted:100", "caseStarted:true", "draw:x=1:true", "caseFinished:INTERESTING:true"),
                 reporter.events.subList(0, 4));
         assertEquals("runFinished:FAILED", reporter.events.get(reporter.events.size() - 1));
     }

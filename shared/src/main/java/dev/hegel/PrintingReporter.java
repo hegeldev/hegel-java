@@ -9,6 +9,7 @@ import java.io.PrintStream;
 final class PrintingReporter implements Reporter {
     private final PrintStream out;
     private boolean printBlob;
+    private boolean quiet;
     private boolean multiple;
 
     PrintingReporter(PrintStream out) {
@@ -18,6 +19,7 @@ final class PrintingReporter implements Reporter {
     @Override
     public void runStarted(Settings settings) {
         printBlob = settings.printBlob;
+        quiet = settings.verbosity == Verbosity.QUIET;
     }
 
     @Override
@@ -34,13 +36,17 @@ final class PrintingReporter implements Reporter {
     }
 
     @Override
-    public void draw(String label, Object value) {
-        out.println(label + " = " + TestCase.repr(value) + ";");
+    public void draw(String label, Object value, boolean finalReplay) {
+        if (!quiet) {
+            out.println(label + " = " + TestCase.repr(value) + ";");
+        }
     }
 
     @Override
-    public void note(String message) {
-        out.println(message);
+    public void note(String message, boolean finalReplay) {
+        if (!quiet) {
+            out.println(message);
+        }
     }
 
     @Override

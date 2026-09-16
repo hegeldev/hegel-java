@@ -19,8 +19,8 @@ class ReporterTest {
         silent.runStarted(new Settings());
         silent.engineOutput("line");
         silent.caseStarted(false);
-        silent.draw("x", 1);
-        silent.note("n");
+        silent.draw("x", 1, true);
+        silent.note("n", true);
         silent.caseFinished(CaseOutcome.VALID, false);
         silent.failuresFound(1);
         silent.failure(failure);
@@ -34,11 +34,29 @@ class ReporterTest {
         printing.runStarted(new Settings());
         printing.engineOutput("engine line");
         printing.caseStarted(true); // a lone failure: no separating blank line
-        printing.draw("xs", List.of(1, 2));
-        printing.note("a note");
+        printing.draw("xs", List.of(1, 2), true);
+        printing.note("a note", true);
         printing.caseFinished(CaseOutcome.INTERESTING, true);
         printing.failure(new Failure("o", "b64", new AssertionError("x"), Map.of(), List.of())); // printBlob off
         assertEquals("engine line\nxs = [1, 2];\na note\n", buf.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void printingReporterHonoursVerbosity() {
+        ByteArrayOutputStream quietBuf = new ByteArrayOutputStream();
+        Reporter quiet = Reporter.printing(new PrintStream(quietBuf, true, StandardCharsets.UTF_8));
+        quiet.runStarted(new Settings().verbosity(Verbosity.QUIET));
+        quiet.draw("x", 1, true);
+        quiet.note("hidden", true);
+        assertEquals("", quietBuf.toString(StandardCharsets.UTF_8));
+
+        // Verbose: non-final draws print like final ones (the runner decides what to send).
+        ByteArrayOutputStream verboseBuf = new ByteArrayOutputStream();
+        Reporter verbose = Reporter.printing(new PrintStream(verboseBuf, true, StandardCharsets.UTF_8));
+        verbose.runStarted(new Settings().verbosity(Verbosity.VERBOSE));
+        verbose.draw("x", 1, false);
+        verbose.note("shown", false);
+        assertEquals("x = 1;\nshown\n", verboseBuf.toString(StandardCharsets.UTF_8));
     }
 
     @Test

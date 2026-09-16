@@ -16,7 +16,8 @@ import java.io.PrintStream;
  * <p>Every method has a no-op default, so an implementation overrides only what it needs. Callbacks
  * are invoked on the thread that drives the run, in this order: {@link #runStarted}, then for each
  * generated case {@link #caseStarted} / {@link #caseFinished} (with {@link #engineOutput} lines
- * interleaved as the engine emits them); on a failed run {@link #failuresFound}, then for each
+ * interleaved as the engine emits them, and the case's {@link #draw}s and {@link #note}s in between
+ * when the run is {@linkplain Verbosity#VERBOSE verbose}); on a failed run {@link #failuresFound}, then for each
  * distinct counterexample a final replay ({@link #caseStarted} with {@code finalReplay = true}, its
  * {@link #draw}s and {@link #note}s, {@link #caseFinished}) followed by {@link #failure}; and
  * finally {@link #runFinished}. A reporter is per run: two concurrent runs never share one unless
@@ -47,20 +48,25 @@ public interface Reporter {
     default void caseStarted(boolean finalReplay) {}
 
     /**
-     * A top-level {@link TestCase#draw(Generator, String) draw} completed during a final replay.
-     * Never called for non-final cases or for draws nested inside another generator.
+     * A top-level {@link TestCase#draw(Generator, String) draw} completed. Called on final replays,
+     * and on every case when the run's {@link Verbosity} is {@code VERBOSE} or higher; never for
+     * draws nested inside another generator.
      *
-     * @param label the label passed to {@code draw}, or {@code draw_N} for the N-th unlabelled draw
+     * @param label the label passed to {@code draw} (numbered from its second use in a case: {@code
+     *     x}, {@code x_2}, ...), or {@code draw_N} for the N-th unlabelled draw
      * @param value the generated value
+     * @param finalReplay as in {@link #caseStarted}
      */
-    default void draw(String label, Object value) {}
+    default void draw(String label, Object value, boolean finalReplay) {}
 
     /**
-     * The test body recorded a {@link TestCase#note(String) note} during a final replay.
+     * The test body recorded a {@link TestCase#note(String) note}. Called under the same conditions
+     * as {@link #draw}. A note made inside a composite generator arrives after the enclosing draw.
      *
      * @param message the note
+     * @param finalReplay as in {@link #caseStarted}
      */
-    default void note(String message) {}
+    default void note(String message, boolean finalReplay) {}
 
     /**
      * The test body finished against a case and the outcome was reported to the engine.
@@ -92,9 +98,11 @@ public interface Reporter {
     default void runFinished(RunReport report) {}
 
     /**
-     * The classic printed report: engine output, each final-replay draw as {@code label = value;},
+     * The classic printed report: engine output, each reported draw as {@code label = value;},
      * notes, a header when several distinct failures are reported, and a copy-pasteable reproducer
-     * when {@link Settings#printBlob(boolean)} is on.
+     * when {@link Settings#printBlob(boolean)} is on. Honours {@link Settings#verbosity}: {@link
+     * Verbosity#QUIET} prints no draws or notes at all, {@link Verbosity#VERBOSE} prints them for
+     * every case.
      *
      * @param out where to print
      * @return a printing reporter
