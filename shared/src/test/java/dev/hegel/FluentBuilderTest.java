@@ -7,9 +7,7 @@ import static dev.hegel.Generators.longs;
 import static dev.hegel.Generators.text;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.nio.charset.StandardCharsets;
+import dev.hegel.lowlevel.Abi;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -22,10 +20,7 @@ class FluentBuilderTest {
 
     private TestCase testCase() {
         fake = new FakeLibhegel();
-        return new TestCase(
-                new LiveDataSource(fake, FakeLibhegel.TC),
-                false,
-                new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
+        return new TestCase(new LiveDataSource(fake, FakeLibhegel.TC), false, Reporter.silent());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Libhegel;
 import java.lang.ref.Cleaner;
 
 /**

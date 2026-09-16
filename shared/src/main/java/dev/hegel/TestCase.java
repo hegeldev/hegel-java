@@ -1,13 +1,16 @@
 package dev.hegel;
 
-import java.io.PrintStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 /**
  * The handle a property test body uses to draw values and steer the engine.
@@ -16,20 +19,53 @@ import java.util.UUID;
  * {@link #draw(Generator)}, reject uninteresting inputs with {@link #assume(boolean)}, attach debug
  * context with {@link #note(String)}, and guide the search with {@link #target(double)}.
  *
- * <p>On the replay of a minimal failing example, each top-level {@code draw} is printed as an
- * assignment (for example {@code x = 42;}) so the counterexample is readable.
+ * <p>On the replay of a minimal failing example ({@link #isFinal()}), each top-level {@code draw}
+ * and each note is handed to the run's {@link Reporter} (the default prints {@code x = 42;}) and
+ * recorded on the resulting {@link Failure}, so the counterexample is readable. Under {@link
+ * Verbosity#VERBOSE} or higher the reporter also sees every other case's draws and notes. A
+ * label drawn more than once in a case is numbered from its second use ({@code x}, {@code x_2},
+ * {@code x_3}); unlabelled draws are {@code draw_1}, {@code draw_2}, ...
+ *
+ * <p>Frontends implementing their own composite generators enclose their draws in a labelled
+ * {@link #span(long, Supplier) span} so the engine can shrink the structure they build.
  */
 public final class TestCase {
     private final DataSource source;
+    private final boolean finalReplay;
+    /** Whether draws and notes reach the reporter: on a final replay, or on every case when verbose. */
     private final boolean reporting;
-    private final PrintStream out;
-    private int drawDepth;
-    private int drawCounter;
 
-    TestCase(DataSource source, boolean reporting, PrintStream out) {
+    private final Reporter reporter;
+    private final Map<String, Object> draws = new LinkedHashMap<>();
+    private final List<String> notes = new ArrayList<>();
+    /** Uses per draw name, for numbering repeats ({@code x}, {@code x_2}, ...; {@code draw_N}). */
+    private final Map<String, Integer> nameUses = new HashMap<>();
+    /** Notes made while a top-level draw is in progress; flushed after that draw's line. */
+    private final List<String> pendingNotes = new ArrayList<>();
+
+    private int drawDepth;
+
+    TestCase(DataSource source, boolean finalReplay, Reporter reporter) {
+        this(source, finalReplay, false, reporter);
+    }
+
+    TestCase(DataSource source, boolean finalReplay, boolean verbose, Reporter reporter) {
         this.source = source;
-        this.reporting = reporting;
-        this.out = out;
+        this.finalReplay = finalReplay;
+        this.reporting = finalReplay || verbose;
+        this.reporter = reporter;
+    }
+
+    /**
+     * Whether this case is the final replay of a minimal counterexample (or of a {@link
+     * Settings#reproduceFailure(String)} blob), as opposed to one of the many cases the engine runs
+     * while generating and shrinking. Draws and notes are reported only on a final replay; a test
+     * body can use this to do its own expensive diagnostics only where they will be seen.
+     *
+     * @return {@code true} on a final replay
+     */
+    public boolean isFinal() {
+        return finalReplay;
     }
 
     /**
@@ -55,19 +91,56 @@ public final class TestCase {
         boolean top = drawDepth == 0;
         drawDepth++;
         T value;
+        boolean completed = false;
         try {
             value = generator.doDraw(this);
+            completed = true;
         } finally {
             drawDepth--;
-        }
-        if (top) {
-            drawCounter++;
-            if (reporting) {
-                String name = (label != null) ? label : "draw_" + drawCounter;
-                out.println(name + " = " + repr(value) + ";");
+            if (top && !completed) {
+                // No draw line will follow; do not lose the notes made on the way to the failure.
+                flushPendingNotes();
             }
         }
+        if (top) {
+            if (reporting) {
+                String name = displayName(label);
+                if (finalReplay) {
+                    draws.put(name, value);
+                }
+                reporter.draw(name, value, finalReplay);
+            }
+            flushPendingNotes();
+        }
         return value;
+    }
+
+    /**
+     * The name a top-level draw reports under: a label prints bare the first time and numbered from
+     * its second use ({@code x}, {@code x_2}, ...); an unlabelled draw is {@code draw_N}, counting
+     * unlabelled draws only.
+     */
+    private String displayName(String label) {
+        String base = label != null ? label : "draw";
+        int uses = nameUses.merge(base, 1, Integer::sum);
+        if (label == null) {
+            return base + "_" + uses;
+        }
+        return uses == 1 ? label : label + "_" + uses;
+    }
+
+    private void flushPendingNotes() {
+        for (String message : pendingNotes) {
+            emitNote(message);
+        }
+        pendingNotes.clear();
+    }
+
+    private void emitNote(String message) {
+        if (finalReplay) {
+            notes.add(message);
+        }
+        reporter.note(message, finalReplay);
     }
 
     /**
@@ -83,13 +156,20 @@ public final class TestCase {
     }
 
     /**
-     * Record a debug message, shown only on the replay of a failing case.
+     * Record a debug message, reported on the final replay of a failing case (and on every case
+     * under {@link Verbosity#VERBOSE}). A note made while a top-level draw is in progress — from
+     * inside a composite generator — is reported after that draw's value, never before it.
      *
      * @param message the message to record
      */
     public void note(String message) {
-        if (reporting) {
-            out.println(message);
+        if (!reporting) {
+            return;
+        }
+        if (drawDepth > 0) {
+            pendingNotes.add(message);
+        } else {
+            emitNote(message);
         }
     }
 
@@ -227,12 +307,45 @@ public final class TestCase {
         return source.ownsStringGenerator(generator);
     }
 
-    /** @hidden */
+    /**
+     * Draw a structured value inside a labelled span: open the span, run {@code body}, and close
+     * the span whether or not the body completes. This is how composite generators tell the engine
+     * which draws belong together, so it can shrink the structure as a unit; {@link Label} lists
+     * the engine's structural labels and {@link Label#of(String)} mints custom ones.
+     *
+     * @param label the span's label
+     * @param body the draws making up the value
+     * @param <T> the value type
+     * @return the body's result
+     */
+    public <T> T span(long label, Supplier<T> body) {
+        startSpan(label);
+        try {
+            return body.get();
+        } finally {
+            stopSpan(false);
+        }
+    }
+
+    /**
+     * Open a labelled span. Every {@code startSpan} must be matched by a {@link #stopSpan(boolean)}
+     * on every exit path, including exceptional ones; prefer {@link #span(long, Supplier)}, which
+     * handles that.
+     *
+     * @param label the span's label (see {@link Label})
+     */
     public void startSpan(long label) {
         source.startSpan(label);
     }
 
-    /** @hidden */
+    /**
+     * Close the innermost open span. Passing {@code discard = true} tells the engine the span's
+     * draws were rejected (for example, a filtered value that failed its predicate) and will be
+     * retried. A no-op once the case has been concluded by the engine, so span-closing {@code
+     * finally} blocks are safe while a case unwinds.
+     *
+     * @param discard whether the span's draws were rejected
+     */
     public void stopSpan(boolean discard) {
         source.stopSpan(discard);
     }
@@ -293,6 +406,16 @@ public final class TestCase {
     /** Whether the engine has concluded this case (overrun or invalid), so its body must unwind. */
     boolean isAborted() {
         return source.isAborted();
+    }
+
+    /** The top-level draws recorded on a final replay, in draw order. */
+    Map<String, Object> draws() {
+        return draws;
+    }
+
+    /** The notes recorded on a final replay, in order. */
+    List<String> notes() {
+        return notes;
     }
 
     static String repr(Object value) {

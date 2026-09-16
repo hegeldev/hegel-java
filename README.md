@@ -44,7 +44,9 @@ testImplementation("dev.hegel:hegel:0.1.0") // or "dev.hegel:hegel-jna:0.1.0"
 
 Depend on exactly one of the two — they contain the same classes and differ only in how they call
 the native engine. The engine is bundled in both jars for Linux (x86-64 and arm64), macOS (Apple
-Silicon), and Windows (x86-64 and arm64).
+Silicon), and Windows (x86-64 and arm64). Both pull in a third, small artifact,
+`dev.hegel:hegel-lowlevel`, which holds the binding contract; you never need to depend on it
+directly unless you are [binding Hegel yourself](#binding-hegel-yourself).
 
 Because Hegel calls native code, pass `--enable-native-access=ALL-UNNAMED` to silence the JVM's
 native-access warning — printed by JDK 22+ for `hegel` (FFM) and by JDK 24+ for `hegel-jna` (JNA,
@@ -94,3 +96,38 @@ org.opentest4j.AssertionFailedError: expected: <2> but was: <1>
 Hegel reports the minimal example showing that our sort is incorrectly dropping duplicates: `[0, 0]`, two equal elements, which `mySort` collapses into one. If we replace the `TreeSet`-based body of `mySort()` with a sort that keeps duplicates, this test will then pass.
 
 The optional `"xs"` label passed to `draw` names the value in the falsifying-example output. See the [API documentation](https://javadoc.io/doc/dev.hegel/hegel) for a full tour of generators, combinators, control functions, and settings.
+
+## Using Hegel as a library
+
+Frontends for other JVM languages (or custom runners) use `Hegel.run` instead of `Hegel.test`. It
+returns a `RunReport` rather than throwing, and a `Reporter` lets you own every line of output:
+
+```java
+RunReport report = Hegel.run(tc -> { ... }, new Settings().testCases(200), Reporter.silent());
+report.status();                        // PASSED, FAILED, or ERROR
+report.statistics();                    // valid / invalid / overrun / interesting case counts
+for (Failure f : report.failures()) {   // one per distinct counterexample
+  f.draws();                            // labelled draws of the minimal example, as Java values
+  f.exception();                        // the body's own throwable
+  f.reproduceBlob();                    // replay it later with Settings.reproduceFailure
+}
+```
+
+`TestCase.isFinal()` identifies the final replay of a counterexample, `TestCase.span` and `Label`
+let custom composite generators tell the engine about their structure, and
+`Settings.infrastructurePackages` keeps a frontend's own stack frames out of failure origins.
+
+## Binding Hegel yourself
+
+`dev.hegel:hegel-lowlevel` (Java 17+, no dependencies) is the binding contract on its own, for two
+audiences that do not want the Java frontend:
+
+- **Writing a binding** — implement `dev.hegel.lowlevel.Libhegel` (one method per `hegel_*`
+  function in `hegel.h`, with raw handles and return codes) over your FFI mechanism, and register
+  it as a `dev.hegel.lowlevel.LibhegelBackend` service provider. The two bundled bindings are
+  registered the same way.
+- **Building a frontend from scratch** — depend on `hegel-lowlevel` plus one binding, call
+  `Libhegel.load()` to get the engine, and drive the run loop and per-case primitives yourself.
+  `Abi` holds the constants; `LibraryLoader` resolves the shared library.
+
+The package is experimental: new engine functions become new `Libhegel` methods.

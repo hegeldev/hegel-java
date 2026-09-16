@@ -1,4 +1,4 @@
-package dev.hegel;
+package dev.hegel.lowlevel;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -36,7 +36,7 @@ import java.util.function.Function;
  * OS/arch, the resource opener, and the temp-dir supplier) is injected so the resolver is fully
  * unit-testable, including the unpack path.
  */
-final class LibraryLoader {
+public final class LibraryLoader {
     /** Creates a fresh private directory for the temp-dir fallback; injected for testability. */
     @FunctionalInterface
     interface TempDirSupplier {
@@ -72,8 +72,10 @@ final class LibraryLoader {
 
     /**
      * Build a loader from the real process environment, reading bundled natives off the classpath.
+     *
+     * @return a loader for this process
      */
-    static LibraryLoader fromEnvironment() {
+    public static LibraryLoader fromEnvironment() {
         Map<String, String> env = System.getenv();
         String os = mapOs(System.getProperty("os.name"));
         return new LibraryLoader(
@@ -128,7 +130,7 @@ final class LibraryLoader {
         if (os.contains("windows")) {
             return "windows";
         }
-        throw new HegelException(
+        throw new LibhegelException(
                 "libhegel does not support this operating system: '" + osName + "' (Linux, macOS, and Windows only).");
     }
 
@@ -138,7 +140,7 @@ final class LibraryLoader {
             case "amd64", "x86_64" -> "amd64";
             case "aarch64", "arm64" -> "arm64";
             default ->
-                throw new HegelException(
+                throw new LibhegelException(
                         "libhegel does not support this architecture: '" + osArch + "' (amd64/arm64 only).");
         };
     }
@@ -171,14 +173,14 @@ final class LibraryLoader {
     }
 
     /** Resolve a usable libhegel path, unpacking the bundled native if necessary. */
-    Path resolve() {
+    public Path resolve() {
         String override = env.get("HEGEL_LIBHEGEL_PATH");
         if (override != null && !override.isEmpty()) {
             Path p = Path.of(override);
             if (Files.isRegularFile(p)) {
                 return p;
             }
-            throw new HegelException("HEGEL_LIBHEGEL_PATH is set to '" + override + "' but no file exists there.");
+            throw new LibhegelException("HEGEL_LIBHEGEL_PATH is set to '" + override + "' but no file exists there.");
         }
 
         Path onPath = searchLibraryPath();
@@ -191,7 +193,7 @@ final class LibraryLoader {
             return bundled;
         }
 
-        throw new HegelException("Could not find libhegel: no library bundled for "
+        throw new LibhegelException("Could not find libhegel: no library bundled for "
                 + os
                 + "-"
                 + arch
@@ -237,7 +239,7 @@ final class LibraryLoader {
         try {
             bytes = readAndClose(in);
         } catch (IOException e) {
-            throw new HegelException("Failed to read bundled libhegel resource " + resourcePath(), e);
+            throw new LibhegelException("Failed to read bundled libhegel resource " + resourcePath(), e);
         }
         IOException cacheFailure;
         try {
@@ -249,7 +251,7 @@ final class LibraryLoader {
             return tempLibrary(bytes);
         } catch (IOException e) {
             e.addSuppressed(cacheFailure);
-            throw new HegelException(
+            throw new LibhegelException(
                     "Failed to unpack bundled libhegel to a temp dir (cache also unusable: " + cacheFailure + ")", e);
         }
     }
@@ -296,17 +298,24 @@ final class LibraryLoader {
         }
     }
 
-    /** The engine version these bindings were built against. */
-    static String targetEngineVersion() {
+    /**
+     * The engine version these bindings were built and tested against.
+     *
+     * @return the pinned libhegel version, e.g. {@code "0.37.6"}
+     */
+    public static String targetEngineVersion() {
         return BuildInfo.ENGINE_VERSION;
     }
 
     /**
      * Warn on {@code err} if a loaded engine reports a different version than the one these bindings
      * target. Silent when the versions match or either is unknown.
+     *
+     * @param loaded the loaded engine's {@link Libhegel#version()}
+     * @param expected the version to compare against, normally {@link #targetEngineVersion()}
+     * @param err where to print the warning
      */
-    static void warnOnVersionMismatch(Libhegel lib, String expected, PrintStream err) {
-        String loaded = lib.version();
+    public static void warnOnVersionMismatch(String loaded, String expected, PrintStream err) {
         if (expected == null || loaded == null || loaded.equals(expected)) {
             return;
         }
@@ -327,7 +336,7 @@ final class LibraryLoader {
         try {
             return MessageDigest.getInstance("SHA-256");
         } catch (java.security.NoSuchAlgorithmException e) {
-            throw new HegelException("SHA-256 unavailable", e);
+            throw new LibhegelException("SHA-256 unavailable", e);
         }
     }
 }

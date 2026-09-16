@@ -21,7 +21,8 @@ class OutputTest {
     private static String run(Settings settings, java.util.function.Consumer<TestCase> body) {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
-        Runner.run(Engine.get(), settings, body, System.getenv(), out);
+        Runner.run(Engine.get(), settings, body, System.getenv(), Reporter.printing(out))
+                .throwIfFailed();
         return buf.toString(StandardCharsets.UTF_8);
     }
 
@@ -35,15 +36,16 @@ class OutputTest {
         assertThrows(
                 AssertionError.class,
                 () -> Runner.run(
-                        Engine.get(),
-                        new Settings().seed(123).database(Database.disabled()),
-                        tc -> {
-                            int x = tc.draw(integers().min(0).max(1000), "x");
-                            tc.note("observed x=" + x);
-                            assertTrue(x <= 10);
-                        },
-                        System.getenv(),
-                        out));
+                                Engine.get(),
+                                new Settings().seed(123).database(Database.disabled()),
+                                tc -> {
+                                    int x = tc.draw(integers().min(0).max(1000), "x");
+                                    tc.note("observed x=" + x);
+                                    assertTrue(x <= 10);
+                                },
+                                System.getenv(),
+                                Reporter.printing(out))
+                        .throwIfFailed());
         String s = buf.toString(StandardCharsets.UTF_8);
         assertTrue(s.contains("x = 11;"), s);
         assertTrue(s.contains("observed x=11"), s);

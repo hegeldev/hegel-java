@@ -1,19 +1,27 @@
 package dev.hegel;
 
-import java.io.PrintStream;
+import dev.hegel.lowlevel.Abi;
+import dev.hegel.lowlevel.Libhegel;
+import dev.hegel.lowlevel.LibhegelException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
 /**
  * Drives a single property test: builds the settings handle, pumps the engine's exploration loop,
- * and turns the aggregated result into a pass or a thrown failure.
+ * and turns the aggregated result into a {@link RunReport}.
  *
  * <p>The engine only explores — generation and shrinking — so every pumped case is non-final. The
  * client owns the final replays: once the loop drains, each discovered counterexample's reproduce
  * blob is read off the run result and replayed via {@code hegel_test_case_from_blob} with reporting
- * enabled, which prints the minimal example's draws and re-raises the test body's own exception. A
- * counterexample whose replay does not fail again is a flaky test. Run-level errors (a failed
+ * enabled, which surfaces the minimal example's draws and re-raises the test body's own exception.
+ * A counterexample whose replay does not fail again is a flaky test. Run-level errors (a failed
  * health check, nondeterminism, an engine panic) surface with the engine's own message.
+ *
+ * <p>Everything the run has to say goes through its {@link Reporter}; the runner itself never
+ * prints. Binding and engine errors ({@link HegelException}) are thrown, not reported: they are bugs
+ * in the plumbing, not verdicts on the property.
  */
 final class Runner {
     private Runner() {}
@@ -21,6 +29,7 @@ final class Runner {
     /**
      * Package prefixes treated as Hegel/JDK/test-framework infrastructure: {@link #originOf} skips
      * frames in these to find the user frame that owns a failure (used as the shrink-dedup origin).
+     * {@link Settings#infrastructurePackages(String...)} adds a frontend's own.
      */
     private static final String[] INFRA_PREFIXES = {
         "dev.hegel.", "org.junit.", "org.opentest4j.", "jdk.", "java.", "sun.", "com.sun."
@@ -36,55 +45,82 @@ final class Runner {
             + " succeeded when it previously failed. This usually means your test depends on external"
             + " state such as global variables, system time, or external random number generators.";
 
-    static void run(Settings settings, Consumer<TestCase> body) {
-        run(Engine.get(), settings, body, System.getenv(), System.err);
+    /** The body's outcome against one case: the case (holding its draws and notes) and its failure. */
+    private static final class CaseRun {
+        final TestCase testCase;
+        final Throwable interesting;
+
+        CaseRun(TestCase testCase, Throwable interesting) {
+            this.testCase = testCase;
+            this.interesting = interesting;
+        }
     }
 
-    static void run(
-            Libhegel lib, Settings settings, Consumer<TestCase> body, Map<String, String> env, PrintStream out) {
+    static RunReport run(
+            Libhegel lib, Settings settings, Consumer<TestCase> body, Map<String, String> env, Reporter reporter) {
+        reporter.runStarted(settings);
+        RunStatistics.Counter counts = new RunStatistics.Counter();
+        RunReport report;
         long s = lib.settingsNew();
         try {
             applySettings(lib, s, settings, env);
             if (settings.reproduceFailure != null) {
-                throw replayBlob(lib, s, settings.reproduceFailure, body, out);
-            }
-            long run = lib.runStart(s, out::println);
-            try {
-                while (true) {
-                    long tc = lib.nextTestCase(run);
-                    if (isNull(tc)) {
-                        break;
-                    }
-                    driveOneCase(lib, tc, false, body, out);
-                }
-                long result = lib.runResult(run);
-                try {
-                    finish(lib, s, result, settings, body, out);
-                } finally {
-                    lib.runResultFree(result);
-                }
-            } finally {
-                lib.runFree(run);
+                report = replayBlob(lib, s, settings, body, reporter, counts);
+            } else {
+                report = explore(lib, s, settings, body, reporter, counts);
             }
         } finally {
             lib.settingsFree(s);
         }
+        reporter.runFinished(report);
+        return report;
     }
 
-    /** Translate a drained run's result into a normal return or the failure to raise. */
-    private static void finish(
-            Libhegel lib, long s, long result, Settings settings, Consumer<TestCase> body, PrintStream out) {
+    /** Pump the engine's exploration loop to completion and translate its verdict. */
+    private static RunReport explore(
+            Libhegel lib,
+            long s,
+            Settings settings,
+            Consumer<TestCase> body,
+            Reporter reporter,
+            RunStatistics.Counter counts) {
+        long run = lib.runStart(s, reporter::engineOutput);
+        try {
+            while (true) {
+                long tc = lib.nextTestCase(run);
+                if (isNull(tc)) {
+                    break;
+                }
+                driveOneCase(lib, tc, false, body, settings, reporter, counts);
+            }
+            long result = lib.runResult(run);
+            try {
+                return finish(lib, s, result, settings, body, reporter, counts);
+            } finally {
+                lib.runResultFree(result);
+            }
+        } finally {
+            lib.runFree(run);
+        }
+    }
+
+    /** Translate a drained run's result into a report. */
+    private static RunReport finish(
+            Libhegel lib,
+            long s,
+            long result,
+            Settings settings,
+            Consumer<TestCase> body,
+            Reporter reporter,
+            RunStatistics.Counter counts) {
         switch (lib.runResultStatus(result)) {
             case Abi.RUN_STATUS_PASSED:
-                return;
+                return new RunReport(RunStatus.PASSED, counts.snapshot(), null, List.of());
             case Abi.RUN_STATUS_ERROR:
-                // The run produced no verdict on the property: a failed health check (surfaced as
-                // its own type), a nondeterminism mismatch, or an engine panic.
-                String message = nullToEmpty(lib.runResultError(result));
-                if (message.startsWith("FailedHealthCheck")) {
-                    throw new HealthCheckFailure(message);
-                }
-                throw new HegelException(message);
+                // The run produced no verdict on the property: a failed health check, a
+                // nondeterminism mismatch, or an engine panic.
+                return new RunReport(
+                        RunStatus.ERROR, counts.snapshot(), nullToEmpty(lib.runResultError(result)), List.of());
             case Abi.RUN_STATUS_FAILED_NONDETERMINISTIC:
                 // Only a state machine created with max_concurrency > 1 declares a run
                 // nondeterministic, and this binding drives every machine sequentially, so the
@@ -92,135 +128,128 @@ final class Runner {
                 throw new HegelException("internal error: the engine reported a failure on a nondeterministic run,"
                         + " but this binding never declares a run nondeterministic");
             default:
-                throw replayFailures(lib, s, result, settings, body, out);
+                return replayFailures(lib, s, result, settings, body, reporter, counts);
         }
     }
 
-    /**
-     * Replay every distinct counterexample's blob (printing its draws and notes) and build the
-     * run's closing throw: the single failure's own exception, or an aggregate for several distinct
-     * bugs.
-     */
-    private static AssertionError replayFailures(
-            Libhegel lib, long s, long result, Settings settings, Consumer<TestCase> body, PrintStream out) {
+    /** Replay every distinct counterexample's blob, capturing its draws, notes, and exception. */
+    private static RunReport replayFailures(
+            Libhegel lib,
+            long s,
+            long result,
+            Settings settings,
+            Consumer<TestCase> body,
+            Reporter reporter,
+            RunStatistics.Counter counts) {
         long count = lib.runResultFailureCount(result);
-        boolean multiple = count > 1;
-        if (multiple) {
-            out.println("Property-based test failed with " + count + " distinct failures.");
-        }
-        Throwable[] captured = new Throwable[(int) count];
+        reporter.failuresFound((int) count);
+        List<Failure> failures = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            if (multiple) {
-                out.println();
-            }
             String blob = lib.failureBlob(result, i);
             if (blob == null) {
                 throw new HegelException("internal error: failure " + i + " carries no reproduce blob");
             }
+            String origin = lib.failureOrigin(result, i);
             long[] tcOut = new long[1];
-            int rc = lib.testCaseFromBlob(s, blob, out::println, tcOut);
+            int rc = lib.testCaseFromBlob(s, blob, reporter::engineOutput, tcOut);
             if (rc != Abi.OK) {
                 throw new HegelException(
                         "hegel_test_case_from_blob failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
             }
-            Throwable failure = driveOneCase(lib, tcOut[0], true, body, out);
-            if (failure == null) {
-                throw new HegelException(FLAKY_DIAGNOSTIC);
-            }
-            if (settings.printBlob) {
-                out.println();
-                out.println("To reproduce this failure, replay it with:");
-                out.println("    @HegelTest(reproduceFailure = \"" + blob + "\")");
-            }
-            captured[i] = failure;
+            CaseRun replay = driveOneCase(lib, tcOut[0], true, body, settings, reporter, counts);
+            Failure failure =
+                    new Failure(origin, blob, replay.interesting, replay.testCase.draws(), replay.testCase.notes());
+            reporter.failure(failure);
+            failures.add(failure);
         }
-        if (!multiple) {
-            throw asUnchecked(captured[0]);
-        }
-        StringBuilder sb = new StringBuilder();
-        sb.append("Hegel found ").append(count).append(" distinct failing examples:");
-        for (Throwable failure : captured) {
-            sb.append("\n\n").append(describe(failure));
-        }
-        AssertionError aggregate = new AssertionError(sb.toString());
-        for (Throwable failure : captured) {
-            aggregate.addSuppressed(failure);
-        }
-        return aggregate;
+        return new RunReport(RunStatus.FAILED, counts.snapshot(), null, failures);
     }
 
     /**
      * Replay a single stored blob ({@link Settings#reproduceFailure}), bypassing generation and
-     * shrinking: a reproduced failure re-raises the body's own exception, and a blob that no longer
-     * fails is reported as stale (returned for the caller to throw).
+     * shrinking: a reproduced failure is reported as the run's one failure, and a blob that no
+     * longer fails is a configuration error (the failure was fixed, or the blob is stale).
      */
-    private static RuntimeException replayBlob(
-            Libhegel lib, long s, String blob, Consumer<TestCase> body, PrintStream out) {
+    private static RunReport replayBlob(
+            Libhegel lib,
+            long s,
+            Settings settings,
+            Consumer<TestCase> body,
+            Reporter reporter,
+            RunStatistics.Counter counts) {
+        String blob = settings.reproduceFailure;
         long[] tcOut = new long[1];
-        int rc = lib.testCaseFromBlob(s, blob, out::println, tcOut);
+        int rc = lib.testCaseFromBlob(s, blob, reporter::engineOutput, tcOut);
         if (rc != Abi.OK) {
-            return new HegelException("reproduceFailure: the supplied blob is not valid (rc="
+            throw new HegelException("reproduceFailure: the supplied blob is not valid (rc="
                     + rc
                     + "): "
                     + nullToEmpty(lib.lastErrorMessage()));
         }
-        Throwable failure = driveOneCase(lib, tcOut[0], true, body, out);
-        if (failure == null) {
-            return new HegelException("reproduceFailure: the supplied failure blob no longer reproduces a"
+        CaseRun replay = driveOneCase(lib, tcOut[0], true, body, settings, reporter, counts);
+        if (replay.interesting == null) {
+            throw new HegelException("reproduceFailure: the supplied failure blob no longer reproduces a"
                     + " failure. The failure may have been fixed, or the blob is stale.");
         }
-        throw asUnchecked(failure);
+        Failure failure = new Failure(
+                originOf(replay.interesting, settings.infrastructurePackages),
+                blob,
+                replay.interesting,
+                replay.testCase.draws(),
+                replay.testCase.notes());
+        reporter.failure(failure);
+        return new RunReport(RunStatus.FAILED, counts.snapshot(), null, List.of(failure));
     }
 
     /**
-     * Run the body once against {@code tc}, report the outcome, and free the handle. Returns the
-     * exception that made the case interesting, or {@code null} for any other outcome. With {@code
-     * reporting} enabled the case's draws and notes are printed to {@code out}.
+     * Run the body once against {@code tc}, report the outcome to the engine and the reporter, and
+     * free the handle. The returned {@link CaseRun} carries the exception that made the case
+     * interesting ({@code null} for any other outcome) and the case itself, whose draws and notes
+     * were recorded when {@code finalReplay} is set.
      */
-    static Throwable driveOneCase(Libhegel lib, long tc, boolean reporting, Consumer<TestCase> body, PrintStream out) {
+    private static CaseRun driveOneCase(
+            Libhegel lib,
+            long tc,
+            boolean finalReplay,
+            Consumer<TestCase> body,
+            Settings settings,
+            Reporter reporter,
+            RunStatistics.Counter counts) {
         try {
-            TestCase testCase = new TestCase(new LiveDataSource(lib, tc), reporting, out);
-            int status;
+            boolean verbose = settings.verbosity.code >= Verbosity.VERBOSE.code;
+            TestCase testCase = new TestCase(new LiveDataSource(lib, tc), finalReplay, verbose, reporter);
+            reporter.caseStarted(finalReplay);
+            CaseOutcome outcome;
             String origin = null;
             Throwable interesting = null;
             try {
                 body.accept(testCase);
-                status = Abi.STATUS_VALID;
+                outcome = CaseOutcome.VALID;
             } catch (AssumeRejected e) {
-                status = Abi.STATUS_INVALID;
+                outcome = CaseOutcome.INVALID;
             } catch (StopTest e) {
-                status = Abi.STATUS_OVERRUN;
-            } catch (HegelException e) {
+                outcome = CaseOutcome.OVERRUN;
+            } catch (LibhegelException e) {
                 // A binding/engine error, not a property failure: abort the whole run.
                 throw e;
             } catch (Throwable e) {
-                status = Abi.STATUS_INTERESTING;
-                origin = originOf(e);
+                outcome = CaseOutcome.INTERESTING;
+                origin = originOf(e, settings.infrastructurePackages);
                 interesting = e;
             }
-            int rc = lib.markComplete(tc, status, origin);
+            int rc = lib.markComplete(tc, outcome.status, origin);
             if (rc != Abi.OK) {
                 throw new HegelException(
                         "hegel_mark_complete failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
             }
-            return interesting;
+            counts.record(outcome);
+            reporter.caseFinished(outcome, finalReplay);
+            return new CaseRun(testCase, interesting);
         } finally {
             // The handle is caller-owned. On the error paths above the case may be incomplete;
             // the run still holds its own reference and completes it when freed.
             lib.testCaseFree(tc);
         }
-    }
-
-    /**
-     * Convert a captured test-body failure for rethrow with its original type: an {@link Error} is
-     * thrown here, anything else is returned for the caller to throw (a {@link
-     * java.util.function.Consumer} body can only throw unchecked exceptions).
-     */
-    private static RuntimeException asUnchecked(Throwable t) {
-        if (t instanceof Error error) {
-            throw error;
-        }
-        return (RuntimeException) t;
     }
 
     static void applySettings(Libhegel lib, long s, Settings st, Map<String, String> env) {
@@ -262,27 +291,31 @@ final class Runner {
         }
     }
 
-    static String originOf(Throwable e) {
+    /**
+     * The shrink-dedup origin of a failure: the exception's simple type name and the first stack
+     * frame outside Hegel, the JDK, the test framework, and {@code infrastructurePackages}.
+     */
+    static String originOf(Throwable e, List<String> infrastructurePackages) {
         for (StackTraceElement f : e.getStackTrace()) {
-            if (isUserFrame(f.getClassName())) {
+            if (isUserFrame(f.getClassName(), infrastructurePackages)) {
                 return e.getClass().getSimpleName() + " at " + f.getFileName() + ":" + f.getLineNumber();
             }
         }
         return e.getClass().getName();
     }
 
-    private static boolean isUserFrame(String className) {
+    private static boolean isUserFrame(String className, List<String> infrastructurePackages) {
         for (String prefix : INFRA_PREFIXES) {
             if (className.startsWith(prefix)) {
                 return false;
             }
         }
+        for (String prefix : infrastructurePackages) {
+            if (className.startsWith(prefix)) {
+                return false;
+            }
+        }
         return true;
-    }
-
-    private static String describe(Throwable e) {
-        String msg = e.getMessage();
-        return msg == null ? e.getClass().getName() : e.getClass().getName() + ": " + msg;
     }
 
     private static String nullToEmpty(String s) {

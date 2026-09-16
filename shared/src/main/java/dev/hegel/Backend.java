@@ -1,5 +1,7 @@
 package dev.hegel;
 
+import dev.hegel.lowlevel.Abi;
+
 /**
  * The source of randomness the engine draws from.
  *

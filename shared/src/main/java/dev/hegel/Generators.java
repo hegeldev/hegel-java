@@ -29,6 +29,7 @@ import dev.hegel.generators.TupleGenerator;
 import dev.hegel.generators.UrlGenerator;
 import dev.hegel.generators.UuidGenerator;
 import dev.hegel.generators.ZoneOffsetGenerator;
+import dev.hegel.lowlevel.Abi;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;

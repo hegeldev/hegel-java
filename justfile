@@ -41,11 +41,13 @@ format:
 lint:
     mvn -B spotless:check
 
+# `compile` first: hegel and hegel-jna depend on hegel-lowlevel, and a bare `javadoc:javadoc`
+# would try to resolve it from Maven Central instead of the reactor. Javadoc needs no natives.
 check-docs:
-    mvn -B -q javadoc:javadoc
+    mvn -B -q -Dhegel.natives.skip=true compile javadoc:javadoc
 
 docs:
-    mvn -B -q javadoc:javadoc
+    mvn -B -q -Dhegel.natives.skip=true compile javadoc:javadoc
     open hegel/target/reports/apidocs/index.html
 
 clean:

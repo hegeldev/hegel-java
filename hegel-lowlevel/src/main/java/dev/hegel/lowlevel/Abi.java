@@ -1,12 +1,9 @@
-package dev.hegel;
+package dev.hegel.lowlevel;
 
 /**
- * Constants from the libhegel C ABI (hegel-c/include/hegel.h).
- *
- * <p>Kept in sync with the engine header. These are implementation details: {@code public} only so
- * the generators in {@code dev.hegel.generators} can reach them, not part of the user-facing API.
- *
- * @hidden
+ * Constants from the libhegel C ABI ({@code hegel-c/include/hegel.h}): return codes, run and case
+ * statuses, phase and health-check bit masks, the engine's reserved span labels, and the sentinels
+ * the structured primitives use. Kept in sync with the engine header.
  */
 public final class Abi {
     private Abi() {}
@@ -61,9 +58,7 @@ public final class Abi {
     public static final long LABEL_SAMPLED_FROM = 14;
     public static final long LABEL_ENUM_VARIANT = 15;
     public static final long LABEL_STATEFUL_RULE = 31;
-
     // The label space is open beyond the reserved values: any stable u64 works.
-    public static final long LABEL_COMPOSITE = fnv1a("dev.hegel.composite");
 
     // hegel_backend_t.
     public static final int BACKEND_AUTO = 0;
@@ -86,13 +81,4 @@ public final class Abi {
     public static final long STATE_MACHINE_DONE = Long.MIN_VALUE;
     public static final long UNBOUNDED = -1L; // 0xFFFFFFFFFFFFFFFF as a Java long
     public static final long NO_MAX_CODEPOINT = 0xFFFFFFFFL;
-
-    static long fnv1a(String s) {
-        long hash = 0xcbf29ce484222325L;
-        for (byte b : s.getBytes(java.nio.charset.StandardCharsets.UTF_8)) {
-            hash ^= (b & 0xffL);
-            hash *= 0x100000001b3L;
-        }
-        return hash;
-    }
 }

@@ -74,6 +74,11 @@
  * n = 50;
  * }</pre>
  *
+ * <p>This report is produced by the run's {@link dev.hegel.Reporter}; the default prints to
+ * {@code System.err}. Pass your own to {@link dev.hegel.Hegel#test(java.util.function.Consumer,
+ * dev.hegel.Settings, dev.hegel.Reporter)} to route it elsewhere, or {@link
+ * dev.hegel.Reporter#silent()} to suppress it.
+ *
  * <h2>Generators</h2>
  *
  * <p>{@link dev.hegel.Generators} provides a rich set of generators. Primitives include
@@ -166,6 +171,8 @@
  *       replay of a failing case.
  *   <li>{@link dev.hegel.TestCase#target(double, String) target} reports a score so the search can
  *       hill-climb toward interesting inputs.
+ *   <li>{@link dev.hegel.TestCase#isFinal() isFinal} tells whether this run of the body is the
+ *       final replay of a minimal counterexample, where expensive diagnostics are worth doing.
  * </ul>
  *
  * <pre>{@code
@@ -209,6 +216,37 @@
  * the run and throws {@link dev.hegel.HealthCheckFailure} (distinct from a property's own failure);
  * pass the relevant {@link dev.hegel.HealthCheck} to {@code suppressHealthCheck} if the behaviour is
  * intentional.
+ *
+ * <h2>Using Hegel as a library</h2>
+ *
+ * <p>Frontends for other JVM languages, or custom test runners, drive Hegel through
+ * {@link dev.hegel.Hegel#run(java.util.function.Consumer, dev.hegel.Settings, dev.hegel.Reporter)}
+ * rather than {@code Hegel.test}. It never throws for a property outcome; it returns a
+ * {@link dev.hegel.RunReport} with the verdict ({@link dev.hegel.RunStatus}), the
+ * {@link dev.hegel.RunStatistics case counts}, the engine's message for an errored run, and one
+ * {@link dev.hegel.Failure} per distinct counterexample carrying the exception the body threw, the
+ * labelled top-level draws of the minimal example as Java values, the notes, and the reproduce blob.
+ * A {@link dev.hegel.Reporter} receives the same information as callbacks while the run proceeds,
+ * which is how a frontend owns its output instead of sharing {@code System.err}:
+ *
+ * <pre>{@code
+ * RunReport report = Hegel.run(body, new Settings().testCases(200), Reporter.silent());
+ * if (report.status() == RunStatus.FAILED) {
+ *   Failure f = report.failures().get(0);
+ *   f.draws();       // {"xs": [0, 0]}
+ *   f.exception();   // the body's own throwable
+ *   f.reproduceBlob();
+ * }
+ * report.throwIfFailed(); // Hegel.test's behaviour, when wanted
+ * }</pre>
+ *
+ * <p>The test body is any {@code Consumer<TestCase>}: returning normally passes the case, throwing
+ * anything fails it, and nothing is JUnit-specific. Hegel distinguishes bugs by the exception's
+ * type and the first stack frame outside Hegel, the JDK, and JUnit; a frontend lists its own
+ * packages in {@link dev.hegel.Settings#infrastructurePackages(String...)} so they are skipped
+ * too. Custom composite generators implement {@link dev.hegel.Generator} and enclose their draws
+ * in {@link dev.hegel.TestCase#span(long, java.util.function.Supplier) tc.span} with a
+ * {@link dev.hegel.Label} so the engine shrinks the structure as a unit.
  *
  * <h2>Deriving generators from types</h2>
  *

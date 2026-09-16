@@ -1,5 +1,6 @@
 package dev.hegel;
 
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -32,6 +33,7 @@ public final class Settings {
     final boolean printBlob;
     final String reproduceFailure; // null = run normally instead of replaying a blob
     final String name;
+    final List<String> infrastructurePackages;
 
     /** Create settings with all defaults (100 test cases, all phases, normal verbosity). */
     public Settings() {
@@ -52,6 +54,7 @@ public final class Settings {
         this.printBlob = b.printBlob;
         this.reproduceFailure = b.reproduceFailure;
         this.name = b.name;
+        this.infrastructurePackages = b.infrastructurePackages;
     }
 
     /** Return a copy of these settings with {@code mutator} applied to the changed fields. */
@@ -70,6 +73,7 @@ public final class Settings {
         b.printBlob = printBlob;
         b.reproduceFailure = reproduceFailure;
         b.name = name;
+        b.infrastructurePackages = infrastructurePackages;
         mutator.accept(b);
         return new Settings(b);
     }
@@ -89,6 +93,7 @@ public final class Settings {
         boolean printBlob = false;
         String reproduceFailure = null;
         String name = null;
+        List<String> infrastructurePackages = List.of();
     }
 
     /**
@@ -236,6 +241,21 @@ public final class Settings {
      */
     public Settings name(String name) {
         return with(b -> b.name = name);
+    }
+
+    /**
+     * Class-name prefixes to treat as infrastructure when locating the user frame a failure was
+     * thrown from. Hegel tells distinct bugs apart by the exception's type and the first stack
+     * frame outside Hegel, the JDK, and JUnit; a frontend whose own frames sit between Hegel and
+     * the user's code (for example {@code "clojure.lang."} and {@code "clojure.core"}) lists them
+     * here so its frames are skipped too. Replaces any previously set prefixes.
+     *
+     * @param prefixes class-name prefixes to skip
+     * @return a new settings instance
+     */
+    public Settings infrastructurePackages(String... prefixes) {
+        List<String> copy = List.of(prefixes);
+        return with(b -> b.infrastructurePackages = copy);
     }
 
     /** Whether the current environment looks like CI. */
