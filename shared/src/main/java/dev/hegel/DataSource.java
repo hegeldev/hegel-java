@@ -93,7 +93,8 @@ interface DataSource {
 
     // Stateful testing. Machines are driven sequentially (one worker, one concurrency group).
 
-    long newStateMachine(List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck);
+    long newStateMachine(
+            List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck, int stepCount);
 
     /** Start the next round: its group id, or {@link Abi#STATE_MACHINE_DONE} when the machine is done. */
     long stateMachineNextGroup(long stateMachineId);

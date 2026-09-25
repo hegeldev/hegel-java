@@ -5,13 +5,14 @@ import dev.hegel.lowlevel.Abi;
 /**
  * The source of randomness the engine draws from.
  *
- * <p>Mirrors Hypothesis's {@code backend} setting. The default, {@link #AUTO}, selects {@link
- * #URANDOM} automatically when running inside <a href="https://antithesis.com/">Antithesis</a> and
- * {@link #DEFAULT} otherwise; an explicit choice always wins over the automatic one.
+ * <p>Mirrors Hypothesis's {@code backend} setting. The default, {@link #AUTO}, leaves the choice to
+ * the engine's settings profile: the shipped {@code workload} profile, which the engine selects when
+ * running inside <a href="https://antithesis.com/">Antithesis</a>, uses {@link #URANDOM}, and every
+ * other profile uses {@link #DEFAULT}. An explicit choice always wins over the profile's.
  */
 public enum Backend {
-    /** Choose automatically: {@code URANDOM} under Antithesis, otherwise {@code DEFAULT}. */
-    AUTO(Abi.BACKEND_AUTO),
+    /** Leave the choice to the engine's profile: {@code URANDOM} under Antithesis, else {@code DEFAULT}. */
+    AUTO(null),
     /**
      * Expand a single seeded PRNG. Runs are reproducible from the seed and shrinking and replay
      * work as usual.
@@ -24,9 +25,10 @@ public enum Backend {
      */
     URANDOM(Abi.BACKEND_URANDOM);
 
-    final int code;
+    /** The {@code hegel_backend_t} value to send, or {@code null} to leave the profile's choice. */
+    final Integer code;
 
-    Backend(int code) {
+    Backend(Integer code) {
         this.code = code;
     }
 }

@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 
 /**
  * Generates IP address strings. By default produces a mix of IPv4 and IPv6; restrict to one family
@@ -35,7 +35,7 @@ public final class IpAddressGenerator implements Generator<String> {
         if (version != null) {
             return version == 4 ? formatV4(tc.generateIpv4()) : formatV6(tc.generateIpv6());
         }
-        tc.startSpan(Abi.LABEL_ONE_OF);
+        tc.startSpan(Label.ONE_OF);
         try {
             return tc.generateInteger(0, 1) == 0 ? formatV4(tc.generateIpv4()) : formatV6(tc.generateIpv6());
         } finally {

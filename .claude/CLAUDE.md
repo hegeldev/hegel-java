@@ -71,7 +71,8 @@ native bundled in the jar for the host OS/arch (unpacked to a per-user cache; th
 best-effort — if it cannot be read or written, e.g. under a sandbox that denies writes to the user
 cache dir, the native is extracted to a fresh directory under the system temp dir instead). The bundled libraries are fetched at build time by
 `scripts/fetch_natives.py` (wired into Maven's `generate-resources` phase), which discovers whatever
-shared objects the pinned `<libhegel.version>` release publishes — no runtime download. The fetch is **strict** —
+shared objects the pinned `<libhegel.version>` release (tagged `libhegel-v<version>` in hegel-rust;
+the plain `v<version>` tags belong to the `hegeltest` crate) publishes — no runtime download. The fetch is **strict** —
 because the bundled native is the only way end users get the engine (no runtime-download
 fallback), it fails the build rather than silently producing a jar without natives. For local
 engine work, build a `libhegel` and point `$HEGEL_LIBHEGEL_PATH` at it (`just build-libhegel` builds
@@ -104,8 +105,10 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   output callback (`hegel_output_callback_t`) to a `Consumer<String>` — an FFM upcall stub whose
   arena lives until `runFree`, or a JNA `Callback` strongly referenced until `runFree`. In the
   JNA binding, C `bool` crosses as `byte` (JNA's default boolean mapping is a 32-bit int) and
-  `size_t` as `long` (the bundled natives are all 64-bit). `Abi` (lowlevel) holds the C constants; `Label` (shared) holds the frontend's span labels and
-  the FNV-1a hash for minting new ones.
+  `size_t` as `long` (the bundled natives are all 64-bit). `Abi` (lowlevel) holds the C constants; `Label` (shared) holds the frontend's span labels —
+  opaque `u64`s derived from `dev.hegel.<kind>` names with the same FNV-1a hash as the engine's
+  `hegel_label_from_name` (`Label.of`) and `hegel_label_combine` (`Label.combine`); the engine has
+  no predefined label enum since 0.39.
 - **Per-case primitives** — `DataSource` is the abstraction generators draw against;
   `LiveDataSource` wraps the engine, translating return codes (`StopTest` → OVERRUN,
   `AssumeRejected` → INVALID, `INVALID_ARG` → `IllegalArgumentException` with the engine's
@@ -124,7 +127,7 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   failure as-is (checked exceptions included), aggregates several into an `AssertionError`, and
   maps ERROR to `HealthCheckFailure`/`HegelException`. `HegelException` (binding/engine errors) is
   always thrown, never reported. `Settings` is the immutable config; its closed-state setting types live
-  alongside it — `Backend` (auto / default / urandom for Antithesis), `Database`, `OptBoolean` —
+  alongside it — `Backend` (auto = leave it to the engine's profile, which picks urandom inside Antithesis / default / urandom), `Database`, `OptBoolean` —
   plus `printBlob` (print a copy-pasteable reproducer per failure) and `reproduceFailure` (replay
   a stored blob instead of running the property). There is no single-test-case mode (the engine
   dropped it in 0.35); `testCases(1)` is the one-case configuration.
@@ -144,7 +147,9 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   the engine loop and invokes the user method per case).
 - **Stateful testing** — `Stateful.run(machine, tc)` reflects `@Rule`/`@Invariant` methods (sorted
   by name for determinism) and registers them via `hegel_new_state_machine` as a *sequential*
-  machine (every rule in group 0, concurrency fixed at `1, 1`, worker index 0). It then drives the
+  machine (every rule in group 0, concurrency fixed at `1, 1`, worker index 0, and a per-machine
+  `step_count` — `Stateful.DEFAULT_STEP_COUNT` = 50, or the `run(machine, tc, stepCount)` overload;
+  the engine has no default). It then drives the
   engine's round protocol: `hegel_state_machine_next_group` opens each round (or reports
   `HEGEL_STATE_MACHINE_DONE`, which is `INT64_MIN`), `hegel_state_machine_next_rule` hands out the
   round's rules until the join point, a rule that fails its own assumption is reported with

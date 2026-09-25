@@ -2,8 +2,8 @@ package dev.hegel.generators;
 
 import dev.hegel.AssumeRejected;
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.util.function.Predicate;
 
 /**
@@ -28,7 +28,7 @@ public final class FilteredGenerator<T> implements Generator<T> {
     @Override
     public T doDraw(TestCase tc) {
         for (int attempt = 0; attempt < FILTER_RETRIES; attempt++) {
-            tc.startSpan(Abi.LABEL_FILTER);
+            tc.startSpan(Label.FILTER);
             boolean discard = true;
             try {
                 T value = source.doDraw(tc);

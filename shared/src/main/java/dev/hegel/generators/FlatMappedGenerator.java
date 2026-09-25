@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.util.function.Function;
 
 /**
@@ -24,7 +24,7 @@ public final class FlatMappedGenerator<T, U> implements Generator<U> {
 
     @Override
     public U doDraw(TestCase tc) {
-        tc.startSpan(Abi.LABEL_FLAT_MAP);
+        tc.startSpan(Label.FLAT_MAP);
         try {
             T value = source.doDraw(tc);
             Generator<U> next = f.apply(value);

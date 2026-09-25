@@ -249,6 +249,21 @@ class CoverageTest {
     }
 
     @Test
+    void statefulStepCountIsPassedToTheEngineAndValidated() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.ruleSequence = new long[] {0};
+        Stateful.run(new TwoRuleMachine(), fakeTestCase(fake), 7);
+        assertEquals(7, fake.stateMachineStepCount);
+
+        FakeLibhegel untouched = new FakeLibhegel();
+        IllegalArgumentException e = assertThrows(
+                IllegalArgumentException.class, () -> Stateful.run(new TwoRuleMachine(), fakeTestCase(untouched), 0));
+        assertTrue(e.getMessage().contains("stepCount"), e.getMessage());
+        // Rejected before anything reached the engine.
+        assertEquals(-1, untouched.stateMachineStepCount);
+    }
+
+    @Test
     void statefulDriverFollowsTheEngineRuleSequence() {
         FakeLibhegel fake = new FakeLibhegel();
         fake.ruleSequence = new long[] {0, 1, 0};
@@ -261,6 +276,7 @@ class CoverageTest {
         assertArrayEquals(new long[] {0, 0}, fake.stateMachineRuleGroups);
         assertEquals(1, fake.stateMachineMinConcurrency);
         assertEquals(1, fake.stateMachineMaxConcurrency);
+        assertEquals(Stateful.DEFAULT_STEP_COUNT, fake.stateMachineStepCount);
         // Invariants are ordered by name and carry their always-run flags.
         assertEquals(List.of("sampled", "unsampled"), fake.stateMachineInvariants);
         assertArrayEquals(new boolean[] {false, true}, fake.stateMachineAlwaysCheck);

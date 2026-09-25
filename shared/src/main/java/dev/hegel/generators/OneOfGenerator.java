@@ -1,8 +1,8 @@
 package dev.hegel.generators;
 
 import dev.hegel.Generator;
+import dev.hegel.Label;
 import dev.hegel.TestCase;
-import dev.hegel.lowlevel.Abi;
 import java.util.List;
 
 /**
@@ -22,7 +22,7 @@ public final class OneOfGenerator<T> implements Generator<T> {
     /** @hidden */
     @Override
     public T doDraw(TestCase tc) {
-        tc.startSpan(Abi.LABEL_ONE_OF);
+        tc.startSpan(Label.ONE_OF);
         try {
             int index = (int) tc.generateInteger(0, options.size() - 1);
             return options.get(index).doDraw(tc);

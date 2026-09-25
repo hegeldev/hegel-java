@@ -2,8 +2,8 @@ package dev.hegel.lowlevel;
 
 /**
  * Constants from the libhegel C ABI ({@code hegel-c/include/hegel.h}): return codes, run and case
- * statuses, phase and health-check bit masks, the engine's reserved span labels, and the sentinels
- * the structured primitives use. Kept in sync with the engine header.
+ * statuses, phase and health-check bit masks, and the sentinels the structured primitives use.
+ * Kept in sync with the engine header.
  */
 public final class Abi {
     private Abi() {}
@@ -41,33 +41,15 @@ public final class Abi {
     public static final int HC_TEST_CASES_TOO_LARGE = 1 << 2;
     public static final int HC_LARGE_INITIAL_TEST_CASE = 1 << 3;
 
-    // Span labels reserved by the engine (hegel_label_t; argument to hegel_start_span).
-    public static final long LABEL_LIST = 1;
-    public static final long LABEL_LIST_ELEMENT = 2;
-    public static final long LABEL_SET = 3;
-    public static final long LABEL_SET_ELEMENT = 4;
-    public static final long LABEL_MAP = 5;
-    public static final long LABEL_MAP_ENTRY = 6;
-    public static final long LABEL_TUPLE = 7;
-    public static final long LABEL_ONE_OF = 8;
-    public static final long LABEL_OPTIONAL = 9;
-    public static final long LABEL_FIXED_DICT = 10;
-    public static final long LABEL_FLAT_MAP = 11;
-    public static final long LABEL_FILTER = 12;
-    public static final long LABEL_MAPPED = 13;
-    public static final long LABEL_SAMPLED_FROM = 14;
-    public static final long LABEL_ENUM_VARIANT = 15;
-    public static final long LABEL_STATEFUL_RULE = 31;
-    // The label space is open beyond the reserved values: any stable u64 works.
-
-    // hegel_backend_t.
-    public static final int BACKEND_AUTO = 0;
+    // hegel_backend_t. There is no automatic value: leaving the backend unset lets the engine's
+    // settings profile choose (the shipped `workload` profile, selected inside Antithesis, uses
+    // urandom).
     public static final int BACKEND_DEFAULT = 1;
     public static final int BACKEND_URANDOM = 2;
 
     // hegel_verbosity_t.
-    public static final int VERBOSITY_QUIET = 0;
-    public static final int VERBOSITY_NORMAL = 1;
+    public static final int VERBOSITY_NORMAL = 0;
+    public static final int VERBOSITY_QUIET = 1;
     public static final int VERBOSITY_VERBOSE = 2;
     public static final int VERBOSITY_DEBUG = 3;
 

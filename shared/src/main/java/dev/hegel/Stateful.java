@@ -47,7 +47,9 @@ import java.util.List;
  * number of steps. A rule that fails an assumption is skipped without counting as a step. Invariants
  * are checked in full on the machine's initial and final state and sampled in between: after any
  * given rule each invariant runs with probability {@code 1 / stepCount}, so its expected cost per
- * test case stays constant as the step count grows. Mark an invariant {@code @Invariant(alwaysRun =
+ * test case stays constant as the step count grows. The step count is the target number of rules
+ * per test case, {@link #DEFAULT_STEP_COUNT} unless {@link #run(Object, TestCase, int)} is given
+ * one. Mark an invariant {@code @Invariant(alwaysRun =
  * true)} to check it after every rule instead. Use a {@link Pool} to act on previously generated
  * values.
  */
@@ -55,8 +57,14 @@ public final class Stateful {
     private Stateful() {}
 
     /**
-     * Run {@code machine}'s rules and invariants under {@code tc} until the engine's step budget
-     * for this test case is exhausted.
+     * The step count {@link #run(Object, TestCase)} uses: the conventional choice across Hegel
+     * frontends.
+     */
+    public static final int DEFAULT_STEP_COUNT = 50;
+
+    /**
+     * Run {@code machine}'s rules and invariants under {@code tc} for up to {@link
+     * #DEFAULT_STEP_COUNT} steps.
      *
      * <p>The machine's {@code @Rule}/{@code @Invariant} methods are discovered reflectively from
      * its class (superclass methods are not considered) and ordered by name, so rule numbering is
@@ -66,13 +74,33 @@ public final class Stateful {
      * @param tc the current test case
      */
     public static void run(Object machine, TestCase tc) {
+        run(machine, tc, DEFAULT_STEP_COUNT);
+    }
+
+    /**
+     * Run {@code machine}'s rules and invariants under {@code tc} for up to {@code stepCount}
+     * steps.
+     *
+     * <p>Every test case runs at least one step and at most {@code stepCount}; the engine decides
+     * when to stop within that budget. After each step a sampled invariant is checked with
+     * probability {@code 1 / stepCount}.
+     *
+     * @param machine the state machine to drive
+     * @param tc the current test case
+     * @param stepCount the target number of steps per test case, at least 1
+     * @throws IllegalArgumentException if {@code stepCount} is less than 1
+     */
+    public static void run(Object machine, TestCase tc, int stepCount) {
+        if (stepCount < 1) {
+            throw new IllegalArgumentException("stepCount must be at least 1, got " + stepCount);
+        }
         List<Method> rules = annotated(machine, Rule.class);
         List<Method> invariants = annotated(machine, Invariant.class);
         if (rules.isEmpty()) {
             throw new IllegalArgumentException(
                     machine.getClass().getName() + " has no @Rule methods; a state machine needs at least one");
         }
-        long machineId = tc.newStateMachine(names(rules), names(invariants), alwaysRun(invariants));
+        long machineId = tc.newStateMachine(names(rules), names(invariants), alwaysRun(invariants), stepCount);
         try {
             drive(machine, rules, invariants, tc, machineId);
         } finally {
@@ -95,7 +123,7 @@ public final class Stateful {
 
         int step = 0;
         while (true) {
-            tc.startSpan(Abi.LABEL_STATEFUL_RULE);
+            tc.startSpan(Label.STATEFUL_RULE);
             if (tc.stateMachineNextGroup(machineId) == Abi.STATE_MACHINE_DONE) {
                 tc.stopSpan(false);
                 break;

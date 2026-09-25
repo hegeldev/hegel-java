@@ -227,7 +227,8 @@ public interface Libhegel {
      * value but {@link Abi#STATE_MACHINE_DONE}), {@code invariantAlwaysCheck} parallel to {@code
      * invariantNames}. The engine draws the concurrency level in {@code [minConcurrency,
      * maxConcurrency]} and writes it to {@code outConcurrency}; pass {@code 1, 1} for a sequential
-     * machine.
+     * machine. {@code stepCount} is the target number of counted rounds per test case (at least 1;
+     * the engine has no default, and 50 is the conventional choice).
      */
     int newStateMachine(
             long tc,
@@ -237,6 +238,7 @@ public interface Libhegel {
             boolean[] invariantAlwaysCheck,
             long minConcurrency,
             long maxConcurrency,
+            long stepCount,
             long[] outId,
             long[] outConcurrency);
 

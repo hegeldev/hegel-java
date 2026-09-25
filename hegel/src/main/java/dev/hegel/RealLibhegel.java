@@ -370,7 +370,7 @@ final class RealLibhegel implements Libhegel {
                 "hegel_new_state_machine",
                 FunctionDescriptor.of(
                         JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG, ADDRESS, ADDRESS, JAVA_LONG, JAVA_LONG,
-                        JAVA_LONG, ADDRESS, ADDRESS));
+                        JAVA_LONG, JAVA_LONG, ADDRESS, ADDRESS));
         this.stateMachineNextGroup = h(
                 linker,
                 lookup,
@@ -1006,6 +1006,7 @@ final class RealLibhegel implements Libhegel {
             boolean[] invariantAlwaysCheck,
             long minConcurrency,
             long maxConcurrency,
+            long stepCount,
             long[] outId,
             long[] outConcurrency) {
         try (Arena arena = Arena.ofConfined()) {
@@ -1032,6 +1033,7 @@ final class RealLibhegel implements Libhegel {
                     (long) invariantNames.size(),
                     minConcurrency,
                     maxConcurrency,
+                    stepCount,
                     id,
                     concurrency);
             if (code == Abi.OK) {

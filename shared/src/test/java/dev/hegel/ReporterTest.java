@@ -2,7 +2,6 @@ package dev.hegel;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import dev.hegel.lowlevel.Abi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -67,22 +66,22 @@ class ReporterTest {
 
     @Test
     void labelsMatchTheEngineConstants() {
-        assertEquals(Abi.LABEL_LIST, Label.LIST);
-        assertEquals(Abi.LABEL_LIST_ELEMENT, Label.LIST_ELEMENT);
-        assertEquals(Abi.LABEL_SET, Label.SET);
-        assertEquals(Abi.LABEL_SET_ELEMENT, Label.SET_ELEMENT);
-        assertEquals(Abi.LABEL_MAP, Label.MAP);
-        assertEquals(Abi.LABEL_MAP_ENTRY, Label.MAP_ENTRY);
-        assertEquals(Abi.LABEL_TUPLE, Label.TUPLE);
-        assertEquals(Abi.LABEL_ONE_OF, Label.ONE_OF);
-        assertEquals(Abi.LABEL_OPTIONAL, Label.OPTIONAL);
-        assertEquals(Abi.LABEL_FIXED_DICT, Label.FIXED_DICT);
-        assertEquals(Abi.LABEL_FLAT_MAP, Label.FLAT_MAP);
-        assertEquals(Abi.LABEL_FILTER, Label.FILTER);
-        assertEquals(Abi.LABEL_MAPPED, Label.MAPPED);
-        assertEquals(Abi.LABEL_SAMPLED_FROM, Label.SAMPLED_FROM);
-        assertEquals(Abi.LABEL_ENUM_VARIANT, Label.ENUM_VARIANT);
-        assertEquals(Abi.LABEL_STATEFUL_RULE, Label.STATEFUL_RULE);
+        assertEquals(Label.of("dev.hegel.list"), Label.LIST);
+        assertEquals(Label.of("dev.hegel.list_element"), Label.LIST_ELEMENT);
+        assertEquals(Label.of("dev.hegel.set"), Label.SET);
+        assertEquals(Label.of("dev.hegel.set_element"), Label.SET_ELEMENT);
+        assertEquals(Label.of("dev.hegel.map"), Label.MAP);
+        assertEquals(Label.of("dev.hegel.map_entry"), Label.MAP_ENTRY);
+        assertEquals(Label.of("dev.hegel.tuple"), Label.TUPLE);
+        assertEquals(Label.of("dev.hegel.one_of"), Label.ONE_OF);
+        assertEquals(Label.of("dev.hegel.optional"), Label.OPTIONAL);
+        assertEquals(Label.of("dev.hegel.fixed_dict"), Label.FIXED_DICT);
+        assertEquals(Label.of("dev.hegel.flat_map"), Label.FLAT_MAP);
+        assertEquals(Label.of("dev.hegel.filter"), Label.FILTER);
+        assertEquals(Label.of("dev.hegel.mapped"), Label.MAPPED);
+        assertEquals(Label.of("dev.hegel.sampled_from"), Label.SAMPLED_FROM);
+        assertEquals(Label.of("dev.hegel.enum_variant"), Label.ENUM_VARIANT);
+        assertEquals(Label.of("dev.hegel.stateful_rule"), Label.STATEFUL_RULE);
         // Minted labels are stable and match the hash the composite generator already uses.
         assertEquals(Label.COMPOSITE, Label.of("dev.hegel.composite"));
         assertEquals(Label.of("my.frontend.pair"), Label.of("my.frontend.pair"));

@@ -58,9 +58,19 @@ def http_get(url: str) -> bytes:
         return resp.read()
 
 
+def release_tag(version: str) -> str:
+    """The git tag of the libhegel release for ``version``.
+
+    Since libhegel 0.42.1 a release is tagged ``libhegel-v<version>`` (the plain ``v<version>``
+    tags belong to the ``hegeltest`` crate, whose version differs). Earlier releases carry both
+    tags, so this one scheme resolves every version.
+    """
+    return f"libhegel-v{version}"
+
+
 def discover_assets(repo: str, version: str) -> dict[str, str]:
-    """Return ``{asset_name: download_url}`` for the release tagged ``v<version>``."""
-    api = f"https://api.github.com/repos/{repo}/releases/tags/v{version}"
+    """Return ``{asset_name: download_url}`` for the release tagged ``libhegel-v<version>``."""
+    api = f"https://api.github.com/repos/{repo}/releases/tags/{release_tag(version)}"
     release = json.loads(http_get(api))
     return {a["name"]: a["browser_download_url"] for a in release.get("assets", [])}
 
@@ -77,7 +87,7 @@ def populate_cache(repo: str, version: str, cache: Path) -> None:
     assets = discover_assets(repo, version)
     libs = {name: url for name, url in assets.items() if ASSET_RE.match(name)}
     if not libs:
-        log(f"release v{version} of {repo} publishes no libhegel shared objects")
+        log(f"release {release_tag(version)} of {repo} publishes no libhegel shared objects")
         return
     cache.mkdir(parents=True, exist_ok=True)
     for name, url in sorted(libs.items()):
@@ -133,7 +143,7 @@ def main() -> int:
 
     libs = cached_libs(cache)
     if not libs:
-        log(f"release v{args.version} of {args.repo} staged no libhegel shared objects")
+        log(f"release {release_tag(args.version)} of {args.repo} staged no libhegel shared objects")
         return 1
     stage(libs, args.out)
     return 0
