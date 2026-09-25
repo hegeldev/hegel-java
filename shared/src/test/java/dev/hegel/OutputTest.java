@@ -21,8 +21,7 @@ class OutputTest {
     private static String run(Settings settings, java.util.function.Consumer<TestCase> body) {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
-        Runner.run(Engine.get(), settings, body, System.getenv(), Reporter.printing(out))
-                .throwIfFailed();
+        Runner.run(Engine.get(), settings, body, Reporter.printing(out)).throwIfFailed();
         return buf.toString(StandardCharsets.UTF_8);
     }
 
@@ -43,7 +42,6 @@ class OutputTest {
                                     tc.note("observed x=" + x);
                                     assertTrue(x <= 10);
                                 },
-                                System.getenv(),
                                 Reporter.printing(out))
                         .throwIfFailed());
         String s = buf.toString(StandardCharsets.UTF_8);

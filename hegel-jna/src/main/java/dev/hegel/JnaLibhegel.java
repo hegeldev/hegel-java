@@ -81,6 +81,12 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_settings_set_suppress_health_check(Pointer ctx, Pointer s, int mask);
 
+        int hegel_settings_set_print_blob(Pointer ctx, Pointer s, byte yes);
+
+        int hegel_settings_get_test_cases(Pointer ctx, Pointer s, LongByReference out);
+
+        int hegel_settings_get_print_blob(Pointer ctx, Pointer s, ByteByReference out);
+
         int hegel_run_start(
                 Pointer ctx, Pointer settings, LineCallback callback, Pointer userData, PointerByReference out);
 
@@ -190,6 +196,7 @@ final class JnaLibhegel implements Libhegel {
                 Pointer tc,
                 Pointer ruleNames,
                 Pointer ruleGroups,
+                Pointer ruleWeights,
                 long ruleNamesLen,
                 Pointer invariantNames,
                 Pointer invariantAlwaysCheck,
@@ -334,10 +341,13 @@ final class JnaLibhegel implements Libhegel {
     // --- settings ---
 
     @Override
-    public long settingsNew() {
-        PointerByReference out = new PointerByReference();
-        check("hegel_settings_new", lib.hegel_settings_new(ctx(), out));
-        return address(out.getValue());
+    public int settingsNew(long[] out) {
+        // The reference starts out NULL and the engine writes it only on success, so a failed call
+        // reports 0 without a branch of its own.
+        PointerByReference handle = new PointerByReference();
+        int code = lib.hegel_settings_new(ctx(), handle);
+        out[0] = address(handle.getValue());
+        return code;
     }
 
     @Override
@@ -399,6 +409,25 @@ final class JnaLibhegel implements Libhegel {
         check(
                 "hegel_settings_set_suppress_health_check",
                 lib.hegel_settings_set_suppress_health_check(ctx(), pointer(s), mask));
+    }
+
+    @Override
+    public void settingsPrintBlob(long s, boolean yes) {
+        check("hegel_settings_set_print_blob", lib.hegel_settings_set_print_blob(ctx(), pointer(s), cbool(yes)));
+    }
+
+    @Override
+    public long settingsGetTestCases(long s) {
+        LongByReference out = new LongByReference();
+        check("hegel_settings_get_test_cases", lib.hegel_settings_get_test_cases(ctx(), pointer(s), out));
+        return out.getValue();
+    }
+
+    @Override
+    public boolean settingsGetPrintBlob(long s) {
+        ByteByReference out = new ByteByReference();
+        check("hegel_settings_get_print_blob", lib.hegel_settings_get_print_blob(ctx(), pointer(s), out));
+        return out.getValue() != 0;
     }
 
     // --- run lifecycle ---
@@ -805,6 +834,7 @@ final class JnaLibhegel implements Libhegel {
             long tc,
             List<String> ruleNames,
             long[] ruleGroups,
+            double[] ruleWeights,
             List<String> invariantNames,
             boolean[] invariantAlwaysCheck,
             long minConcurrency,
@@ -814,6 +844,13 @@ final class JnaLibhegel implements Libhegel {
             long[] outConcurrency) {
         Memory groups = new Memory(8L * Math.max(ruleGroups.length, 1));
         groups.write(0, ruleGroups, 0, ruleGroups.length);
+        // NULL keeps every rule at the same weight.
+        Pointer weights = Pointer.NULL;
+        if (ruleWeights != null) {
+            Memory m = new Memory(8L * Math.max(ruleWeights.length, 1));
+            m.write(0, ruleWeights, 0, ruleWeights.length);
+            weights = m;
+        }
         byte[] flags = new byte[invariantAlwaysCheck.length];
         for (int i = 0; i < flags.length; i++) {
             flags[i] = cbool(invariantAlwaysCheck[i]);
@@ -827,6 +864,7 @@ final class JnaLibhegel implements Libhegel {
                 pointer(tc),
                 cstrArray(ruleNames),
                 groups,
+                weights,
                 ruleNames.size(),
                 cstrArray(invariantNames),
                 alwaysCheck,

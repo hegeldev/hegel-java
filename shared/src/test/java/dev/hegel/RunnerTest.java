@@ -12,22 +12,19 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 
 /** Covers {@link Runner} branches with a fake binding (no engine). */
 class RunnerTest {
-    private static final Map<String, String> NO_CI = Map.of();
-    private static final Map<String, String> CI = Map.of("CI", "true");
 
     private static PrintStream capture(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
     }
 
     private static void run(FakeLibhegel fake, Settings s, Consumer<TestCase> body) {
-        Runner.run(fake, s, body, NO_CI, Reporter.printing(capture(new ByteArrayOutputStream())))
+        Runner.run(fake, s, body, Reporter.printing(capture(new ByteArrayOutputStream())))
                 .throwIfFailed();
     }
 
@@ -210,7 +207,6 @@ class RunnerTest {
                                     }
                                     throw new IllegalStateException("bug two");
                                 },
-                                NO_CI,
                                 Reporter.printing(capture(buf)))
                         .throwIfFailed());
         assertTrue(e.getMessage().contains("2 distinct failing examples"), e.getMessage());
@@ -248,7 +244,6 @@ class RunnerTest {
                                 tc -> {
                                     throw new AssertionError("always");
                                 },
-                                NO_CI,
                                 Reporter.printing(capture(buf)))
                         .throwIfFailed());
         String out = buf.toString(StandardCharsets.UTF_8);
@@ -372,22 +367,59 @@ class RunnerTest {
         assertEquals("", disabled.databasePath);
         assertEquals("d", disabled.databaseKey);
 
-        // CI default disables the database and derandomizes.
-        FakeLibhegel ci = new FakeLibhegel();
-        Runner.run(ci, new Settings(), tc -> {}, CI, Reporter.printing(capture(new ByteArrayOutputStream())));
-        assertEquals("", ci.databasePath);
-        assertEquals(Boolean.TRUE, ci.derandomize);
-
-        // Non-CI default leaves the engine database enabled; a name derives a key.
+        // Unset settings are not sent at all: the engine's profile (which disables the database
+        // and derandomizes in CI) and the HEGEL_* variables stand. A name still derives a key.
         FakeLibhegel named = new FakeLibhegel();
-        Runner.run(
-                named,
-                new Settings().name("t"),
-                tc -> {},
-                NO_CI,
-                Reporter.printing(capture(new ByteArrayOutputStream())));
+        Runner.run(named, new Settings().name("t"), tc -> {}, Reporter.printing(capture(new ByteArrayOutputStream())));
         assertEquals("unset", named.databasePath);
+        assertNull(named.derandomize);
+        assertNull(named.testCases);
         assertEquals("t", named.databaseKey);
+    }
+
+    @Test
+    void settingsConstructionFailuresAreTranslated() {
+        // The engine applies the HEGEL_* variables and hegel.toml while constructing the handle: a
+        // malformed one is the caller's mistake, anything else is an engine error.
+        FakeLibhegel malformed = new FakeLibhegel();
+        malformed.settingsNewRc = Abi.E_INVALID_ARG;
+        malformed.lastError = "HEGEL_TEST_CASES must be a positive integer, got \"lots\"";
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> run(malformed, new Settings(), tc -> {}));
+        assertEquals(malformed.lastError, e.getMessage());
+        assertTrue(!malformed.settingsFreed);
+
+        FakeLibhegel broken = new FakeLibhegel();
+        broken.settingsNewRc = Abi.E_INTERNAL;
+        HegelException h = assertThrows(HegelException.class, () -> run(broken, new Settings(), tc -> {}));
+        assertTrue(h.getMessage().contains("hegel_settings_new"), h.getMessage());
+    }
+
+    @Test
+    void reportersSeeTheEngineResolvedSettings() {
+        Settings[] seen = new Settings[1];
+        Reporter recording = new Reporter() {
+            @Override
+            public void runStarted(Settings settings) {
+                seen[0] = settings;
+            }
+        };
+        // Unset: the values the engine resolved (profile + HEGEL_* variables) are reported.
+        FakeLibhegel fromEngine = new FakeLibhegel();
+        fromEngine.resolvedTestCases = 250;
+        fromEngine.resolvedPrintBlob = true;
+        Runner.run(fromEngine, new Settings(), tc -> {}, recording);
+        assertEquals(Long.valueOf(250), seen[0].testCases);
+        assertEquals(Boolean.TRUE, seen[0].printBlob);
+
+        // Explicit: the caller's values win, and the test-case budget reaches the engine.
+        FakeLibhegel explicit = new FakeLibhegel();
+        explicit.resolvedPrintBlob = true;
+        Runner.run(explicit, new Settings().testCases(3).printBlob(false), tc -> {}, recording);
+        assertEquals(Long.valueOf(3), explicit.testCases);
+        assertEquals(Boolean.FALSE, explicit.printBlob);
+        assertEquals(Long.valueOf(3), seen[0].testCases);
+        assertEquals(Boolean.FALSE, seen[0].printBlob);
     }
 
     @Test
@@ -430,7 +462,6 @@ class RunnerTest {
                         throw new AssertionError("only once");
                     }
                 },
-                NO_CI,
                 Reporter.printing(capture(buf)));
         assertTrue(report.failures().get(0).flaky());
         assertEquals("", buf.toString(StandardCharsets.UTF_8));

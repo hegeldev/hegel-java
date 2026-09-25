@@ -83,13 +83,19 @@ public final class HegelTestExtension implements TestTemplateInvocationContextPr
     static Settings settingsFrom(HegelTest ann, String methodName) {
         String name = ann.name().isEmpty() ? methodName : ann.name();
         Settings s = new Settings()
-                .testCases(ann.testCases())
                 .verbosity(ann.verbosity())
                 .backend(ann.backend())
                 .reportMultipleFailures(ann.reportMultipleFailures())
-                .printBlob(ann.printBlob())
                 .suppressHealthCheck(ann.suppressHealthCheck())
                 .name(name);
+        // The annotation cannot express "unset" for a primitive: 0 test cases (its default) leaves
+        // the engine's profile / HEGEL_TEST_CASES value in place.
+        if (ann.testCases() != 0) {
+            s = s.testCases(ann.testCases());
+        }
+        if (ann.printBlob() != OptBoolean.DEFAULT) {
+            s = s.printBlob(ann.printBlob() == OptBoolean.TRUE);
+        }
         if (ann.seed() != HegelTest.NO_SEED) {
             s = s.seed(ann.seed());
         }

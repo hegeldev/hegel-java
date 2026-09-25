@@ -5,7 +5,6 @@ import dev.hegel.lowlevel.Libhegel;
 import dev.hegel.lowlevel.LibhegelException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -56,24 +55,45 @@ final class Runner {
         }
     }
 
-    static RunReport run(
-            Libhegel lib, Settings settings, Consumer<TestCase> body, Map<String, String> env, Reporter reporter) {
-        reporter.runStarted(settings);
+    static RunReport run(Libhegel lib, Settings settings, Consumer<TestCase> body, Reporter reporter) {
         RunStatistics.Counter counts = new RunStatistics.Counter();
         RunReport report;
-        long s = lib.settingsNew();
+        long s = newSettings(lib);
         try {
-            applySettings(lib, s, settings, env);
-            if (settings.reproduceFailure != null) {
-                report = replayBlob(lib, s, settings, body, reporter, counts);
+            applySettings(lib, s, settings);
+            // The engine resolved whatever the caller left unset (its profile, hegel.toml, the
+            // HEGEL_* variables); the run and its reporters see the effective configuration.
+            Settings effective = settings.resolved(lib.settingsGetTestCases(s), lib.settingsGetPrintBlob(s));
+            reporter.runStarted(effective);
+            if (effective.reproduceFailure != null) {
+                report = replayBlob(lib, s, effective, body, reporter, counts);
             } else {
-                report = explore(lib, s, settings, body, reporter, counts);
+                report = explore(lib, s, effective, body, reporter, counts);
             }
         } finally {
             lib.settingsFree(s);
         }
         reporter.runFinished(report);
         return report;
+    }
+
+    /**
+     * Construct the engine's settings handle. The engine resolves its settings profile and the
+     * {@code HEGEL_*} environment variables here, so this is the one infrastructure call that can
+     * fail on user input: a malformed {@code hegel.toml} or variable surfaces as an {@link
+     * IllegalArgumentException} carrying the engine's diagnostic.
+     */
+    private static long newSettings(Libhegel lib) {
+        long[] out = new long[1];
+        int rc = lib.settingsNew(out);
+        if (rc == Abi.E_INVALID_ARG) {
+            throw new IllegalArgumentException(nullToEmpty(lib.lastErrorMessage()));
+        }
+        if (rc != Abi.OK) {
+            throw new HegelException(
+                    "hegel_settings_new failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
+        }
+        return out[0];
     }
 
     /** Pump the engine's exploration loop to completion and translate its verdict. */
@@ -252,15 +272,27 @@ final class Runner {
         }
     }
 
-    static void applySettings(Libhegel lib, long s, Settings st, Map<String, String> env) {
-        boolean ci = Settings.isCi(env);
-        lib.settingsTestCases(s, st.testCases);
+    /**
+     * Send the caller's explicit settings to the handle. Anything left unset keeps the value the
+     * engine resolved from its profile (a {@code hegel.toml}, or the shipped {@code ci}/{@code
+     * workload} profiles it selects from the environment) and the {@code HEGEL_*} variables, which
+     * is what makes explicit Java settings win over both.
+     */
+    static void applySettings(Libhegel lib, long s, Settings st) {
+        if (st.testCases != null) {
+            lib.settingsTestCases(s, st.testCases);
+        }
         lib.settingsVerbosity(s, st.verbosity.code);
         if (st.hasSeed) {
             lib.settingsSeed(s, st.seed, true);
         }
-        lib.settingsDerandomize(s, st.derandomize != null ? st.derandomize : ci);
+        if (st.derandomize != null) {
+            lib.settingsDerandomize(s, st.derandomize);
+        }
         lib.settingsReportMultipleFailures(s, st.reportMultipleFailures);
+        if (st.printBlob != null) {
+            lib.settingsPrintBlob(s, st.printBlob);
+        }
         if (st.backend.code != null) {
             lib.settingsBackend(s, st.backend.code);
         }
@@ -279,10 +311,7 @@ final class Runner {
                 lib.settingsDatabase(s, st.database.path);
                 break;
             default:
-                // Unset: CI disables the database, otherwise the engine default stands.
-                if (ci) {
-                    lib.settingsDatabase(s, "");
-                }
+                // Unset: the engine's profile decides (the ci and workload profiles disable it).
                 break;
         }
         // The key is sent whenever there is one, even with the database off: the engine also derives

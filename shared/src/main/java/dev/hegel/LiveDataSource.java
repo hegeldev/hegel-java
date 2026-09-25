@@ -303,7 +303,11 @@ final class LiveDataSource implements DataSource {
 
     @Override
     public long newStateMachine(
-            List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck, int stepCount) {
+            List<String> ruleNames,
+            double[] ruleWeights,
+            List<String> invariantNames,
+            boolean[] invariantAlwaysCheck,
+            int stepCount) {
         checkLive();
         // Sequential: every rule in group 0 and exactly one worker, so the drawn concurrency level
         // is always 1 and every rule/rejection call below is made on behalf of worker 0.
@@ -312,7 +316,17 @@ final class LiveDataSource implements DataSource {
         long[] concurrency = new long[1];
         translate(
                 lib.newStateMachine(
-                        tc, ruleNames, groups, invariantNames, invariantAlwaysCheck, 1, 1, stepCount, id, concurrency),
+                        tc,
+                        ruleNames,
+                        groups,
+                        ruleWeights,
+                        invariantNames,
+                        invariantAlwaysCheck,
+                        1,
+                        1,
+                        stepCount,
+                        id,
+                        concurrency),
                 "new_state_machine");
         return id[0];
     }
