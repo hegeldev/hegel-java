@@ -50,8 +50,9 @@ import java.util.List;
  * test case stays constant as the step count grows. The step count is the target number of rules
  * per test case, {@link #DEFAULT_STEP_COUNT} unless {@link #run(Object, TestCase, int)} is given
  * one. Mark an invariant {@code @Invariant(alwaysRun =
- * true)} to check it after every rule instead. Use a {@link Pool} to act on previously generated
- * values.
+ * true)} to check it after every rule instead. Give a rule that should run more often than the
+ * others a {@link Rule#weight() weight}: {@code @Rule(weight = 5)} is offered about five times as
+ * often as a plain {@code @Rule}. Use a {@link Pool} to act on previously generated values.
  */
 public final class Stateful {
     private Stateful() {}
@@ -100,7 +101,8 @@ public final class Stateful {
             throw new IllegalArgumentException(
                     machine.getClass().getName() + " has no @Rule methods; a state machine needs at least one");
         }
-        long machineId = tc.newStateMachine(names(rules), names(invariants), alwaysRun(invariants), stepCount);
+        long machineId =
+                tc.newStateMachine(names(rules), weights(rules), names(invariants), alwaysRun(invariants), stepCount);
         try {
             drive(machine, rules, invariants, tc, machineId);
         } finally {
@@ -239,6 +241,26 @@ public final class Stateful {
 
     private static List<String> names(List<Method> methods) {
         return methods.stream().map(Method::getName).toList();
+    }
+
+    /**
+     * The rules' selection weights, parallel to {@code rules}, or {@code null} — the engine's
+     * all-equal default — when no rule asks for anything but weight 1.
+     */
+    private static double[] weights(List<Method> rules) {
+        double[] weights = new double[rules.size()];
+        boolean weighted = false;
+        for (int i = 0; i < weights.length; i++) {
+            Method rule = rules.get(i);
+            double w = rule.getAnnotation(Rule.class).weight();
+            if (!(Double.isFinite(w) && w > 0)) {
+                throw new IllegalArgumentException(
+                        "@Rule weight of " + rule.getName() + " must be finite and positive, got " + w);
+            }
+            weights[i] = w;
+            weighted |= w != 1.0;
+        }
+        return weighted ? weights : null;
     }
 
     private static boolean[] alwaysRun(List<Method> invariants) {

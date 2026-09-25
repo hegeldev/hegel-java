@@ -109,6 +109,9 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle settingsSetDatabaseKey;
     private final MethodHandle settingsSetPhases;
     private final MethodHandle settingsSetSuppressHealthCheck;
+    private final MethodHandle settingsSetPrintBlob;
+    private final MethodHandle settingsGetTestCases;
+    private final MethodHandle settingsGetPrintBlob;
     private final MethodHandle runStart;
     private final MethodHandle nextTestCase;
     private final MethodHandle runResult;
@@ -226,6 +229,21 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_settings_set_suppress_health_check",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_INT));
+        this.settingsSetPrintBlob = h(
+                linker,
+                lookup,
+                "hegel_settings_set_print_blob",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_BOOLEAN));
+        this.settingsGetTestCases = h(
+                linker,
+                lookup,
+                "hegel_settings_get_test_cases",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        this.settingsGetPrintBlob = h(
+                linker,
+                lookup,
+                "hegel_settings_get_print_blob",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.runStart = h(
                 linker,
                 lookup,
@@ -369,8 +387,8 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_new_state_machine",
                 FunctionDescriptor.of(
-                        JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG, ADDRESS, ADDRESS, JAVA_LONG, JAVA_LONG,
-                        JAVA_LONG, JAVA_LONG, ADDRESS, ADDRESS));
+                        JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, JAVA_LONG, ADDRESS, ADDRESS, JAVA_LONG,
+                        JAVA_LONG, JAVA_LONG, JAVA_LONG, ADDRESS, ADDRESS));
         this.stateMachineNextGroup = h(
                 linker,
                 lookup,
@@ -504,10 +522,13 @@ final class RealLibhegel implements Libhegel {
     // --- settings ---
 
     @Override
-    public long settingsNew() {
-        MemorySegment out = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_settings_new", rc(settingsNew, out));
-        return out.get(ADDRESS, 0).address();
+    public int settingsNew(long[] out) {
+        // The slot is zeroed on allocation and the engine writes it only on success, so a failed
+        // call reports 0 (NULL) without a branch of its own.
+        MemorySegment handle = Arena.ofAuto().allocate(ADDRESS);
+        int code = rc(settingsNew, handle);
+        out[0] = handle.get(ADDRESS, 0).address();
+        return code;
     }
 
     @Override
@@ -564,6 +585,25 @@ final class RealLibhegel implements Libhegel {
     @Override
     public void settingsSuppressHealthCheck(long s, int mask) {
         check("hegel_settings_set_suppress_health_check", rc(settingsSetSuppressHealthCheck, segment(s), mask));
+    }
+
+    @Override
+    public void settingsPrintBlob(long s, boolean yes) {
+        check("hegel_settings_set_print_blob", rc(settingsSetPrintBlob, segment(s), yes));
+    }
+
+    @Override
+    public long settingsGetTestCases(long s) {
+        MemorySegment out = Arena.ofAuto().allocate(JAVA_LONG);
+        check("hegel_settings_get_test_cases", rc(settingsGetTestCases, segment(s), out));
+        return out.get(JAVA_LONG, 0);
+    }
+
+    @Override
+    public boolean settingsGetPrintBlob(long s) {
+        MemorySegment out = Arena.ofAuto().allocate(JAVA_BOOLEAN);
+        check("hegel_settings_get_print_blob", rc(settingsGetPrintBlob, segment(s), out));
+        return out.get(JAVA_BOOLEAN, 0);
     }
 
     // --- run lifecycle ---
@@ -1002,6 +1042,7 @@ final class RealLibhegel implements Libhegel {
             long tc,
             List<String> ruleNames,
             long[] ruleGroups,
+            double[] ruleWeights,
             List<String> invariantNames,
             boolean[] invariantAlwaysCheck,
             long minConcurrency,
@@ -1015,6 +1056,14 @@ final class RealLibhegel implements Libhegel {
             for (int i = 0; i < ruleGroups.length; i++) {
                 groups.setAtIndex(JAVA_LONG, i, ruleGroups[i]);
             }
+            // NULL keeps every rule at the same weight.
+            MemorySegment weights = MemorySegment.NULL;
+            if (ruleWeights != null) {
+                weights = arena.allocate(JAVA_DOUBLE, Math.max(ruleWeights.length, 1));
+                for (int i = 0; i < ruleWeights.length; i++) {
+                    weights.setAtIndex(JAVA_DOUBLE, i, ruleWeights[i]);
+                }
+            }
             MemorySegment invariants = cstrArray(arena, invariantNames);
             MemorySegment alwaysCheck = arena.allocate(JAVA_BOOLEAN, Math.max(invariantAlwaysCheck.length, 1));
             for (int i = 0; i < invariantAlwaysCheck.length; i++) {
@@ -1027,6 +1076,7 @@ final class RealLibhegel implements Libhegel {
                     segment(tc),
                     rules,
                     groups,
+                    weights,
                     (long) ruleNames.size(),
                     invariants,
                     alwaysCheck,

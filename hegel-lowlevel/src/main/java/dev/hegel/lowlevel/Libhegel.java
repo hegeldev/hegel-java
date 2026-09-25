@@ -36,9 +36,12 @@ import java.util.function.Consumer;
  *       translates it and reads {@link #lastErrorMessage()} immediately on a non-OK code.
  *       Out-values are written into caller-supplied one-element arrays only on {@link Abi#OK}
  *       (except where noted).
- *   <li>Infrastructure calls (settings construction and setters, run lifecycle, result readers,
- *       frees) cannot legitimately fail with well-formed arguments, so implementations check the
- *       return code themselves and throw {@link LibhegelException} on an unexpected non-OK code.
+ *   <li>Infrastructure calls (settings setters and getters, run lifecycle, result readers, frees)
+ *       cannot legitimately fail with well-formed arguments, so implementations check the return
+ *       code themselves and throw {@link LibhegelException} on an unexpected non-OK code. {@link
+ *       #settingsNew} is the exception: the engine resolves the settings profile and the {@code
+ *       HEGEL_*} environment variables while constructing the handle, so it follows the first
+ *       convention and returns the raw code.
  * </ul>
  *
  * <p>Strings the engine returns are copied out before the method returns, so they remain valid.
@@ -86,10 +89,28 @@ public interface Libhegel {
         return it.next().open(library);
     }
 
-    // Settings. Setters cannot fail with this binding's inputs; implementations throw on non-OK.
-    long settingsNew();
+    // Settings. Setters and getters cannot fail with this binding's inputs; implementations throw
+    // on non-OK.
+
+    /**
+     * {@code hegel_settings_new}: a handle initialized from the engine's default settings profile
+     * (a {@code hegel.toml} in the working directory or an ancestor, {@code HEGEL_DEFAULT_PROFILE},
+     * and the shipped {@code development}/{@code ci}/{@code workload} profiles) with the {@code
+     * HEGEL_TEST_CASES}, {@code HEGEL_DATABASE}, {@code HEGEL_STATISTICS}, {@code HEGEL_SEED},
+     * {@code HEGEL_DERANDOMIZE} and {@code HEGEL_PRINT_BLOB} environment variables applied over it.
+     * Returns {@link Abi#E_INVALID_ARG} (with the message in {@link #lastErrorMessage()}) when a
+     * {@code hegel.toml} or one of those variables is malformed; {@code out[0]} receives the handle
+     * on {@link Abi#OK} and {@code 0} otherwise.
+     */
+    int settingsNew(long[] out);
 
     void settingsFree(long s);
+
+    /** {@code hegel_settings_get_test_cases}: the resolved test-case budget. */
+    long settingsGetTestCases(long s);
+
+    /** {@code hegel_settings_get_print_blob}: whether the resolved settings print reproduce blobs. */
+    boolean settingsGetPrintBlob(long s);
 
     void settingsBackend(long s, int backend);
 
@@ -113,6 +134,9 @@ public interface Libhegel {
     void settingsPhases(long s, int mask);
 
     void settingsSuppressHealthCheck(long s, int mask);
+
+    /** {@code hegel_settings_set_print_blob}: whether to print a reproduce blob per failure. */
+    void settingsPrintBlob(long s, boolean yes);
 
     // Run lifecycle.
 
@@ -224,7 +248,9 @@ public interface Libhegel {
 
     /**
      * {@code hegel_new_state_machine}: {@code ruleGroups} is parallel to {@code ruleNames} (any
-     * value but {@link Abi#STATE_MACHINE_DONE}), {@code invariantAlwaysCheck} parallel to {@code
+     * value but {@link Abi#STATE_MACHINE_DONE}), as is {@code ruleWeights} — each rule's selection
+     * weight relative to the other enabled rules of its group, finite and strictly positive, or
+     * {@code null} for all-equal weights. {@code invariantAlwaysCheck} is parallel to {@code
      * invariantNames}. The engine draws the concurrency level in {@code [minConcurrency,
      * maxConcurrency]} and writes it to {@code outConcurrency}; pass {@code 1, 1} for a sequential
      * machine. {@code stepCount} is the target number of counted rounds per test case (at least 1;
@@ -234,6 +260,7 @@ public interface Libhegel {
             long tc,
             List<String> ruleNames,
             long[] ruleGroups,
+            double[] ruleWeights,
             List<String> invariantNames,
             boolean[] invariantAlwaysCheck,
             long minConcurrency,

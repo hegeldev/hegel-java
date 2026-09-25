@@ -46,11 +46,13 @@ public @interface HegelTest {
     long NO_SEED = Long.MIN_VALUE;
 
     /**
-     * Maximum number of valid test cases to run.
+     * Maximum number of valid test cases to run. The default, {@code 0}, leaves the budget to the
+     * engine's settings profile and the {@code HEGEL_TEST_CASES} environment variable (100 unless
+     * configured otherwise).
      *
-     * @return the test-case budget
+     * @return the test-case budget, or {@code 0} for the engine's
      */
-    long testCases() default 100;
+    long testCases() default 0;
 
     /**
      * A fixed RNG seed for reproducibility, or {@link #NO_SEED} for none.
@@ -123,11 +125,13 @@ public @interface HegelTest {
     boolean reportMultipleFailures() default false;
 
     /**
-     * Print a copy-pasteable {@code reproduceFailure} line for each reported failure.
+     * Print a copy-pasteable {@code reproduceFailure} line for each reported failure. The default
+     * leaves it to the engine's settings profile and the {@code HEGEL_PRINT_BLOB} environment
+     * variable (on unless configured otherwise).
      *
      * @return whether to print reproduce blobs with failures
      */
-    boolean printBlob() default false;
+    OptBoolean printBlob() default OptBoolean.DEFAULT;
 
     /**
      * Replay a stored failure blob (printed by {@link #printBlob}) instead of running the property:

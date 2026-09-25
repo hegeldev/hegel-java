@@ -53,7 +53,7 @@ class BindingErrorPathsTest {
         assertEquals(3, ds.newPool());
         assertEquals(0, ds.poolAdd(3));
         assertEquals(0, ds.poolGenerate(3, true));
-        assertEquals(5, ds.newStateMachine(List.of("r"), List.of("i"), new boolean[] {false}, 50));
+        assertEquals(5, ds.newStateMachine(List.of("r"), null, List.of("i"), new boolean[] {false}, 50));
         assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextGroup(5));
         assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextRule(5));
         ds.stateMachineRuleRejected(5);
@@ -112,7 +112,7 @@ class BindingErrorPathsTest {
         assertThrows(StopTest.class, () -> ds.newPool());
         assertThrows(StopTest.class, () -> ds.poolAdd(1));
         assertThrows(StopTest.class, () -> ds.poolGenerate(1, false));
-        assertThrows(StopTest.class, () -> ds.newStateMachine(List.of("r"), List.of(), new boolean[0], 50));
+        assertThrows(StopTest.class, () -> ds.newStateMachine(List.of("r"), null, List.of(), new boolean[0], 50));
         assertThrows(StopTest.class, () -> ds.stateMachineNextGroup(1));
         assertThrows(StopTest.class, () -> ds.stateMachineNextRule(1));
         assertThrows(StopTest.class, () -> ds.stateMachineRuleRejected(1));
@@ -218,7 +218,7 @@ class BindingErrorPathsTest {
         sm.newStateMachineRc = Abi.E_INVALID_ARG;
         assertThrows(
                 IllegalArgumentException.class,
-                () -> source(sm).newStateMachine(List.of("r"), List.of(), new boolean[0], 50));
+                () -> source(sm).newStateMachine(List.of("r"), null, List.of(), new boolean[0], 50));
 
         FakeLibhegel group = new FakeLibhegel();
         group.stateMachineNextGroupRc = Abi.E_STOP_TEST;

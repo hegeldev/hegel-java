@@ -129,7 +129,19 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   always thrown, never reported. `Settings` is the immutable config; its closed-state setting types live
   alongside it — `Backend` (auto = leave it to the engine's profile, which picks urandom inside Antithesis / default / urandom), `Database`, `OptBoolean` —
   plus `printBlob` (print a copy-pasteable reproducer per failure) and `reproduceFailure` (replay
-  a stored blob instead of running the property). There is no single-test-case mode (the engine
+  a stored blob instead of running the property). `testCases`, `printBlob`, `derandomize`, `seed`
+  and `database` are nullable ("unset"): `Runner.applySettings` sends only what the user set, so
+  the engine's resolution — its profile (`hegel.toml`, the shipped `development`/`ci`/`workload`
+  profiles) with the `HEGEL_TEST_CASES`/`HEGEL_DATABASE`/`HEGEL_SEED`/`HEGEL_DERANDOMIZE`/
+  `HEGEL_PRINT_BLOB` variables applied over it in `hegel_settings_new` — stands for the rest, and
+  explicit Java settings win over both. There is no Java-side CI detection (the engine's `ci`
+  profile covers it). `Libhegel.settingsNew` returns a raw result code because a malformed
+  variable or `hegel.toml` fails it with `E_INVALID_ARG` (→ `IllegalArgumentException`); after
+  applying, the runner reads `settingsGetTestCases`/`settingsGetPrintBlob` back and hands the
+  *effective* `Settings` to the reporter and the run. Verbosity and `reportMultipleFailures` keep
+  Java-side defaults and are always sent. `EnvironmentTest` covers the variables and `hegel.toml`
+  through a child JVM (`EnvironmentFixture`), since the engine reads its own process environment.
+  There is no single-test-case mode (the engine
   dropped it in 0.35); `testCases(1)` is the one-case configuration.
 - **Generators** — `Generator<T>` (public) with `map`/`filter`/`flatMap`. Leaf generators call the
   typed draw bridges on `TestCase` (`generateInteger`, `generateFloat`, `generateString`, …);
@@ -149,7 +161,10 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   by name for determinism) and registers them via `hegel_new_state_machine` as a *sequential*
   machine (every rule in group 0, concurrency fixed at `1, 1`, worker index 0, and a per-machine
   `step_count` — `Stateful.DEFAULT_STEP_COUNT` = 50, or the `run(machine, tc, stepCount)` overload;
-  the engine has no default). It then drives the
+  the engine has no default). `@Rule(weight = w)` becomes the `rule_weights` array (validated
+  finite and positive in Java; `null` — the engine's all-equal default — when every rule is at 1);
+  the engine samples proportionally among the *enabled* rules, so weights are hints, and tests
+  check them per case, not in aggregate. It then drives the
   engine's round protocol: `hegel_state_machine_next_group` opens each round (or reports
   `HEGEL_STATE_MACHINE_DONE`, which is `INT64_MIN`), `hegel_state_machine_next_rule` hands out the
   round's rules until the join point, a rule that fails its own assumption is reported with
