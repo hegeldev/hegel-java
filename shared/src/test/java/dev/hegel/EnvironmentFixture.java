@@ -11,6 +11,8 @@ import static dev.hegel.Generators.integers;
  *   <li>{@code count}: {@code valid=N}, the number of cases a passing property ran under settings
  *       that leave the budget to the engine;
  *   <li>{@code count-explicit}: the same with an explicit {@code testCases(4)};
+ *   <li>{@code strictness}: {@code strictness=<value>}, the nondeterminism strictness the engine
+ *       resolved for settings that leave it unset;
  *   <li>{@code fail}: the printing reporter's output for a property that always fails, followed by
  *       {@code done};
  *   <li>{@code error=<message>} when constructing the settings failed on a malformed variable.
@@ -22,7 +24,7 @@ public final class EnvironmentFixture {
     /**
      * Entry point.
      *
-     * @param args the mode: {@code count}, {@code count-explicit} or {@code fail}
+     * @param args the mode: {@code count}, {@code count-explicit}, {@code strictness} or {@code fail}
      */
     public static void main(String[] args) {
         try {
@@ -32,6 +34,16 @@ public final class EnvironmentFixture {
                     break;
                 case "count-explicit":
                     System.out.println("valid=" + count(new Settings().testCases(4)));
+                    break;
+                case "strictness":
+                    Settings[] effective = new Settings[1];
+                    Hegel.run(tc -> {}, new Settings().testCases(1), new Reporter() {
+                        @Override
+                        public void runStarted(Settings settings) {
+                            effective[0] = settings;
+                        }
+                    });
+                    System.out.println("strictness=" + effective[0].nondeterminismStrictness);
                     break;
                 default:
                     Hegel.run(

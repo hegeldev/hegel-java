@@ -15,13 +15,14 @@ import java.io.PrintStream;
  *
  * <p>Every method has a no-op default, so an implementation overrides only what it needs. Callbacks
  * are invoked on the thread that drives the run, in this order: {@link #runStarted}, then for each
- * generated case {@link #caseStarted} / {@link #caseFinished} (with {@link #engineOutput} lines
- * interleaved as the engine emits them, and the case's {@link #draw}s and {@link #note}s in between
- * when the run is {@linkplain Verbosity#VERBOSE verbose}); on a failed run {@link #failuresFound}, then for each
- * distinct counterexample a final replay ({@link #caseStarted} with {@code finalReplay = true}, its
- * {@link #draw}s and {@link #note}s, {@link #caseFinished}) followed by {@link #failure}; and
- * finally {@link #runFinished}. A reporter is per run: two concurrent runs never share one unless
- * the caller passes the same instance to both.
+ * case the engine runs {@link #caseStarted} / {@link #caseFinished} (with {@link #engineOutput}
+ * lines interleaved as the engine emits them, and the case's {@link #draw}s and {@link #note}s in
+ * between when the run is {@linkplain Verbosity#VERBOSE verbose}); on a failed run {@link
+ * #failuresFound}, then for each distinct counterexample the replay of its captured report ({@link
+ * #caseStarted} with {@code finalReplay = true}, the {@link #draw}s and {@link #note}s recorded on
+ * the failing execution the engine stamped for capture, {@link #caseFinished}) followed by {@link
+ * #failure}; and finally {@link #runFinished}. A reporter is per run: two concurrent runs never
+ * share one unless the caller passes the same instance to both.
  */
 public interface Reporter {
     /**
@@ -40,17 +41,19 @@ public interface Reporter {
     default void engineOutput(String line) {}
 
     /**
-     * The test body is about to run against a case.
+     * The test body is about to run against a case ({@code finalReplay = false}), or the runner is
+     * about to replay the captured draws and notes of a counterexample it reports ({@code
+     * finalReplay = true}; no body runs).
      *
-     * @param finalReplay {@code true} for the replay of a minimal counterexample (or of a {@link
-     *     Settings#reproduceFailure} blob), {@code false} during generation and shrinking
+     * @param finalReplay {@code true} for the replay of a reported counterexample's capture, {@code
+     *     false} for a live case
      */
     default void caseStarted(boolean finalReplay) {}
 
     /**
-     * A top-level {@link TestCase#draw(Generator, String) draw} completed. Called on final replays,
-     * and on every case when the run's {@link Verbosity} is {@code VERBOSE} or higher; never for
-     * draws nested inside another generator.
+     * A top-level {@link TestCase#draw(Generator, String) draw} completed. Called when a reported
+     * counterexample's capture is replayed, and live on every case when the run's {@link Verbosity}
+     * is {@code VERBOSE} or higher; never for draws nested inside another generator.
      *
      * @param label the label passed to {@code draw} (numbered from its second use in a case: {@code
      *     x}, {@code x_2}, ...), or {@code draw_N} for the N-th unlabelled draw
@@ -69,7 +72,9 @@ public interface Reporter {
     default void note(String message, boolean finalReplay) {}
 
     /**
-     * The test body finished against a case and the outcome was reported to the engine.
+     * The test body finished against a case and the outcome was reported to the engine, or the
+     * replay of a reported counterexample's capture is complete (always {@link
+     * CaseOutcome#INTERESTING}).
      *
      * @param outcome how the case concluded
      * @param finalReplay as in {@link #caseStarted}
@@ -77,16 +82,17 @@ public interface Reporter {
     default void caseFinished(CaseOutcome outcome, boolean finalReplay) {}
 
     /**
-     * The run's verdict is FAILED. Called once, before the counterexamples are replayed.
+     * The run's verdict is FAILED. Called once, before the counterexamples are reported.
      *
-     * @param count the number of distinct failures (by origin) that will be replayed
+     * @param count the number of distinct failures (by origin) that will be reported
      */
     default void failuresFound(int count) {}
 
     /**
-     * A counterexample's final replay finished.
+     * A counterexample's captured report was replayed.
      *
-     * @param failure the failure, carrying the replay's exception, draws, notes, and blob
+     * @param failure the failure, carrying the captured exception, draws and notes, the engine's
+     *     caveat for a nondeterministic failure, and the reproduce blob if there is one
      */
     default void failure(Failure failure) {}
 
@@ -99,10 +105,11 @@ public interface Reporter {
 
     /**
      * The classic printed report: engine output, each reported draw as {@code label = value;},
-     * notes, a header when several distinct failures are reported, and a copy-pasteable reproducer
-     * when {@link Settings#printBlob(boolean)} is on. Honours {@link Settings#verbosity}: {@link
-     * Verbosity#QUIET} prints no draws or notes at all, {@link Verbosity#VERBOSE} prints them for
-     * every case.
+     * notes, a header when several distinct failures are reported, a {@code note:} line with the
+     * engine's caveat for a nondeterministic failure, and a copy-pasteable reproducer when {@link
+     * Settings#printBlob(boolean)} is on and the failure has a blob. Honours {@link
+     * Settings#verbosity}: {@link Verbosity#QUIET} prints no draws, notes or caveats at all, {@link
+     * Verbosity#VERBOSE} prints draws and notes for every case.
      *
      * @param out where to print
      * @return a printing reporter

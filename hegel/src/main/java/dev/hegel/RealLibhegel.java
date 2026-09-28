@@ -112,13 +112,17 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle settingsSetPrintBlob;
     private final MethodHandle settingsGetTestCases;
     private final MethodHandle settingsGetPrintBlob;
+    private final MethodHandle settingsSetNondeterminismStrictness;
+    private final MethodHandle settingsGetNondeterminismStrictness;
     private final MethodHandle runStart;
+    private final MethodHandle runStartBlob;
     private final MethodHandle nextTestCase;
     private final MethodHandle runResult;
     private final MethodHandle runResultFree;
     private final MethodHandle runFree;
     private final MethodHandle testCaseFromBlob;
     private final MethodHandle testCaseFree;
+    private final MethodHandle testCaseShouldCapture;
     private final MethodHandle generateBoolean;
     private final MethodHandle generateInteger;
     private final MethodHandle generateFloat;
@@ -161,6 +165,7 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle failureFree;
     private final MethodHandle failureReproductionBlob;
     private final MethodHandle failureOrigin;
+    private final MethodHandle failureCaveat;
     private final MethodHandle version;
 
     RealLibhegel(Path libraryPath) {
@@ -244,11 +249,26 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_settings_get_print_blob",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        this.settingsSetNondeterminismStrictness = h(
+                linker,
+                lookup,
+                "hegel_settings_set_nondeterminism_strictness",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_INT));
+        this.settingsGetNondeterminismStrictness = h(
+                linker,
+                lookup,
+                "hegel_settings_get_nondeterminism_strictness",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.runStart = h(
                 linker,
                 lookup,
                 "hegel_run_start",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+        this.runStartBlob = h(
+                linker,
+                lookup,
+                "hegel_run_start_blob",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
         this.nextTestCase =
                 h(linker, lookup, "hegel_next_test_case", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.runResult =
@@ -263,6 +283,11 @@ final class RealLibhegel implements Libhegel {
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
         this.testCaseFree =
                 h(linker, lookup, "hegel_test_case_free", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
+        this.testCaseShouldCapture = h(
+                linker,
+                lookup,
+                "hegel_test_case_should_capture",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.generateBoolean = h(
                 linker,
                 lookup,
@@ -443,6 +468,8 @@ final class RealLibhegel implements Libhegel {
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.failureOrigin =
                 h(linker, lookup, "hegel_failure_origin", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        this.failureCaveat =
+                h(linker, lookup, "hegel_failure_caveat", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.version = h(linker, lookup, "hegel_version", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.context = ThreadLocal.withInitial(() -> (MemorySegment) invoke(contextNew));
     }
@@ -606,6 +633,20 @@ final class RealLibhegel implements Libhegel {
         return out.get(JAVA_BOOLEAN, 0);
     }
 
+    @Override
+    public void settingsNondeterminismStrictness(long s, int strictness) {
+        check(
+                "hegel_settings_set_nondeterminism_strictness",
+                rc(settingsSetNondeterminismStrictness, segment(s), strictness));
+    }
+
+    @Override
+    public int settingsGetNondeterminismStrictness(long s) {
+        MemorySegment out = Arena.ofAuto().allocate(JAVA_INT);
+        check("hegel_settings_get_nondeterminism_strictness", rc(settingsGetNondeterminismStrictness, segment(s), out));
+        return out.get(JAVA_INT, 0);
+    }
+
     // --- run lifecycle ---
 
     @Override
@@ -618,6 +659,24 @@ final class RealLibhegel implements Libhegel {
             arena.close();
             throw new HegelException(
                     "hegel_run_start failed (rc=" + code + "): " + java.util.Objects.toString(lastErrorMessage(), ""));
+        }
+        long run = out.get(ADDRESS, 0).address();
+        runArenas.put(run, arena);
+        return run;
+    }
+
+    @Override
+    public long runStartBlob(long settings, String blob, Consumer<String> output) {
+        Arena arena = Arena.ofConfined();
+        MemorySegment callback = output == null ? MemorySegment.NULL : upcallStub(arena, output);
+        MemorySegment out = arena.allocate(ADDRESS);
+        int code = rc(runStartBlob, segment(settings), cstr(arena, blob), callback, MemorySegment.NULL, out);
+        if (code != Abi.OK) {
+            arena.close();
+            throw new HegelException("hegel_run_start_blob failed (rc="
+                    + code
+                    + "): "
+                    + java.util.Objects.toString(lastErrorMessage(), ""));
         }
         long run = out.get(ADDRESS, 0).address();
         runArenas.put(run, arena);
@@ -668,6 +727,13 @@ final class RealLibhegel implements Libhegel {
     @Override
     public void testCaseFree(long tc) {
         check("hegel_test_case_free", rc(testCaseFree, segment(tc)));
+    }
+
+    @Override
+    public boolean testCaseShouldCapture(long tc) {
+        MemorySegment out = Arena.ofAuto().allocate(JAVA_BOOLEAN);
+        check("hegel_test_case_should_capture", rc(testCaseShouldCapture, segment(tc), out));
+        return out.get(JAVA_BOOLEAN, 0);
     }
 
     // --- draws ---
@@ -1176,6 +1242,11 @@ final class RealLibhegel implements Libhegel {
     @Override
     public String failureOrigin(long result, long index) {
         return readFailureString(result, index, failureOrigin, "hegel_failure_origin");
+    }
+
+    @Override
+    public String failureCaveat(long result, long index) {
+        return readFailureString(result, index, failureCaveat, "hegel_failure_caveat");
     }
 
     /** Fetch the {@code index}-th failure, read one of its strings with {@code reader}, free it. */

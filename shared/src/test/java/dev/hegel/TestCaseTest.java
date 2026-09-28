@@ -18,10 +18,14 @@ class TestCaseTest {
         return buf.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
     }
 
-    /** A TestCase over a fake binding; only the reporting/target plumbing is under test here. */
+    /**
+     * A TestCase over a fake binding, both stamped for capture and reporting live (verbose) when
+     * {@code reporting}; only the reporting/target plumbing is under test here.
+     */
     private TestCase newCase(FakeLibhegel fake, boolean reporting, ByteArrayOutputStream buf) {
         return new TestCase(
                 new LiveDataSource(fake, FakeLibhegel.TC),
+                reporting,
                 reporting,
                 Reporter.printing(new PrintStream(buf, true, StandardCharsets.UTF_8)));
     }
@@ -75,7 +79,7 @@ class TestCaseTest {
     }
 
     @Test
-    void finalReplayRecordsDrawsAndNotes() {
+    void capturedCaseRecordsDrawsAndNotesAndReplaysThem() {
         TestCase tc = newCase(new FakeLibhegel(), true, new ByteArrayOutputStream());
         assertTrue(tc.isFinal());
         tc.draw(constant(1), "x");
@@ -87,6 +91,24 @@ class TestCaseTest {
         assertEquals(want, tc.draws());
         assertEquals(List.of("x", "draw_1"), List.copyOf(tc.draws().keySet()));
         assertEquals(List.of("first"), tc.notes());
+        // The recording replays in report order, flagged as a replay.
+        ByteArrayOutputStream replay = new ByteArrayOutputStream();
+        Reporter reporter = Reporter.printing(new PrintStream(replay, true, StandardCharsets.UTF_8));
+        reporter.runStarted(new Settings());
+        tc.replayTo(reporter);
+        assertEquals("x = 1;\nfirst\ndraw_1 = 2;\n", text(replay));
+
+        // A case stamped for capture but not verbose records without reporting live.
+        ByteArrayOutputStream silent = new ByteArrayOutputStream();
+        TestCase captured = new TestCase(
+                new LiveDataSource(new FakeLibhegel(), FakeLibhegel.TC),
+                true,
+                Reporter.printing(new PrintStream(silent, true, StandardCharsets.UTF_8)));
+        captured.draw(constant(3), "y");
+        captured.note("kept");
+        assertEquals("", text(silent));
+        assertEquals(Map.of("y", 3), captured.draws());
+        assertEquals(List.of("kept"), captured.notes());
 
         TestCase exploring = newCase(new FakeLibhegel(), false, new ByteArrayOutputStream());
         assertTrue(!exploring.isFinal());

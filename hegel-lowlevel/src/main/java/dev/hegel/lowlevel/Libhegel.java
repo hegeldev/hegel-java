@@ -97,7 +97,8 @@ public interface Libhegel {
      * (a {@code hegel.toml} in the working directory or an ancestor, {@code HEGEL_DEFAULT_PROFILE},
      * and the shipped {@code development}/{@code ci}/{@code workload} profiles) with the {@code
      * HEGEL_TEST_CASES}, {@code HEGEL_DATABASE}, {@code HEGEL_STATISTICS}, {@code HEGEL_SEED},
-     * {@code HEGEL_DERANDOMIZE} and {@code HEGEL_PRINT_BLOB} environment variables applied over it.
+     * {@code HEGEL_DERANDOMIZE}, {@code HEGEL_PRINT_BLOB} and {@code HEGEL_NONDETERMINISM_STRICTNESS}
+     * environment variables applied over it.
      * Returns {@link Abi#E_INVALID_ARG} (with the message in {@link #lastErrorMessage()}) when a
      * {@code hegel.toml} or one of those variables is malformed; {@code out[0]} receives the handle
      * on {@link Abi#OK} and {@code 0} otherwise.
@@ -111,6 +112,13 @@ public interface Libhegel {
 
     /** {@code hegel_settings_get_print_blob}: whether the resolved settings print reproduce blobs. */
     boolean settingsGetPrintBlob(long s);
+
+    /**
+     * {@code hegel_settings_get_nondeterminism_strictness}: the resolved reaction to a
+     * nondeterministic test ({@link Abi#NONDETERMINISM_QUIET}, {@link Abi#NONDETERMINISM_WARN} or
+     * {@link Abi#NONDETERMINISM_ERROR}).
+     */
+    int settingsGetNondeterminismStrictness(long s);
 
     void settingsBackend(long s, int backend);
 
@@ -138,6 +146,13 @@ public interface Libhegel {
     /** {@code hegel_settings_set_print_blob}: whether to print a reproduce blob per failure. */
     void settingsPrintBlob(long s, boolean yes);
 
+    /**
+     * {@code hegel_settings_set_nondeterminism_strictness}: how the run reacts when it detects a
+     * test whose structure or outcome changes when the same choices are replayed — one of {@link
+     * Abi#NONDETERMINISM_QUIET}, {@link Abi#NONDETERMINISM_WARN} or {@link Abi#NONDETERMINISM_ERROR}.
+     */
+    void settingsNondeterminismStrictness(long s, int strictness);
+
     // Run lifecycle.
 
     /**
@@ -146,6 +161,15 @@ public interface Libhegel {
      * #runFree}.
      */
     long runStart(long settings, Consumer<String> output);
+
+    /**
+     * {@code hegel_run_start_blob}: start a run that replays a reproduce blob until a replay fails
+     * (under the engine's bounded budget) instead of exploring. Driven exactly like a run from
+     * {@link #runStart}: a reproducing replay is the run's failure, a run with no failures means
+     * the blob is stale, and an undecodable blob surfaces as the run's error from {@link
+     * #runResultError}. {@code output} has the same contract as in {@link #runStart}.
+     */
+    long runStartBlob(long settings, String blob, Consumer<String> output);
 
     /** The next test-case handle, or {@code 0} once the run is finished. */
     long nextTestCase(long run);
@@ -158,14 +182,23 @@ public interface Libhegel {
     void runFree(long run);
 
     /**
-     * Replay a base64 reproduce blob as a standalone test case. Returns the raw rc ({@link
-     * Abi#E_INVALID_ARG} for a corrupt or incompatible blob); on OK, {@code out[0]} receives the
-     * caller-owned handle. {@code output} has the same contract as in {@link #runStart} but need not
-     * outlive the call.
+     * Replay a base64 reproduce blob as a standalone test case, in a single attempt. Returns the raw
+     * rc ({@link Abi#E_INVALID_ARG} for a corrupt or incompatible blob); on OK, {@code out[0]}
+     * receives the caller-owned handle. {@code output} has the same contract as in {@link #runStart}
+     * but need not outlive the call. A nondeterministic blob may need several attempts to fail, so
+     * reproduce-failure features should prefer {@link #runStartBlob}.
      */
     int testCaseFromBlob(long settings, String blob, Consumer<String> output, long[] out);
 
     void testCaseFree(long tc);
+
+    /**
+     * {@code hegel_test_case_should_capture}: whether the engine stamped this case for capture — the
+     * caller should keep the case's output and, if it fails, its exception, keyed by the failure's
+     * origin, because a stamped failing execution is the material for that origin's failure report.
+     * Read once at case start.
+     */
+    boolean testCaseShouldCapture(long tc);
 
     // Per-test-case draws. Each returns the raw rc.
     int generateBoolean(long tc, double p, boolean[] out);
@@ -302,6 +335,13 @@ public interface Libhegel {
 
     /** The origin string the shrinker grouped the {@code index}-th distinct failure under. */
     String failureOrigin(long result, long index);
+
+    /**
+     * {@code hegel_failure_caveat}: the {@code index}-th distinct failure's confirmation caveat — its
+     * standing under the run's nondeterministic handling, quoting the run's replay evidence — or
+     * {@code null} for a deterministic failure.
+     */
+    String failureCaveat(long result, long index);
 
     // Diagnostics.
     String lastErrorMessage();

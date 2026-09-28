@@ -85,8 +85,7 @@ public final class RunReport {
     /**
      * Turn a non-passing report into the exception {@link Hegel#test} throws: nothing for a passed
      * run; {@link HealthCheckFailure} or {@link HegelException} (with the engine's message) for an
-     * errored run; for a failed run, a {@link HegelException} if any replay was {@linkplain
-     * Failure#flaky() flaky}, otherwise the single failure's own exception rethrown as-is, or an
+     * errored run; for a failed run, the single failure's own exception rethrown as-is, or an
      * {@link AssertionError} aggregating several distinct failures (carrying the originals as
      * suppressed exceptions).
      */
@@ -100,22 +99,17 @@ public final class RunReport {
             }
             throw new HegelException(error);
         }
-        for (Failure failure : failures) {
-            if (failure.flaky()) {
-                throw new HegelException(Runner.FLAKY_DIAGNOSTIC);
-            }
-        }
         if (failures.size() == 1) {
-            throw unchecked(failures.get(0).exception().get());
+            throw unchecked(failures.get(0).exception());
         }
         StringBuilder sb = new StringBuilder();
         sb.append("Hegel found ").append(failures.size()).append(" distinct failing examples:");
         for (Failure failure : failures) {
-            sb.append("\n\n").append(describe(failure.exception().get()));
+            sb.append("\n\n").append(describe(failure.exception()));
         }
         AssertionError aggregate = new AssertionError(sb.toString());
         for (Failure failure : failures) {
-            aggregate.addSuppressed(failure.exception().get());
+            aggregate.addSuppressed(failure.exception());
         }
         throw aggregate;
     }

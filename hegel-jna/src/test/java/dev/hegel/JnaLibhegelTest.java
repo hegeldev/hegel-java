@@ -72,6 +72,8 @@ class JnaLibhegelTest {
         // diagnostic rather than undefined behaviour.
         assertThrows(HegelException.class, () -> lib.runResultStatus(0));
         assertThrows(HegelException.class, () -> lib.runStart(0, null));
+        assertThrows(HegelException.class, () -> lib.runStartBlob(0, "blob", null));
+        assertThrows(HegelException.class, () -> lib.testCaseShouldCapture(0));
     }
 
     @Test
@@ -197,6 +199,10 @@ class JnaLibhegelTest {
         assertFalse(lib.settingsGetPrintBlob(s));
         lib.settingsPrintBlob(s, true);
         assertTrue(lib.settingsGetPrintBlob(s));
+        lib.settingsNondeterminismStrictness(s, Abi.NONDETERMINISM_ERROR);
+        assertEquals(Abi.NONDETERMINISM_ERROR, lib.settingsGetNondeterminismStrictness(s));
+        lib.settingsNondeterminismStrictness(s, Abi.NONDETERMINISM_WARN);
+        assertEquals(Abi.NONDETERMINISM_WARN, lib.settingsGetNondeterminismStrictness(s));
         lib.settingsFree(s);
     }
 
@@ -213,6 +219,23 @@ class JnaLibhegelTest {
         long[] out = new long[1];
         // A null output callback leaves replay output on stderr; the garbage blob is rejected.
         assertEquals(Abi.E_INVALID_ARG, lib.testCaseFromBlob(s, "not-a-blob!!!", null, out));
+        lib.settingsFree(s);
+    }
+
+    @Test
+    void blobRunWithDefaultOutputStartsAndReportsTheBadBlob() {
+        JnaLibhegel lib = real();
+        long s = newSettings(lib);
+        // A null output callback leaves the run's output on stderr; the garbage blob surfaces as
+        // the run's error once it is pumped dry.
+        long run = lib.runStartBlob(s, "not-a-blob!!!", null);
+        assertNotEquals(0, run);
+        assertEquals(0, lib.nextTestCase(run));
+        long result = lib.runResult(run);
+        assertEquals(Abi.RUN_STATUS_ERROR, lib.runResultStatus(result));
+        assertNotNull(lib.runResultError(result));
+        lib.runResultFree(result);
+        lib.runFree(run);
         lib.settingsFree(s);
     }
 

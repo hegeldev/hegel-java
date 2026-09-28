@@ -21,11 +21,17 @@ public final class Abi {
     public static final int E_CONCURRENT_USE = -9;
     public static final int E_RETRY = -10;
 
-    // Aggregate run outcome (hegel_run_status_t).
+    // Aggregate run outcome (hegel_run_status_t). Value 3 (FAILED_NONDETERMINISTIC, retired in the
+    // 0.44 ABI) is never reported and must not be reused: a failing nondeterministic run reports
+    // plain FAILED, with a caveat on each failure.
     public static final int RUN_STATUS_PASSED = 0;
     public static final int RUN_STATUS_FAILED = 1;
     public static final int RUN_STATUS_ERROR = 2;
-    public static final int RUN_STATUS_FAILED_NONDETERMINISTIC = 3;
+
+    // hegel_nondeterminism_strictness_t: how a run reacts on detecting a nondeterministic test.
+    public static final int NONDETERMINISM_QUIET = 0;
+    public static final int NONDETERMINISM_WARN = 1;
+    public static final int NONDETERMINISM_ERROR = 2;
 
     // Phases (bitmask for hegel_settings_set_phases).
     public static final int PHASE_EXPLICIT = 1 << 0;

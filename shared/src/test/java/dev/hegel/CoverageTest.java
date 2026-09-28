@@ -63,6 +63,7 @@ class CoverageTest {
                 phases = {Phase.GENERATE},
                 suppressHealthCheck = {HealthCheck.TOO_SLOW},
                 backend = Backend.URANDOM,
+                nondeterminismStrictness = NondeterminismStrictness.ERROR,
                 reportMultipleFailures = true,
                 printBlob = OptBoolean.TRUE,
                 reproduceFailure = "blob-xyz",
@@ -106,6 +107,7 @@ class CoverageTest {
         assertEquals(Database.Kind.UNSET, noSeed.database.kind);
         assertEquals(0, noSeed.suppressMask);
         assertEquals(Backend.AUTO, noSeed.backend);
+        assertEquals(NondeterminismStrictness.DEFAULT, noSeed.nondeterminismStrictness);
         assertFalse(noSeed.reportMultipleFailures);
         assertNull(noSeed.printBlob);
         assertNull(noSeed.testCases);
@@ -120,6 +122,7 @@ class CoverageTest {
         assertEquals(Integer.valueOf(Phase.GENERATE.bit), c.phasesMask);
         assertEquals(HealthCheck.TOO_SLOW.bit, c.suppressMask);
         assertEquals(Backend.URANDOM, c.backend);
+        assertEquals(NondeterminismStrictness.ERROR, c.nondeterminismStrictness);
         assertTrue(c.reportMultipleFailures);
         assertEquals(Boolean.TRUE, c.printBlob);
         assertEquals("blob-xyz", c.reproduceFailure);

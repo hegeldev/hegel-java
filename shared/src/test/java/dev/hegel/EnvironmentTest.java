@@ -67,6 +67,16 @@ class EnvironmentTest {
     }
 
     @Test
+    void hegelNondeterminismStrictnessIsResolvedByTheEngine() throws Exception {
+        String unset = fixture("strictness", Map.of());
+        assertTrue(unset.contains("strictness=QUIET"), unset);
+        String error = fixture("strictness", Map.of("HEGEL_NONDETERMINISM_STRICTNESS", "error"));
+        assertTrue(error.contains("strictness=ERROR"), error);
+        String malformed = fixture("strictness", Map.of("HEGEL_NONDETERMINISM_STRICTNESS", "loud"));
+        assertTrue(malformed.contains("error=") && malformed.contains("HEGEL_NONDETERMINISM_STRICTNESS"), malformed);
+    }
+
+    @Test
     void hegelPrintBlobDecidesWhetherReproducersArePrinted() throws Exception {
         // The shipped profiles print a reproducer for each failure; the variable turns that off.
         String printed = fixture("fail", Map.of());

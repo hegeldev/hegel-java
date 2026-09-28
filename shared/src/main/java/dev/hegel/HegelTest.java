@@ -134,6 +134,15 @@ public @interface HegelTest {
     OptBoolean printBlob() default OptBoolean.DEFAULT;
 
     /**
+     * How the run reacts when it detects a nondeterministic test. The default leaves it to the
+     * engine's settings profile and the {@code HEGEL_NONDETERMINISM_STRICTNESS} environment variable
+     * ({@link NondeterminismStrictness#QUIET} unless configured otherwise).
+     *
+     * @return the reaction to nondeterminism
+     */
+    NondeterminismStrictness nondeterminismStrictness() default NondeterminismStrictness.DEFAULT;
+
+    /**
      * Replay a stored failure blob (printed by {@link #printBlob}) instead of running the property:
      * the test body is re-run against exactly the choices the blob encodes, bypassing generation
      * and shrinking. Empty (the default) runs the property normally.
