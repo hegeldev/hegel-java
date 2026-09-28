@@ -19,7 +19,6 @@ import org.junit.jupiter.api.Test;
 
 /** The report and reporter side of {@link Runner}, driven against the fake binding. */
 class RunReportTest {
-    private static final Map<String, String> NO_CI = Map.of();
 
     /** A reporter that records every callback as one line, in order. */
     static final class RecordingReporter implements Reporter {
@@ -72,7 +71,7 @@ class RunReportTest {
     }
 
     private static RunReport report(FakeLibhegel fake, Settings s, Consumer<TestCase> body, Reporter reporter) {
-        return Runner.run(fake, s, body, NO_CI, reporter);
+        return Runner.run(fake, s, body, reporter);
     }
 
     private static RunReport report(FakeLibhegel fake, Settings s, Consumer<TestCase> body) {

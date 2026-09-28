@@ -1,7 +1,6 @@
 package dev.hegel;
 
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -14,11 +13,17 @@ import java.util.function.Consumer;
  * Hegel.test(tc -> { ... }, new Settings().testCases(500).seed(42));
  * }</pre>
  *
- * <p>In CI (detected via {@code CI}/{@code GITHUB_ACTIONS}/... environment variables) runs default
- * to deterministic ({@code derandomize}) and the example database is disabled, unless overridden.
+ * <p>Whatever is not set here is resolved by the engine: from its settings profile — a {@code
+ * hegel.toml} in the working directory or one of its parents (or the file named by {@code
+ * HEGEL_CONFIG}), with {@code HEGEL_DEFAULT_PROFILE} selecting the profile in effect — and from the
+ * {@code HEGEL_TEST_CASES}, {@code HEGEL_DATABASE}, {@code HEGEL_SEED}, {@code HEGEL_DERANDOMIZE} and
+ * {@code HEGEL_PRINT_BLOB} environment variables, which win over the profile. Settings given here win
+ * over both. The shipped profiles run 100 test cases, and in CI (detected via {@code CI}/{@code
+ * GITHUB_ACTIONS}/... environment variables) the {@code ci} profile applies: runs are deterministic
+ * ({@code derandomize}) and the example database is disabled.
  */
 public final class Settings {
-    final long testCases;
+    final Long testCases; // null = leave the engine's profile / HEGEL_TEST_CASES value
     final boolean hasSeed;
     final long seed;
     final Boolean derandomize;
@@ -30,12 +35,16 @@ public final class Settings {
     // Default false: a single, directly-rethrown failure is far friendlier to debuggers and stack
     // traces than an aggregated report — and that matters more in Java than elsewhere.
     final boolean reportMultipleFailures;
-    final boolean printBlob;
+    final Boolean printBlob; // null = leave the engine's profile / HEGEL_PRINT_BLOB value
     final String reproduceFailure; // null = run normally instead of replaying a blob
     final String name;
     final List<String> infrastructurePackages;
 
-    /** Create settings with all defaults (100 test cases, all phases, normal verbosity). */
+    /**
+     * Create settings that leave everything to the engine's profile and environment (100 test
+     * cases and all phases in the shipped profiles) except normal verbosity and single-failure
+     * reporting.
+     */
     public Settings() {
         this(new Builder());
     }
@@ -80,7 +89,7 @@ public final class Settings {
 
     /** Mutable field holder used only to construct and copy {@link Settings}; holds the defaults. */
     private static final class Builder {
-        long testCases = 100;
+        Long testCases = null;
         boolean hasSeed = false;
         long seed = 0L;
         Boolean derandomize = null;
@@ -90,14 +99,15 @@ public final class Settings {
         Verbosity verbosity = Verbosity.NORMAL;
         Backend backend = Backend.AUTO;
         boolean reportMultipleFailures = false;
-        boolean printBlob = false;
+        Boolean printBlob = null;
         String reproduceFailure = null;
         String name = null;
         List<String> infrastructurePackages = List.of();
     }
 
     /**
-     * Set the maximum number of valid test cases to run (default 100).
+     * Set the maximum number of valid test cases to run. Unset, the engine's profile or the {@code
+     * HEGEL_TEST_CASES} environment variable decides (100 in the shipped profiles).
      *
      * @param n the test-case budget
      * @return a new settings instance
@@ -123,7 +133,8 @@ public final class Settings {
     }
 
     /**
-     * Force deterministic (or non-deterministic) input selection regardless of the CI default.
+     * Force deterministic (or non-deterministic) input selection regardless of the engine's profile
+     * (deterministic in CI) and the {@code HEGEL_DERANDOMIZE} environment variable.
      *
      * @param derandomize whether to derive the seed deterministically
      * @return a new settings instance
@@ -210,7 +221,9 @@ public final class Settings {
 
     /**
      * Print a copy-pasteable {@code reproduceFailure} line for each reported failure. The reproduce
-     * blob is always attached to a failure; this only controls whether it is printed.
+     * blob is always attached to a failure; this only controls whether it is printed. Unset, the
+     * engine's profile or the {@code HEGEL_PRINT_BLOB} environment variable decides (on in the
+     * shipped profiles).
      *
      * @param yes whether to print reproduce blobs with failures
      * @return a new settings instance
@@ -258,16 +271,14 @@ public final class Settings {
         return with(b -> b.infrastructurePackages = copy);
     }
 
-    /** Whether the current environment looks like CI. */
-    static boolean isCi(Map<String, String> env) {
-        return notEmpty(env.get("CI"))
-                || notEmpty(env.get("GITHUB_ACTIONS"))
-                || notEmpty(env.get("GITLAB_CI"))
-                || notEmpty(env.get("BUILDKITE"))
-                || notEmpty(env.get("CIRCLECI"));
-    }
-
-    private static boolean notEmpty(String s) {
-        return s != null && !s.isEmpty();
+    /**
+     * These settings with the values the engine resolved for what was left unset, so a run and its
+     * reporters see the effective configuration.
+     */
+    Settings resolved(long testCases, boolean printBlob) {
+        return with(b -> {
+            b.testCases = testCases;
+            b.printBlob = printBlob;
+        });
     }
 }

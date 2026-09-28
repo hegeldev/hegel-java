@@ -380,8 +380,12 @@ public final class TestCase {
     }
 
     long newStateMachine(
-            List<String> ruleNames, List<String> invariantNames, boolean[] invariantAlwaysCheck, int stepCount) {
-        return source.newStateMachine(ruleNames, invariantNames, invariantAlwaysCheck, stepCount);
+            List<String> ruleNames,
+            double[] ruleWeights,
+            List<String> invariantNames,
+            boolean[] invariantAlwaysCheck,
+            int stepCount) {
+        return source.newStateMachine(ruleNames, ruleWeights, invariantNames, invariantAlwaysCheck, stepCount);
     }
 
     long stateMachineNextGroup(long stateMachineId) {

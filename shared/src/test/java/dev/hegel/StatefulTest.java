@@ -12,7 +12,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Stateful (model-based) testing against the real engine. */
@@ -71,7 +70,6 @@ class StatefulTest {
                                 Engine.get(),
                                 new Settings().database(Database.disabled()).seed(11),
                                 tc -> Stateful.run(new BuggyCounter(), tc),
-                                Map.of(),
                                 Reporter.printing(out))
                         .throwIfFailed());
         String output = buf.toString(StandardCharsets.UTF_8);
@@ -106,6 +104,87 @@ class StatefulTest {
         }
         expected.add(machine.n);
         assertEquals(expected, machine.seen);
+    }
+
+    /** Two rules whose only job is to count, per test case, how often the engine picks each. */
+    static final class WeightedMachine {
+        final int[] counts;
+
+        WeightedMachine(int[] counts) {
+            this.counts = counts;
+        }
+
+        @Rule(weight = 20)
+        void heavy(TestCase tc) {
+            counts[0]++;
+        }
+
+        @Rule
+        void light(TestCase tc) {
+            counts[1]++;
+        }
+    }
+
+    @Test
+    void weightedRulesAreOfferedMoreOften() {
+        // Swarm testing disables one of the two rules in many cases, so no aggregate ratio is
+        // meaningful; in a case where both ran, the 20:1 hint itself is visible.
+        List<int[]> cases = new ArrayList<>();
+        Runner.run(
+                        Engine.get(),
+                        new Settings()
+                                .database(Database.disabled())
+                                .derandomize(true)
+                                .testCases(100),
+                        tc -> {
+                            int[] counts = new int[2];
+                            cases.add(counts);
+                            Stateful.run(new WeightedMachine(counts), tc);
+                        },
+                        Reporter.silent())
+                .throwIfFailed();
+        StringBuilder seen = new StringBuilder();
+        boolean dominated = false;
+        for (int[] c : cases) {
+            seen.append(c[0]).append(':').append(c[1]).append(' ');
+            dominated |= c[1] > 0 && c[0] >= 10 * c[1];
+        }
+        assertTrue(dominated, "expected a case where both rules ran and the weight-20 rule dominated: " + seen);
+    }
+
+    @Test
+    void engineRejectsInvalidWeightsItIsHanded() {
+        // Stateful validates weights itself; going through the data source directly shows the
+        // engine receives the array (and enforces the same rule) rather than a NULL.
+        IllegalArgumentException e = assertThrows(
+                IllegalArgumentException.class,
+                () -> Runner.run(
+                                Engine.get(),
+                                new Settings().database(Database.disabled()).testCases(1),
+                                tc -> tc.newStateMachine(List.of("r"), new double[] {0}, List.of(), new boolean[0], 50),
+                                Reporter.silent())
+                        .throwIfFailed());
+        assertTrue(e.getMessage().toLowerCase().contains("weight"), e.getMessage());
+    }
+
+    static final class ZeroWeight {
+        @Rule(weight = 0)
+        void never(TestCase tc) {}
+    }
+
+    static final class NanWeight {
+        @Rule(weight = Double.NaN)
+        void undefined(TestCase tc) {}
+    }
+
+    @HegelTest(database = Database.DISABLED, testCases = 1)
+    void nonPositiveOrNonFiniteWeightsAreRejected(TestCase tc) {
+        IllegalArgumentException zero =
+                assertThrows(IllegalArgumentException.class, () -> Stateful.run(new ZeroWeight(), tc));
+        assertTrue(zero.getMessage().contains("never"), zero.getMessage());
+        IllegalArgumentException nan =
+                assertThrows(IllegalArgumentException.class, () -> Stateful.run(new NanWeight(), tc));
+        assertTrue(nan.getMessage().contains("undefined"), nan.getMessage());
     }
 
     /** Rules act on previously generated values through a {@link Pool}. */

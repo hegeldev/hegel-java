@@ -138,7 +138,7 @@ public final class Hegel {
      * @return the run's report
      */
     public static RunReport run(Consumer<TestCase> body, Settings settings, Reporter reporter) {
-        return Runner.run(Engine.get(), settings, body, System.getenv(), reporter);
+        return Runner.run(Engine.get(), settings, body, reporter);
     }
 
     private static Reporter defaultReporter() {

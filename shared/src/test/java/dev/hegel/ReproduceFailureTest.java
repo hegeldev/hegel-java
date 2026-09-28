@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +22,7 @@ class ReproduceFailureTest {
         PrintStream out = new PrintStream(buf, true, StandardCharsets.UTF_8);
         assertThrows(
                 want,
-                () -> Runner.run(Engine.get(), settings, body, Map.of(), Reporter.printing(out))
+                () -> Runner.run(Engine.get(), settings, body, Reporter.printing(out))
                         .throwIfFailed());
         return buf.toString(StandardCharsets.UTF_8);
     }

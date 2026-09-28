@@ -17,4 +17,15 @@ import java.lang.annotation.Target;
 @Documented
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Rule {}
+public @interface Rule {
+    /**
+     * How often the engine should pick this rule relative to the machine's other rules: a rule of
+     * weight 5 is offered about five times as often as a rule of weight 1. The weight is a hint,
+     * not a distributional guarantee — each test case enables a random subset of rules, and a
+     * rule's realized frequency depends on which others are enabled alongside it. Must be finite
+     * and strictly positive.
+     *
+     * @return the rule's selection weight
+     */
+    double weight() default 1.0;
+}

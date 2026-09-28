@@ -2,6 +2,7 @@ package dev.hegel;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -76,7 +77,7 @@ class JnaLibhegelTest {
     @Test
     void runWithDefaultOutputStartsAndFrees() {
         JnaLibhegel lib = real();
-        long s = lib.settingsNew();
+        long s = newSettings(lib);
         long run = lib.runStart(s, null);
         assertNotEquals(0, run);
         lib.runFree(run);
@@ -149,6 +150,7 @@ class JnaLibhegelTest {
                         0,
                         List.of("r"),
                         new long[] {0},
+                        null,
                         List.of("i"),
                         new boolean[] {true},
                         1,
@@ -158,6 +160,22 @@ class JnaLibhegelTest {
                         concurrency));
         assertEquals(7, out[0]);
         assertEquals(9, concurrency[0]);
+        // Explicit weights are marshalled too (NULL above keeps the engine's all-equal default).
+        assertEquals(
+                Abi.E_INVALID_HANDLE,
+                lib.newStateMachine(
+                        0,
+                        List.of("r"),
+                        new long[] {0},
+                        new double[] {2.5},
+                        List.of("i"),
+                        new boolean[] {true},
+                        1,
+                        1,
+                        50,
+                        out,
+                        concurrency));
+        assertEquals(7, out[0]);
         assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineNextGroup(0, 0, out));
         assertEquals(7, out[0]);
         assertEquals(Abi.E_INVALID_HANDLE, lib.stateMachineNextRule(0, 0, 0, out));
@@ -170,9 +188,28 @@ class JnaLibhegelTest {
     }
 
     @Test
+    void settingsGettersReadTheHandleBack() {
+        JnaLibhegel lib = real();
+        long s = newSettings(lib);
+        lib.settingsTestCases(s, 7);
+        assertEquals(7, lib.settingsGetTestCases(s));
+        lib.settingsPrintBlob(s, false);
+        assertFalse(lib.settingsGetPrintBlob(s));
+        lib.settingsPrintBlob(s, true);
+        assertTrue(lib.settingsGetPrintBlob(s));
+        lib.settingsFree(s);
+    }
+
+    private static long newSettings(JnaLibhegel lib) {
+        long[] out = new long[1];
+        assertEquals(Abi.OK, lib.settingsNew(out));
+        return out[0];
+    }
+
+    @Test
     void undecodableBlobWithDefaultOutputIsRejected() {
         JnaLibhegel lib = real();
-        long s = lib.settingsNew();
+        long s = newSettings(lib);
         long[] out = new long[1];
         // A null output callback leaves replay output on stderr; the garbage blob is rejected.
         assertEquals(Abi.E_INVALID_ARG, lib.testCaseFromBlob(s, "not-a-blob!!!", null, out));

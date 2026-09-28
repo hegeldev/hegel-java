@@ -10,23 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.hegel.lowlevel.Abi;
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** Targeted tests closing remaining coverage branches. */
 class CoverageTest {
-    // --- Settings.isCi ---
-    @Test
-    void isCiDetectsEachProvider() {
-        assertFalse(Settings.isCi(Map.of()));
-        assertTrue(Settings.isCi(Map.of("CI", "true")));
-        assertTrue(Settings.isCi(Map.of("GITHUB_ACTIONS", "true")));
-        assertTrue(Settings.isCi(Map.of("GITLAB_CI", "true")));
-        assertTrue(Settings.isCi(Map.of("BUILDKITE", "true")));
-        assertTrue(Settings.isCi(Map.of("CIRCLECI", "true")));
-        assertFalse(Settings.isCi(Map.of("CI", "")));
-    }
-
     // --- Abi helpers ---
     @Test
     void fnv1aMatchesKnownVector() {
@@ -77,13 +64,14 @@ class CoverageTest {
                 suppressHealthCheck = {HealthCheck.TOO_SLOW},
                 backend = Backend.URANDOM,
                 reportMultipleFailures = true,
-                printBlob = true,
+                printBlob = OptBoolean.TRUE,
                 reproduceFailure = "blob-xyz",
                 name = "custom")
         void configured(TestCase tc) {}
 
         @HegelTest(
                 derandomize = OptBoolean.FALSE,
+                printBlob = OptBoolean.FALSE,
                 phases = {},
                 database = Database.DISABLED)
         void derandomFalseEmptyPhases(TestCase tc) {}
@@ -119,7 +107,8 @@ class CoverageTest {
         assertEquals(0, noSeed.suppressMask);
         assertEquals(Backend.AUTO, noSeed.backend);
         assertFalse(noSeed.reportMultipleFailures);
-        assertFalse(noSeed.printBlob);
+        assertNull(noSeed.printBlob);
+        assertNull(noSeed.testCases);
         assertNull(noSeed.reproduceFailure);
         assertEquals("u", noSeed.name);
 
@@ -132,7 +121,7 @@ class CoverageTest {
         assertEquals(HealthCheck.TOO_SLOW.bit, c.suppressMask);
         assertEquals(Backend.URANDOM, c.backend);
         assertTrue(c.reportMultipleFailures);
-        assertTrue(c.printBlob);
+        assertEquals(Boolean.TRUE, c.printBlob);
         assertEquals("blob-xyz", c.reproduceFailure);
         assertEquals("custom", c.name);
 
@@ -141,6 +130,7 @@ class CoverageTest {
         Method emptyPhases = Holder.class.getDeclaredMethod("derandomFalseEmptyPhases", TestCase.class);
         Settings e = HegelTestExtension.settingsFrom(emptyPhases.getAnnotation(HegelTest.class), "e");
         assertEquals(Boolean.FALSE, e.derandomize);
+        assertEquals(Boolean.FALSE, e.printBlob);
         assertEquals(Integer.valueOf(0), e.phasesMask);
         assertEquals(Database.Kind.DISABLED, e.database.kind);
 
@@ -274,6 +264,8 @@ class CoverageTest {
         // Registered sequentially: every rule in group 0, exactly one worker.
         assertEquals(List.of("alpha", "beta"), fake.stateMachineRules);
         assertArrayEquals(new long[] {0, 0}, fake.stateMachineRuleGroups);
+        // Every rule at the default weight: the engine's all-equal NULL, not an array of ones.
+        assertNull(fake.stateMachineRuleWeights);
         assertEquals(1, fake.stateMachineMinConcurrency);
         assertEquals(1, fake.stateMachineMaxConcurrency);
         assertEquals(Stateful.DEFAULT_STEP_COUNT, fake.stateMachineStepCount);
@@ -287,6 +279,23 @@ class CoverageTest {
         assertEquals(5, machine.sampledChecks);
         assertEquals(5, machine.alwaysChecks);
         assertEquals(List.of(0L, 1L, 0L, 1L, 0L, 1L), fake.invariantChecksAsked);
+    }
+
+    static final class WeightedRules {
+        @Rule(weight = 0.5)
+        void rare(TestCase tc) {}
+
+        @Rule
+        void usual(TestCase tc) {}
+    }
+
+    @Test
+    void statefulRuleWeightsReachTheEngineInNameOrder() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.ruleSequence = new long[] {1};
+        Stateful.run(new WeightedRules(), fakeTestCase(fake));
+        assertEquals(List.of("rare", "usual"), fake.stateMachineRules);
+        assertArrayEquals(new double[] {0.5, 1.0}, fake.stateMachineRuleWeights);
     }
 
     @Test

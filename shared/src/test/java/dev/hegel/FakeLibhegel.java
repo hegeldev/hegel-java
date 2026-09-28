@@ -125,6 +125,7 @@ final class FakeLibhegel implements Libhegel {
     long stateMachineId = 5;
     List<String> stateMachineRules;
     long[] stateMachineRuleGroups;
+    double[] stateMachineRuleWeights = {-1}; // what new_state_machine received; null = equal weights
     List<String> stateMachineInvariants;
     boolean[] stateMachineAlwaysCheck;
     long stateMachineMinConcurrency = -1;
@@ -144,9 +145,33 @@ final class FakeLibhegel implements Libhegel {
     final List<Long> invariantChecksAsked = new ArrayList<>();
     int freedStateMachines;
 
+    // What hegel_settings_new hands back: the resolved profile's values, as the getters report them.
+    int settingsNewRc = Abi.OK;
+    long resolvedTestCases = 100;
+    boolean resolvedPrintBlob = false;
+    Boolean printBlob; // what the setter received; null = never set
+
     @Override
-    public long settingsNew() {
-        return SETTINGS;
+    public int settingsNew(long[] out) {
+        if (settingsNewRc == Abi.OK) {
+            out[0] = SETTINGS;
+        }
+        return settingsNewRc;
+    }
+
+    @Override
+    public long settingsGetTestCases(long s) {
+        return testCases == null ? resolvedTestCases : testCases;
+    }
+
+    @Override
+    public void settingsPrintBlob(long s, boolean yes) {
+        printBlob = yes;
+    }
+
+    @Override
+    public boolean settingsGetPrintBlob(long s) {
+        return printBlob == null ? resolvedPrintBlob : printBlob;
     }
 
     @Override
@@ -480,6 +505,7 @@ final class FakeLibhegel implements Libhegel {
             long tc,
             List<String> ruleNames,
             long[] ruleGroups,
+            double[] ruleWeights,
             List<String> invariantNames,
             boolean[] invariantAlwaysCheck,
             long minConcurrency,
@@ -490,6 +516,7 @@ final class FakeLibhegel implements Libhegel {
         if (newStateMachineRc == Abi.OK) {
             stateMachineRules = ruleNames;
             stateMachineRuleGroups = ruleGroups;
+            stateMachineRuleWeights = ruleWeights;
             stateMachineInvariants = invariantNames;
             stateMachineAlwaysCheck = invariantAlwaysCheck;
             stateMachineMinConcurrency = minConcurrency;
