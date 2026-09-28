@@ -114,12 +114,26 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   `AssumeRejected` → INVALID, `INVALID_ARG` → `IllegalArgumentException` with the engine's
   diagnostic, other negatives → `HegelException`) and short-circuiting once a case is aborted.
 - **Run loop** — `Runner` builds the settings handle and drives `hegel_run_start` →
-  `hegel_next_test_case` → `hegel_mark_complete`. The engine only *explores* (generation and
-  shrinking), so every pumped case is non-final; after the loop drains, `hegel_run_result` yields
-  PASSED, FAILED, or ERROR. On FAILED the runner replays each distinct counterexample's
-  **reproduce blob** (`hegel_test_case_from_blob`) with reporting enabled — capturing the shrunk
-  draws, notes, and the body's own exception into a `Failure` (a replay that no longer fails is a
-  *flaky* failure). The runner returns a `RunReport` (status, client-side `RunStatistics` counted
+  `hegel_next_test_case` → `hegel_mark_complete`. The engine owns the *whole* run — generation,
+  shrinking, the replays that confirm a failure, and (since 0.44) the final replay of every failure
+  it is about to report — so the runner never replays anything itself. It reads
+  `hegel_test_case_should_capture` once per case: a *stamped* case's `TestCase` records its
+  top-level draws and notes (`isFinal()` exposes the stamp), and every interesting case's exception
+  is kept per origin in a capture map (a stamped capture outranks an unstamped one, newest wins at
+  equal rank — the unstamped discovery of a failure that never fails again is all there is for an
+  *unconfirmed* nondeterministic failure). After the loop drains, `hegel_run_result` yields PASSED,
+  FAILED, or ERROR. On FAILED each distinct failure is built from its origin's capture: the recorded
+  draws/notes are replayed to the reporter (`caseStarted(true)` … `caseFinished(true)`), and the
+  `Failure` carries the body's own exception, the reproduce blob (`hegel_failure_reproduction_blob`,
+  null for an unconfirmed failure and for a blob replay) and the **caveat**
+  (`hegel_failure_caveat`, non-null for a nondeterministic failure — `Failure.nondeterministic()`;
+  the printing reporter prints it as `note: …`). A failure whose origin has no capture is an
+  internal error. `Settings.reproduceFailure` drives the same loop over `hegel_run_start_blob`
+  (the engine replays until a replay fails, under its budget): PASSED → `Runner.STALE_BLOB`
+  `HegelException`, ERROR → "blob is not valid" `HegelException`. There is no Java-side flaky
+  detection any more: the engine handles nondeterminism per `nondeterminismStrictness`
+  (`NondeterminismStrictness.QUIET`/`WARN` confirm-by-replay and report with a caveat; `ERROR`
+  aborts the run, surfacing as the engine's own `Flaky test detected` message). The runner returns a `RunReport` (status, client-side `RunStatistics` counted
   per `mark_complete` — the C ABI has no counter accessor — engine error, failures) and never
   prints: everything goes through the run's `Reporter` (`Reporter.printing(System.err)` is the
   default and reproduces the classic output; `Reporter.silent()` for library use). `Hegel.run`
@@ -127,17 +141,17 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   failure as-is (checked exceptions included), aggregates several into an `AssertionError`, and
   maps ERROR to `HealthCheckFailure`/`HegelException`. `HegelException` (binding/engine errors) is
   always thrown, never reported. `Settings` is the immutable config; its closed-state setting types live
-  alongside it — `Backend` (auto = leave it to the engine's profile, which picks urandom inside Antithesis / default / urandom), `Database`, `OptBoolean` —
+  alongside it — `Backend` (auto = leave it to the engine's profile, which picks urandom inside Antithesis / default / urandom), `Database`, `OptBoolean`, `NondeterminismStrictness` (`DEFAULT` = leave it to the engine) —
   plus `printBlob` (print a copy-pasteable reproducer per failure) and `reproduceFailure` (replay
-  a stored blob instead of running the property). `testCases`, `printBlob`, `derandomize`, `seed`
-  and `database` are nullable ("unset"): `Runner.applySettings` sends only what the user set, so
+  a stored blob instead of running the property). `testCases`, `printBlob`, `derandomize`, `seed`,
+  `nondeterminismStrictness` and `database` are nullable ("unset"): `Runner.applySettings` sends only what the user set, so
   the engine's resolution — its profile (`hegel.toml`, the shipped `development`/`ci`/`workload`
   profiles) with the `HEGEL_TEST_CASES`/`HEGEL_DATABASE`/`HEGEL_SEED`/`HEGEL_DERANDOMIZE`/
-  `HEGEL_PRINT_BLOB` variables applied over it in `hegel_settings_new` — stands for the rest, and
+  `HEGEL_PRINT_BLOB`/`HEGEL_NONDETERMINISM_STRICTNESS` variables applied over it in `hegel_settings_new` — stands for the rest, and
   explicit Java settings win over both. There is no Java-side CI detection (the engine's `ci`
   profile covers it). `Libhegel.settingsNew` returns a raw result code because a malformed
   variable or `hegel.toml` fails it with `E_INVALID_ARG` (→ `IllegalArgumentException`); after
-  applying, the runner reads `settingsGetTestCases`/`settingsGetPrintBlob` back and hands the
+  applying, the runner reads `settingsGetTestCases`/`settingsGetPrintBlob`/`settingsGetNondeterminismStrictness` back and hands the
   *effective* `Settings` to the reporter and the run. Verbosity and `reportMultipleFailures` keep
   Java-side defaults and are always sent. `EnvironmentTest` covers the variables and `hegel.toml`
   through a child JVM (`EnvironmentFixture`), since the engine reads its own process environment.
@@ -173,7 +187,9 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   for `@Invariant(alwaysRun = true)`, sampled otherwise; the initial and final checks run every
   invariant unconditionally. The machine handle is freed in a `finally`. An engine-level
   `E_ASSUME` inside a rule (the data source is aborted) unwinds the whole case as invalid instead
-  of being reported as the rule's rejection. `Pool<T>` tracks previously generated values over
+  of being reported as the rule's rejection. (Since engine 0.44 concurrency alone no longer marks
+  a run nondeterministic, and `HEGEL_RUN_STATUS_FAILED_NONDETERMINISTIC` is retired; this binding
+  drives machines sequentially anyway.) `Pool<T>` tracks previously generated values over
   the engine's pool primitives so rules can reuse or consume them.
 - **Derivation** — `dev.hegel.generators.Derive` + `RecordGenerator` build generators from records,
   enums, scalars, and generic `List`/`Set`/`Optional`/`Map` by reflection.

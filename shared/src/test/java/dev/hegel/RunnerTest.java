@@ -139,7 +139,7 @@ class RunnerTest {
     }
 
     @Test
-    void replayPassesTheBlobToTheEngine() {
+    void failuresAreReportedFromTheCaptureWithoutAClientReplay() {
         FakeLibhegel fake = new FakeLibhegel();
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-xyz");
@@ -148,49 +148,52 @@ class RunnerTest {
                 () -> run(fake, new Settings().database(Database.disabled()), tc -> {
                     throw new AssertionError("always");
                 }));
-        assertEquals(List.of("blob-xyz"), fake.replayedBlobs);
-        // One exploration case plus one replay case, all freed.
-        assertEquals(2, fake.freedTestCases);
+        // The engine owns every replay: nothing is replayed from the blob client-side.
+        assertTrue(fake.replayedBlobs.isEmpty());
+        assertNull(fake.startedBlob);
+        assertEquals(1, fake.freedTestCases);
     }
 
     @Test
-    void replayThatPassesIsFlaky() {
-        AtomicInteger calls = new AtomicInteger();
-        HegelException e = assertThrows(
-                HegelException.class,
-                () -> runFailing(tc -> {
-                    if (calls.incrementAndGet() == 1) {
-                        throw new AssertionError("only once");
-                    }
-                }));
-        assertTrue(e.getMessage().contains("Flaky"), e.getMessage());
-    }
-
-    @Test
-    void missingBlobIsAnInternalError() {
-        FakeLibhegel fake = new FakeLibhegel();
-        fake.runStatus = Abi.RUN_STATUS_FAILED;
-        fake.failureBlobs.add(null);
-        HegelException e = assertThrows(
-                HegelException.class, () -> run(fake, new Settings().database(Database.disabled()), tc -> {}));
-        assertTrue(e.getMessage().contains("no reproduce blob"), e.getMessage());
-    }
-
-    @Test
-    void undecodableBlobFailsTheRun() {
+    void failureWithoutACapturedExecutionIsAnInternalError() {
+        // The engine reports a failure whose origin never failed in this process: a plumbing bug.
         FakeLibhegel fake = new FakeLibhegel();
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-1");
-        fake.fromBlobRc = Abi.E_INVALID_ARG;
-        fake.lastError = "bad blob";
+        fake.failureOrigins.add("AssertionError at Elsewhere.java:1");
         HegelException e = assertThrows(
                 HegelException.class, () -> run(fake, new Settings().database(Database.disabled()), tc -> {}));
-        assertTrue(e.getMessage().contains("bad blob"), e.getMessage());
+        assertTrue(e.getMessage().contains("no captured failing execution"), e.getMessage());
+        assertTrue(e.getMessage().contains("Elsewhere.java:1"), e.getMessage());
+    }
+
+    @Test
+    void unstampedCasesKeepOnlyTheirException() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.captureSequence = new boolean[] {false};
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add("blob-1");
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        AssertionError err = new AssertionError("always");
+        RunReport report = Runner.run(
+                fake,
+                new Settings().database(Database.disabled()).printBlob(false),
+                tc -> {
+                    tc.draw(integers(), "x");
+                    tc.note("unseen");
+                    throw err;
+                },
+                Reporter.printing(capture(buf)));
+        assertSame(err, report.failures().get(0).exception());
+        assertTrue(report.failures().get(0).draws().isEmpty());
+        assertTrue(report.failures().get(0).notes().isEmpty());
+        assertEquals("", buf.toString(StandardCharsets.UTF_8));
     }
 
     @Test
     void multipleFailuresAggregateWithSuppressedOriginals() {
         FakeLibhegel fake = new FakeLibhegel();
+        fake.caseCount = 2; // one case per distinct bug
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-1");
         fake.failureBlobs.add("blob-2");
@@ -219,15 +222,21 @@ class RunnerTest {
     @Test
     void aggregateMessageHandlesNullExceptionMessages() {
         FakeLibhegel fake = new FakeLibhegel();
+        fake.caseCount = 2;
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-1");
         fake.failureBlobs.add("blob-2");
+        AtomicInteger calls = new AtomicInteger();
         AssertionError e = assertThrows(
                 AssertionError.class,
                 () -> run(fake, new Settings(), tc -> {
-                    throw new IllegalStateException(); // null message
+                    if (calls.incrementAndGet() == 1) {
+                        throw new IllegalStateException(); // null message
+                    }
+                    throw new UnsupportedOperationException(); // null message
                 }));
         assertTrue(e.getMessage().contains(IllegalStateException.class.getName()), e.getMessage());
+        assertTrue(e.getMessage().contains(UnsupportedOperationException.class.getName()), e.getMessage());
     }
 
     @Test
@@ -282,8 +291,10 @@ class RunnerTest {
     }
 
     @Test
-    void reproduceFailureReplaysWithoutARun() {
+    void reproduceFailureStartsABlobRun() {
         FakeLibhegel fake = new FakeLibhegel();
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add(null);
         IllegalStateException err = new IllegalStateException("reproduced");
         assertSame(
                 err,
@@ -292,38 +303,65 @@ class RunnerTest {
                         () -> run(fake, new Settings().reproduceFailure("stored-blob"), tc -> {
                             throw err;
                         })));
-        assertEquals(List.of("stored-blob"), fake.replayedBlobs);
-        assertNull(fake.output); // runStart was never called
+        assertEquals("stored-blob", fake.startedBlob);
+        assertTrue(fake.replayedBlobs.isEmpty());
+        assertTrue(fake.runFreed);
         assertTrue(fake.settingsFreed);
     }
 
     @Test
     void reproduceFailureReportsAStaleBlob() {
+        // The engine's blob run passed: none of its replays failed.
         FakeLibhegel fake = new FakeLibhegel();
         HegelException e =
                 assertThrows(HegelException.class, () -> run(fake, new Settings().reproduceFailure("stale"), tc -> {}));
-        assertTrue(e.getMessage().contains("no longer reproduces"), e.getMessage());
+        assertEquals(Runner.STALE_BLOB, e.getMessage());
+        assertTrue(e.getMessage().contains("did not reproduce"), e.getMessage());
     }
 
     @Test
     void reproduceFailureRejectsAnInvalidBlob() {
+        // An undecodable blob surfaces as the blob run's error.
         FakeLibhegel fake = new FakeLibhegel();
-        fake.fromBlobRc = Abi.E_INVALID_ARG;
-        fake.lastError = "corrupt";
+        fake.runStatus = Abi.RUN_STATUS_ERROR;
+        fake.runError = "corrupt";
         HegelException e =
                 assertThrows(HegelException.class, () -> run(fake, new Settings().reproduceFailure("???"), tc -> {}));
+        assertTrue(e.getMessage().contains("not valid"), e.getMessage());
         assertTrue(e.getMessage().contains("corrupt"), e.getMessage());
     }
 
     @Test
-    void nondeterministicRunFailureIsAnInternalError() {
-        // Only a concurrent state machine declares a run nondeterministic, and this binding never
-        // creates one, so the engine reporting that status (whose failures carry no blob) is a bug.
+    void nondeterminismStrictnessIsSentOnlyWhenSet() {
         FakeLibhegel fake = new FakeLibhegel();
-        fake.runStatus = Abi.RUN_STATUS_FAILED_NONDETERMINISTIC;
-        HegelException e = assertThrows(HegelException.class, () -> run(fake, new Settings(), tc -> {}));
-        assertTrue(e.getMessage().contains("nondeterministic"), e.getMessage());
-        assertTrue(fake.replayedBlobs.isEmpty());
+        run(fake, new Settings().database(Database.disabled()), tc -> {});
+        assertNull(fake.strictness);
+        run(
+                fake,
+                new Settings().database(Database.disabled()).nondeterminismStrictness(NondeterminismStrictness.WARN),
+                tc -> {});
+        assertEquals(Integer.valueOf(Abi.NONDETERMINISM_WARN), fake.strictness);
+    }
+
+    @Test
+    void effectiveStrictnessIsReadBackFromTheEngine() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.resolvedStrictness = Abi.NONDETERMINISM_ERROR;
+        Settings[] seen = new Settings[1];
+        Reporter reporter = new Reporter() {
+            @Override
+            public void runStarted(Settings settings) {
+                seen[0] = settings;
+            }
+        };
+        Runner.run(fake, new Settings().database(Database.disabled()), tc -> {}, reporter);
+        assertEquals(NondeterminismStrictness.ERROR, seen[0].nondeterminismStrictness);
+        assertEquals(NondeterminismStrictness.DEFAULT, new Settings().nondeterminismStrictness);
+
+        FakeLibhegel unknown = new FakeLibhegel();
+        unknown.resolvedStrictness = 99;
+        HegelException e = assertThrows(HegelException.class, () -> run(unknown, new Settings(), tc -> {}));
+        assertTrue(e.getMessage().contains("99"), e.getMessage());
     }
 
     @Test
@@ -448,22 +486,41 @@ class RunnerTest {
     }
 
     @Test
-    void printBlobIsSkippedForAFlakyReplay() {
+    void caveatIsPrintedAndABloblessFailurePrintsNoReproducer() {
         FakeLibhegel fake = new FakeLibhegel();
         fake.runStatus = Abi.RUN_STATUS_FAILED;
-        fake.failureBlobs.add("blob-b64");
-        AtomicInteger calls = new AtomicInteger();
+        fake.failureBlobs.add(null);
+        fake.failureCaveats.add("nondeterministic failure, unconfirmed: failed 0 of 20 replays");
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         RunReport report = Runner.run(
                 fake,
                 new Settings().database(Database.disabled()).printBlob(true),
                 tc -> {
-                    if (calls.incrementAndGet() == 1) {
-                        throw new AssertionError("only once");
-                    }
+                    tc.draw(integers().min(0), "x");
+                    throw new AssertionError("sometimes");
                 },
                 Reporter.printing(capture(buf)));
-        assertTrue(report.failures().get(0).flaky());
-        assertEquals("", buf.toString(StandardCharsets.UTF_8));
+        assertTrue(report.failures().get(0).nondeterministic());
+        String out = buf.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals("x = 0;\nnote: nondeterministic failure, unconfirmed: failed 0 of 20 replays\n", out);
+    }
+
+    @Test
+    void quietRunsPrintNoCaveat() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add("nd-blob");
+        fake.failureCaveats.add("nondeterministic failure, confirmed: failed 9 of 20 replays");
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        Runner.run(
+                fake,
+                new Settings().database(Database.disabled()).printBlob(true).verbosity(Verbosity.QUIET),
+                tc -> {
+                    throw new AssertionError("sometimes");
+                },
+                Reporter.printing(capture(buf)));
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertTrue(!out.contains("note:"), out);
+        assertTrue(out.contains("reproduceFailure = \"nd-blob\""), out);
     }
 }

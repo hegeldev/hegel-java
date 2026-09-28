@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -19,25 +20,30 @@ import java.util.function.Supplier;
  * {@link #draw(Generator)}, reject uninteresting inputs with {@link #assume(boolean)}, attach debug
  * context with {@link #note(String)}, and guide the search with {@link #target(double)}.
  *
- * <p>On the replay of a minimal failing example ({@link #isFinal()}), each top-level {@code draw}
- * and each note is handed to the run's {@link Reporter} (the default prints {@code x = 42;}) and
- * recorded on the resulting {@link Failure}, so the counterexample is readable. Under {@link
- * Verbosity#VERBOSE} or higher the reporter also sees every other case's draws and notes. A
- * label drawn more than once in a case is numbered from its second use ({@code x}, {@code x_2},
- * {@code x_3}); unlabelled draws are {@code draw_1}, {@code draw_2}, ...
+ * <p>On an execution the engine stamped for capture ({@link #isFinal()}) — the final replay of a
+ * minimal failing example among them — each top-level {@code draw} and each note is recorded, and
+ * if the case fails and the engine reports that failure, they are handed to the run's {@link
+ * Reporter} (the default prints {@code x = 42;}) and carried by the resulting {@link Failure}, so
+ * the counterexample is readable. Under {@link Verbosity#VERBOSE} or higher the reporter sees every
+ * case's draws and notes live. A label drawn more than once in a case is numbered from its second
+ * use ({@code x}, {@code x_2}, {@code x_3}); unlabelled draws are {@code draw_1}, {@code draw_2},
+ * ...
  *
  * <p>Frontends implementing their own composite generators enclose their draws in a labelled
  * {@link #span(long, Supplier) span} so the engine can shrink the structure they build.
  */
 public final class TestCase {
     private final DataSource source;
-    private final boolean finalReplay;
-    /** Whether draws and notes reach the reporter: on a final replay, or on every case when verbose. */
+    /** Whether the engine stamped this execution for capture: its draws and notes are recorded. */
+    private final boolean captured;
+    /** Whether draws and notes reach the reporter live (a verbose run). */
     private final boolean reporting;
 
     private final Reporter reporter;
     private final Map<String, Object> draws = new LinkedHashMap<>();
     private final List<String> notes = new ArrayList<>();
+    /** The recorded draws and notes in report order, each as the reporter call that replays it. */
+    private final List<Consumer<Reporter>> events = new ArrayList<>();
     /** Uses per draw name, for numbering repeats ({@code x}, {@code x_2}, ...; {@code draw_N}). */
     private final Map<String, Integer> nameUses = new HashMap<>();
     /** Notes made while a top-level draw is in progress; flushed after that draw's line. */
@@ -45,27 +51,29 @@ public final class TestCase {
 
     private int drawDepth;
 
-    TestCase(DataSource source, boolean finalReplay, Reporter reporter) {
-        this(source, finalReplay, false, reporter);
+    TestCase(DataSource source, boolean captured, Reporter reporter) {
+        this(source, captured, false, reporter);
     }
 
-    TestCase(DataSource source, boolean finalReplay, boolean verbose, Reporter reporter) {
+    TestCase(DataSource source, boolean captured, boolean verbose, Reporter reporter) {
         this.source = source;
-        this.finalReplay = finalReplay;
-        this.reporting = finalReplay || verbose;
+        this.captured = captured;
+        this.reporting = verbose;
         this.reporter = reporter;
     }
 
     /**
-     * Whether this case is the final replay of a minimal counterexample (or of a {@link
-     * Settings#reproduceFailure(String)} blob), as opposed to one of the many cases the engine runs
-     * while generating and shrinking. Draws and notes are reported only on a final replay; a test
-     * body can use this to do its own expensive diagnostics only where they will be seen.
+     * Whether the engine stamped this execution as one a failure report can be built from — the
+     * final replay of a minimal counterexample (or of a {@link Settings#reproduceFailure(String)}
+     * blob), the replays that confirm a discovered failure — as opposed to one of the many cases it
+     * runs while generating and shrinking. Draws and notes are recorded only on a stamped
+     * execution, and reported only if it fails and the engine reports that failure; a test body can
+     * use this to do its own expensive diagnostics only where they may be seen.
      *
-     * @return {@code true} on a final replay
+     * @return {@code true} on an execution stamped for capture
      */
     public boolean isFinal() {
-        return finalReplay;
+        return captured;
     }
 
     /**
@@ -103,12 +111,15 @@ public final class TestCase {
             }
         }
         if (top) {
-            if (reporting) {
+            if (captured || reporting) {
                 String name = displayName(label);
-                if (finalReplay) {
+                if (captured) {
                     draws.put(name, value);
+                    events.add(r -> r.draw(name, value, true));
                 }
-                reporter.draw(name, value, finalReplay);
+                if (reporting) {
+                    reporter.draw(name, value, false);
+                }
             }
             flushPendingNotes();
         }
@@ -137,10 +148,13 @@ public final class TestCase {
     }
 
     private void emitNote(String message) {
-        if (finalReplay) {
+        if (captured) {
             notes.add(message);
+            events.add(r -> r.note(message, true));
         }
-        reporter.note(message, finalReplay);
+        if (reporting) {
+            reporter.note(message, false);
+        }
     }
 
     /**
@@ -156,14 +170,15 @@ public final class TestCase {
     }
 
     /**
-     * Record a debug message, reported on the final replay of a failing case (and on every case
-     * under {@link Verbosity#VERBOSE}). A note made while a top-level draw is in progress — from
-     * inside a composite generator — is reported after that draw's value, never before it.
+     * Record a debug message, reported with the counterexample when this case's failure is
+     * reported (and live on every case under {@link Verbosity#VERBOSE}). A note made while a
+     * top-level draw is in progress — from inside a composite generator — is reported after that
+     * draw's value, never before it.
      *
      * @param message the message to record
      */
     public void note(String message) {
-        if (!reporting) {
+        if (!(captured || reporting)) {
             return;
         }
         if (drawDepth > 0) {
@@ -413,14 +428,21 @@ public final class TestCase {
         return source.isAborted();
     }
 
-    /** The top-level draws recorded on a final replay, in draw order. */
+    /** The top-level draws recorded on a captured execution, in draw order. */
     Map<String, Object> draws() {
         return draws;
     }
 
-    /** The notes recorded on a final replay, in order. */
+    /** The notes recorded on a captured execution, in order. */
     List<String> notes() {
         return notes;
+    }
+
+    /** Hand the recorded draws and notes to {@code reporter}, in report order, flagged as a replay. */
+    void replayTo(Reporter reporter) {
+        for (Consumer<Reporter> event : events) {
+            event.accept(reporter);
+        }
     }
 
     static String repr(Object value) {

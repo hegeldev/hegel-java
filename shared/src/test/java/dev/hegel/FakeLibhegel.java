@@ -34,9 +34,18 @@ final class FakeLibhegel implements Libhegel {
     int runStatus = Abi.RUN_STATUS_PASSED;
     String runError = "run error";
     final List<String> failureBlobs = new ArrayList<>(); // one entry per distinct failure
+    final List<String> failureCaveats = new ArrayList<>(); // parallel to failureBlobs; missing = null
+    // The origin of each distinct failure. Like the engine, the fake echoes back the origins marked
+    // interesting, distinct and in first-seen order; an explicit entry here overrides that.
+    final List<String> failureOrigins = new ArrayList<>();
     int fromBlobRc = Abi.OK;
     final List<String> replayedBlobs = new ArrayList<>();
-    Consumer<String> output; // the callback runStart registered
+    String startedBlob; // what runStartBlob received; null = the run explored
+    Consumer<String> output; // the callback runStart / runStartBlob registered
+    // The engine's capture stamp per served case: the i-th case is stamped when captureSequence
+    // has an i-th entry and it is true; past the end of the sequence every case is stamped, so
+    // the default stamps everything.
+    boolean[] captureSequence = {};
 
     // Recorded outcomes and teardown.
     final List<Integer> markedStatuses = new ArrayList<>();
@@ -149,7 +158,9 @@ final class FakeLibhegel implements Libhegel {
     int settingsNewRc = Abi.OK;
     long resolvedTestCases = 100;
     boolean resolvedPrintBlob = false;
+    int resolvedStrictness = Abi.NONDETERMINISM_QUIET;
     Boolean printBlob; // what the setter received; null = never set
+    Integer strictness; // what the setter received; null = never set
 
     @Override
     public int settingsNew(long[] out) {
@@ -172,6 +183,16 @@ final class FakeLibhegel implements Libhegel {
     @Override
     public boolean settingsGetPrintBlob(long s) {
         return printBlob == null ? resolvedPrintBlob : printBlob;
+    }
+
+    @Override
+    public void settingsNondeterminismStrictness(long s, int strictness) {
+        this.strictness = strictness;
+    }
+
+    @Override
+    public int settingsGetNondeterminismStrictness(long s) {
+        return strictness == null ? resolvedStrictness : strictness;
     }
 
     @Override
@@ -233,6 +254,16 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
+    public long runStartBlob(long settings, String blob, Consumer<String> output) {
+        if (runStartFails) {
+            throw new HegelException("hegel_run_start_blob failed: " + lastError);
+        }
+        startedBlob = blob;
+        this.output = output;
+        return RUN;
+    }
+
+    @Override
     public long nextTestCase(long run) {
         if (nextTestCaseFails) {
             throw new HegelException("hegel_next_test_case failed: " + lastError);
@@ -242,6 +273,12 @@ final class FakeLibhegel implements Libhegel {
         }
         casesServed++;
         return TC;
+    }
+
+    @Override
+    public boolean testCaseShouldCapture(long tc) {
+        int index = casesServed - 1;
+        return index >= captureSequence.length || captureSequence[index];
     }
 
     @Override
@@ -603,7 +640,21 @@ final class FakeLibhegel implements Libhegel {
 
     @Override
     public String failureOrigin(long result, long index) {
-        return "fake-origin-" + index;
+        if (index < failureOrigins.size()) {
+            return failureOrigins.get((int) index);
+        }
+        List<String> distinct = new ArrayList<>();
+        for (String origin : markedOrigins) {
+            if (origin != null && !distinct.contains(origin)) {
+                distinct.add(origin);
+            }
+        }
+        return distinct.get((int) index);
+    }
+
+    @Override
+    public String failureCaveat(long result, long index) {
+        return index < failureCaveats.size() ? failureCaveats.get((int) index) : null;
     }
 
     @Override

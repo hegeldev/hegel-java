@@ -87,8 +87,20 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_settings_get_print_blob(Pointer ctx, Pointer s, ByteByReference out);
 
+        int hegel_settings_set_nondeterminism_strictness(Pointer ctx, Pointer s, int strictness);
+
+        int hegel_settings_get_nondeterminism_strictness(Pointer ctx, Pointer s, IntByReference out);
+
         int hegel_run_start(
                 Pointer ctx, Pointer settings, LineCallback callback, Pointer userData, PointerByReference out);
+
+        int hegel_run_start_blob(
+                Pointer ctx,
+                Pointer settings,
+                String blob,
+                LineCallback callback,
+                Pointer userData,
+                PointerByReference out);
 
         int hegel_next_test_case(Pointer ctx, Pointer run, PointerByReference out);
 
@@ -107,6 +119,8 @@ final class JnaLibhegel implements Libhegel {
                 PointerByReference out);
 
         int hegel_test_case_free(Pointer ctx, Pointer tc);
+
+        int hegel_test_case_should_capture(Pointer ctx, Pointer tc, ByteByReference out);
 
         int hegel_generate_boolean(Pointer ctx, Pointer tc, double p, byte hasForced, byte forced, ByteByReference out);
 
@@ -236,6 +250,8 @@ final class JnaLibhegel implements Libhegel {
         int hegel_failure_reproduction_blob(Pointer ctx, Pointer failure, PointerByReference out);
 
         int hegel_failure_origin(Pointer ctx, Pointer failure, PointerByReference out);
+
+        int hegel_failure_caveat(Pointer ctx, Pointer failure, PointerByReference out);
 
         int hegel_version(Pointer ctx, PointerByReference out);
     }
@@ -430,6 +446,22 @@ final class JnaLibhegel implements Libhegel {
         return out.getValue() != 0;
     }
 
+    @Override
+    public void settingsNondeterminismStrictness(long s, int strictness) {
+        check(
+                "hegel_settings_set_nondeterminism_strictness",
+                lib.hegel_settings_set_nondeterminism_strictness(ctx(), pointer(s), strictness));
+    }
+
+    @Override
+    public int settingsGetNondeterminismStrictness(long s) {
+        IntByReference out = new IntByReference();
+        check(
+                "hegel_settings_get_nondeterminism_strictness",
+                lib.hegel_settings_get_nondeterminism_strictness(ctx(), pointer(s), out));
+        return out.getValue();
+    }
+
     // --- run lifecycle ---
 
     @Override
@@ -440,6 +472,24 @@ final class JnaLibhegel implements Libhegel {
         if (code != Abi.OK) {
             throw new HegelException(
                     "hegel_run_start failed (rc=" + code + "): " + java.util.Objects.toString(lastErrorMessage(), ""));
+        }
+        long run = address(out.getValue());
+        if (callback != null) {
+            runCallbacks.put(run, callback);
+        }
+        return run;
+    }
+
+    @Override
+    public long runStartBlob(long settings, String blob, Consumer<String> output) {
+        LineCallback callback = output == null ? null : new LineCallback(output);
+        PointerByReference out = new PointerByReference();
+        int code = lib.hegel_run_start_blob(ctx(), pointer(settings), blob, callback, null, out);
+        if (code != Abi.OK) {
+            throw new HegelException("hegel_run_start_blob failed (rc="
+                    + code
+                    + "): "
+                    + java.util.Objects.toString(lastErrorMessage(), ""));
         }
         long run = address(out.getValue());
         if (callback != null) {
@@ -489,6 +539,13 @@ final class JnaLibhegel implements Libhegel {
     @Override
     public void testCaseFree(long tc) {
         check("hegel_test_case_free", lib.hegel_test_case_free(ctx(), pointer(tc)));
+    }
+
+    @Override
+    public boolean testCaseShouldCapture(long tc) {
+        ByteByReference out = new ByteByReference();
+        check("hegel_test_case_should_capture", lib.hegel_test_case_should_capture(ctx(), pointer(tc), out));
+        return out.getValue() != 0;
     }
 
     // --- draws ---
@@ -978,6 +1035,18 @@ final class JnaLibhegel implements Libhegel {
         String origin = readCString(originOut.getValue());
         check("hegel_failure_free", lib.hegel_failure_free(ctx(), failure));
         return origin;
+    }
+
+    @Override
+    public String failureCaveat(long result, long index) {
+        PointerByReference failureOut = new PointerByReference();
+        check("hegel_run_result_failure", lib.hegel_run_result_failure(ctx(), pointer(result), index, failureOut));
+        Pointer failure = failureOut.getValue();
+        PointerByReference caveatOut = new PointerByReference();
+        check("hegel_failure_caveat", lib.hegel_failure_caveat(ctx(), failure, caveatOut));
+        String caveat = readCString(caveatOut.getValue());
+        check("hegel_failure_free", lib.hegel_failure_free(ctx(), failure));
+        return caveat;
     }
 
     // --- diagnostics ---

@@ -16,9 +16,9 @@ import java.util.function.Consumer;
  * <p>Whatever is not set here is resolved by the engine: from its settings profile — a {@code
  * hegel.toml} in the working directory or one of its parents (or the file named by {@code
  * HEGEL_CONFIG}), with {@code HEGEL_DEFAULT_PROFILE} selecting the profile in effect — and from the
- * {@code HEGEL_TEST_CASES}, {@code HEGEL_DATABASE}, {@code HEGEL_SEED}, {@code HEGEL_DERANDOMIZE} and
- * {@code HEGEL_PRINT_BLOB} environment variables, which win over the profile. Settings given here win
- * over both. The shipped profiles run 100 test cases, and in CI (detected via {@code CI}/{@code
+ * {@code HEGEL_TEST_CASES}, {@code HEGEL_DATABASE}, {@code HEGEL_SEED}, {@code HEGEL_DERANDOMIZE},
+ * {@code HEGEL_PRINT_BLOB} and {@code HEGEL_NONDETERMINISM_STRICTNESS} environment variables, which
+ * win over the profile. Settings given here win over both. The shipped profiles run 100 test cases, and in CI (detected via {@code CI}/{@code
  * GITHUB_ACTIONS}/... environment variables) the {@code ci} profile applies: runs are deterministic
  * ({@code derandomize}) and the example database is disabled.
  */
@@ -36,6 +36,7 @@ public final class Settings {
     // traces than an aggregated report — and that matters more in Java than elsewhere.
     final boolean reportMultipleFailures;
     final Boolean printBlob; // null = leave the engine's profile / HEGEL_PRINT_BLOB value
+    final NondeterminismStrictness nondeterminismStrictness;
     final String reproduceFailure; // null = run normally instead of replaying a blob
     final String name;
     final List<String> infrastructurePackages;
@@ -61,6 +62,7 @@ public final class Settings {
         this.backend = b.backend;
         this.reportMultipleFailures = b.reportMultipleFailures;
         this.printBlob = b.printBlob;
+        this.nondeterminismStrictness = b.nondeterminismStrictness;
         this.reproduceFailure = b.reproduceFailure;
         this.name = b.name;
         this.infrastructurePackages = b.infrastructurePackages;
@@ -80,6 +82,7 @@ public final class Settings {
         b.backend = backend;
         b.reportMultipleFailures = reportMultipleFailures;
         b.printBlob = printBlob;
+        b.nondeterminismStrictness = nondeterminismStrictness;
         b.reproduceFailure = reproduceFailure;
         b.name = name;
         b.infrastructurePackages = infrastructurePackages;
@@ -100,6 +103,7 @@ public final class Settings {
         Backend backend = Backend.AUTO;
         boolean reportMultipleFailures = false;
         Boolean printBlob = null;
+        NondeterminismStrictness nondeterminismStrictness = NondeterminismStrictness.DEFAULT;
         String reproduceFailure = null;
         String name = null;
         List<String> infrastructurePackages = List.of();
@@ -233,11 +237,26 @@ public final class Settings {
     }
 
     /**
+     * How the run reacts when it detects a nondeterministic test. Unset ({@link
+     * NondeterminismStrictness#DEFAULT}), the engine's profile or the {@code
+     * HEGEL_NONDETERMINISM_STRICTNESS} environment variable decides ({@link
+     * NondeterminismStrictness#QUIET} in the shipped profiles).
+     *
+     * @param strictness the reaction
+     * @return a new settings instance
+     */
+    public Settings nondeterminismStrictness(NondeterminismStrictness strictness) {
+        return with(b -> b.nondeterminismStrictness = strictness);
+    }
+
+    /**
      * Replay a single stored failure instead of running the property: the blob (from {@link
-     * #printBlob(boolean)} output) is decoded and the test body re-run against exactly the choices
-     * it encodes, bypassing generation and shrinking. The run fails with the reproduced failure, or
-     * reports a stale blob if it no longer fails. A blob is only guaranteed to reproduce under the
-     * Hegel version that produced it.
+     * #printBlob(boolean)} output) is decoded and the test body re-run against the choices it
+     * encodes, bypassing generation and shrinking. The engine replays until a replay fails, under a
+     * bounded budget: a deterministic blob a few times, a nondeterministic one's recorded runs until
+     * one of them fails again. The run fails with the reproduced failure, or reports a stale blob if
+     * none of the replays fails. A blob is only guaranteed to reproduce under the Hegel version that
+     * produced it.
      *
      * @param blob the base64 reproduce blob
      * @return a new settings instance
@@ -275,10 +294,11 @@ public final class Settings {
      * These settings with the values the engine resolved for what was left unset, so a run and its
      * reporters see the effective configuration.
      */
-    Settings resolved(long testCases, boolean printBlob) {
+    Settings resolved(long testCases, boolean printBlob, NondeterminismStrictness strictness) {
         return with(b -> {
             b.testCases = testCases;
             b.printBlob = printBlob;
+            b.nondeterminismStrictness = strictness;
         });
     }
 }

@@ -141,41 +141,87 @@ class RunReportTest {
         assertFalse(r.passed());
         assertEquals(1, r.failures().size());
         Failure f = r.failures().get(0);
-        assertEquals("fake-origin-0", f.origin());
-        assertEquals("blob-1", f.reproduceBlob());
-        assertSame(err, f.exception().get());
-        assertFalse(f.flaky());
-        // Only the final replay records draws and notes, so one exploration case plus one replay
-        // yields a single set of each.
+        // The engine echoes back the origin the runner marked the case with.
+        assertEquals(Runner.originOf(err, List.of()), f.origin());
+        assertEquals(Optional.of("blob-1"), f.reproduceBlob());
+        assertSame(err, f.exception());
+        assertFalse(f.nondeterministic());
+        assertEquals(Optional.empty(), f.caveat());
+        // The fake stamps the case for capture, so its draws and notes are the report.
         assertEquals(List.of("x", "draw_1"), List.copyOf(f.draws().keySet()));
         assertEquals(7, f.draws().get("x"));
         assertEquals(List.of("saw 7"), f.notes());
         assertThrows(UnsupportedOperationException.class, () -> f.draws().put("y", 1));
         assertThrows(UnsupportedOperationException.class, () -> f.notes().add("more"));
         assertThrows(UnsupportedOperationException.class, () -> r.failures().clear());
-        // Two cases ran: the exploration case and the replay.
-        assertEquals(2, r.statistics().total());
-        assertEquals(2, r.statistics().interesting());
+        // The engine ran the one case; nothing is replayed client-side.
+        assertEquals(1, r.statistics().total());
+        assertEquals(1, r.statistics().interesting());
         assertSame(err, assertThrows(AssertionError.class, r::throwIfFailed));
     }
 
     @Test
-    void flakyReplayIsReportedRatherThanThrown() {
+    void nondeterministicFailureCarriesItsCaveat() {
         FakeLibhegel fake = new FakeLibhegel();
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add("nd-blob");
+        fake.failureCaveats.add("nondeterministic failure, confirmed: failed 3 of 20 replays");
+        AssertionError err = new AssertionError("sometimes");
+        RunReport r = report(fake, new Settings().database(Database.disabled()), tc -> {
+            throw err;
+        });
+        assertEquals(RunStatus.FAILED, r.status());
+        Failure f = r.failures().get(0);
+        assertTrue(f.nondeterministic());
+        assertEquals(Optional.of("nondeterministic failure, confirmed: failed 3 of 20 replays"), f.caveat());
+        assertEquals(Optional.of("nd-blob"), f.reproduceBlob());
+        // The failure is the test's own, caveat or not.
+        assertSame(err, assertThrows(AssertionError.class, r::throwIfFailed));
+    }
+
+    @Test
+    void unconfirmedFailureIsReportedFromItsDiscovery() {
+        // A test that failed once and never again: the engine reports the origin unconfirmed, with a
+        // caveat and no blob, and the only failing execution was the unstamped discovery, whose
+        // exception is all the runner kept.
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.caseCount = 3;
+        fake.captureSequence = new boolean[] {false, true, true};
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add(null);
+        fake.failureCaveats.add("nondeterministic failure, unconfirmed: failed 0 of 20 replays");
+        AtomicInteger calls = new AtomicInteger();
+        AssertionError err = new AssertionError("only once");
+        RunReport r = report(fake, new Settings().database(Database.disabled()), tc -> {
+            tc.draw(integers(), "x");
+            if (calls.incrementAndGet() == 1) {
+                throw err;
+            }
+        });
+        Failure f = r.failures().get(0);
+        assertTrue(f.nondeterministic());
+        assertEquals(Optional.empty(), f.reproduceBlob());
+        assertSame(err, f.exception());
+        assertTrue(f.draws().isEmpty());
+        assertSame(err, assertThrows(AssertionError.class, r::throwIfFailed));
+    }
+
+    @Test
+    void stampedCaptureOutranksALaterUnstampedOne() {
+        // Shrink probes (unstamped) keep failing after the stamped replay: the report still comes
+        // from the stamped execution, and among stamped ones the newest wins.
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.caseCount = 4;
+        fake.captureSequence = new boolean[] {false, true, true, false};
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-1");
         AtomicInteger calls = new AtomicInteger();
         RunReport r = report(fake, new Settings().database(Database.disabled()), tc -> {
-            if (calls.incrementAndGet() == 1) {
-                throw new AssertionError("only once");
-            }
+            int n = calls.incrementAndGet();
+            tc.note("case " + n);
+            throw new AssertionError("always");
         });
-        assertEquals(RunStatus.FAILED, r.status());
-        Failure f = r.failures().get(0);
-        assertTrue(f.flaky());
-        assertEquals(Optional.empty(), f.exception());
-        HegelException e = assertThrows(HegelException.class, r::throwIfFailed);
-        assertEquals(Runner.FLAKY_DIAGNOSTIC, e.getMessage());
+        assertEquals(List.of("case 3"), r.failures().get(0).notes());
     }
 
     @Test
@@ -187,7 +233,7 @@ class RunReportTest {
         RunReport r = report(fake, new Settings().database(Database.disabled()), tc -> {
             throw sneaky(io);
         });
-        assertSame(io, r.failures().get(0).exception().get());
+        assertSame(io, r.failures().get(0).exception());
         assertSame(io, assertThrows(IOException.class, r::throwIfFailed));
     }
 
@@ -226,7 +272,7 @@ class RunReportTest {
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-1");
         RecordingReporter reporter = new RecordingReporter();
-        report(
+        RunReport r = report(
                 fake,
                 new Settings().database(Database.disabled()).testCases(5),
                 tc -> {
@@ -237,6 +283,8 @@ class RunReportTest {
                 reporter);
         // Engine output goes through the run's callback to the reporter, whenever it arrives.
         fake.output.accept("engine says hi");
+        // The stamped case's draws and notes are not reported live; they are replayed, flagged as
+        // such, once the engine reports the failure.
         assertEquals(
                 List.of(
                         "runStarted:5",
@@ -247,14 +295,14 @@ class RunReportTest {
                         "draw:x=3:true",
                         "note:hi:true",
                         "caseFinished:INTERESTING:true",
-                        "failure:fake-origin-0",
+                        "failure:" + r.failures().get(0).origin(),
                         "runFinished:FAILED",
                         "engineOutput:engine says hi"),
                 reporter.events);
     }
 
     @Test
-    void verboseRunsReportEveryCaseButRecordOnlyTheReplay() {
+    void verboseRunsReportEveryCaseLiveAndReplayTheCapture() {
         FakeLibhegel fake = new FakeLibhegel();
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-1");
@@ -268,11 +316,11 @@ class RunReportTest {
                     throw new AssertionError("boom");
                 },
                 reporter);
-        // The exploration case's draws and notes are reported (flagged non-final) ...
+        // The case's draws and notes are reported live (flagged as such) ...
         assertTrue(reporter.events.contains("draw:x=3:false"), reporter.events.toString());
         assertTrue(reporter.events.contains("note:hi:false"), reporter.events.toString());
+        // ... and replayed with the failure report.
         assertTrue(reporter.events.contains("draw:x=3:true"), reporter.events.toString());
-        // ... but the failure captures the final replay only.
         assertEquals(Map.of("x", 3), r.failures().get(0).draws());
         assertEquals(List.of("hi"), r.failures().get(0).notes());
     }
@@ -280,6 +328,7 @@ class RunReportTest {
     @Test
     void multipleFailuresAreReportedInEngineOrder() {
         FakeLibhegel fake = new FakeLibhegel();
+        fake.caseCount = 2; // one case per distinct bug
         fake.runStatus = Abi.RUN_STATUS_FAILED;
         fake.failureBlobs.add("blob-1");
         fake.failureBlobs.add("blob-2");
@@ -296,8 +345,9 @@ class RunReportTest {
                 },
                 reporter);
         assertEquals(2, r.failures().size());
-        assertEquals("blob-1", r.failures().get(0).reproduceBlob());
-        assertEquals("fake-origin-1", r.failures().get(1).origin());
+        assertEquals(Optional.of("blob-1"), r.failures().get(0).reproduceBlob());
+        assertTrue(r.failures().get(0).origin().startsWith("AssertionError at "));
+        assertTrue(r.failures().get(1).origin().startsWith("IllegalStateException at "));
         assertTrue(reporter.events.contains("failuresFound:2"));
         AssertionError e = assertThrows(AssertionError.class, r::throwIfFailed);
         assertEquals(2, e.getSuppressed().length);
@@ -306,6 +356,8 @@ class RunReportTest {
     @Test
     void reproduceFailureReportsTheReplayedFailure() {
         FakeLibhegel fake = new FakeLibhegel();
+        fake.runStatus = Abi.RUN_STATUS_FAILED;
+        fake.failureBlobs.add(null); // a blob replay's failure carries no fresh blob
         RecordingReporter reporter = new RecordingReporter();
         IllegalStateException err = new IllegalStateException("reproduced");
         RunReport r = report(
@@ -316,20 +368,28 @@ class RunReportTest {
                     throw err;
                 },
                 reporter);
+        assertEquals("stored-blob", fake.startedBlob);
         assertEquals(RunStatus.FAILED, r.status());
         Failure f = r.failures().get(0);
-        assertEquals("stored-blob", f.reproduceBlob());
-        assertSame(err, f.exception().get());
+        assertEquals(Optional.empty(), f.reproduceBlob());
+        assertSame(err, f.exception());
         // The test suite itself lives in dev.hegel, which counts as infrastructure, so the origin
         // names the exception and whatever frame sits below the suite.
         assertTrue(f.origin().startsWith("IllegalStateException at "), f.origin());
         assertEquals(Map.of("x", 1), f.draws());
         assertEquals(1, r.statistics().total());
         assertEquals(1, r.statistics().interesting());
-        // No exploration loop: straight to the replay.
+        // The blob run is pumped like any other, then its failure is reported from the capture.
         assertEquals(
-                List.of("runStarted:100", "caseStarted:true", "draw:x=1:true", "caseFinished:INTERESTING:true"),
-                reporter.events.subList(0, 4));
+                List.of(
+                        "runStarted:100",
+                        "caseStarted:false",
+                        "caseFinished:INTERESTING:false",
+                        "failuresFound:1",
+                        "caseStarted:true",
+                        "draw:x=1:true",
+                        "caseFinished:INTERESTING:true"),
+                reporter.events.subList(0, 7));
         assertEquals("runFinished:FAILED", reporter.events.get(reporter.events.size() - 1));
     }
 

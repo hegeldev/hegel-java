@@ -3,11 +3,11 @@ package dev.hegel;
 import static dev.hegel.Generators.integers;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -38,13 +38,15 @@ class LibraryApiTest {
         Failure f = report.failures().get(0);
         assertEquals(Map.of("x", 11), f.draws());
         assertEquals(List.of("observed x=11"), f.notes());
-        assertTrue(f.exception().get() instanceof AssertionError);
-        assertTrue(f.exception().get().getMessage().contains("x was too big: 11"));
+        assertTrue(f.exception() instanceof AssertionError);
+        assertTrue(f.exception().getMessage().contains("x was too big: 11"));
         assertTrue(f.origin().startsWith("AssertionFailedError at "), f.origin());
-        assertNotNull(f.reproduceBlob());
-        assertFalse(f.flaky());
-        // Exactly one case was the final replay, and the run counted more than just it.
-        assertEquals(1, finals.get());
+        assertTrue(f.reproduceBlob().isPresent());
+        assertFalse(f.nondeterministic());
+        assertEquals(Optional.empty(), f.caveat());
+        // The engine stamped at least the final replay for capture, and the run counted more than
+        // the stamped cases.
+        assertTrue(finals.get() >= 1, "stamped cases: " + finals.get());
         assertTrue(report.statistics().interesting() >= 2, report.statistics().toString());
         assertTrue(report.statistics().total() > report.statistics().interesting());
     }

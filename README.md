@@ -109,13 +109,15 @@ report.statistics();                    // valid / invalid / overrun / interesti
 for (Failure f : report.failures()) {   // one per distinct counterexample
   f.draws();                            // labelled draws of the minimal example, as Java values
   f.exception();                        // the body's own throwable
-  f.reproduceBlob();                    // replay it later with Settings.reproduceFailure
+  f.reproduceBlob();                    // Optional: replay it later with Settings.reproduceFailure
+  f.caveat();                           // Optional: how reliably a nondeterministic failure reproduced
 }
 ```
 
-`TestCase.isFinal()` identifies the final replay of a counterexample, `TestCase.span` and `Label`
-let custom composite generators tell the engine about their structure, and
-`Settings.infrastructurePackages` keeps a frontend's own stack frames out of failure origins.
+`TestCase.isFinal()` identifies the executions the engine stamped for the failure report (the
+final replay of a counterexample among them), `TestCase.span` and `Label` let custom composite
+generators tell the engine about their structure, and `Settings.infrastructurePackages` keeps a
+frontend's own stack frames out of failure origins.
 
 ## Binding Hegel yourself
 

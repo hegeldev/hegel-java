@@ -59,10 +59,15 @@ final class PrintingReporter implements Reporter {
 
     @Override
     public void failure(Failure failure) {
-        if (printBlob && !failure.flaky()) {
-            out.println();
-            out.println("To reproduce this failure, replay it with:");
-            out.println("    @HegelTest(reproduceFailure = \"" + failure.reproduceBlob() + "\")");
+        if (!quiet) {
+            failure.caveat().ifPresent(caveat -> out.println("note: " + caveat));
+        }
+        if (printBlob) {
+            failure.reproduceBlob().ifPresent(blob -> {
+                out.println();
+                out.println("To reproduce this failure, replay it with:");
+                out.println("    @HegelTest(reproduceFailure = \"" + blob + "\")");
+            });
         }
     }
 }
