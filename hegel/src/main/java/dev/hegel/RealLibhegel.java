@@ -123,6 +123,8 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle testCaseFromBlob;
     private final MethodHandle testCaseFree;
     private final MethodHandle testCaseShouldCapture;
+    private final MethodHandle testCaseClone;
+    private final MethodHandle testCaseSetWorker;
     private final MethodHandle generateBoolean;
     private final MethodHandle generateInteger;
     private final MethodHandle generateFloat;
@@ -288,6 +290,13 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_test_case_should_capture",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        this.testCaseClone =
+                h(linker, lookup, "hegel_test_case_clone", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
+        this.testCaseSetWorker = h(
+                linker,
+                lookup,
+                "hegel_test_case_set_worker",
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG));
         this.generateBoolean = h(
                 linker,
                 lookup,
@@ -734,6 +743,21 @@ final class RealLibhegel implements Libhegel {
         MemorySegment out = Arena.ofAuto().allocate(JAVA_BOOLEAN);
         check("hegel_test_case_should_capture", rc(testCaseShouldCapture, segment(tc), out));
         return out.get(JAVA_BOOLEAN, 0);
+    }
+
+    @Override
+    public int testCaseClone(long tc, long[] out) {
+        MemorySegment seg = Arena.ofAuto().allocate(ADDRESS);
+        int code = rc(testCaseClone, segment(tc), seg);
+        if (code == Abi.OK) {
+            out[0] = seg.get(ADDRESS, 0).address();
+        }
+        return code;
+    }
+
+    @Override
+    public void testCaseSetWorker(long tc, long workerIndex) {
+        check("hegel_test_case_set_worker", rc(testCaseSetWorker, segment(tc), workerIndex));
     }
 
     // --- draws ---

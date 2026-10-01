@@ -53,13 +53,74 @@ class BindingErrorPathsTest {
         assertEquals(3, ds.newPool());
         assertEquals(0, ds.poolAdd(3));
         assertEquals(0, ds.poolGenerate(3, true));
-        assertEquals(5, ds.newStateMachine(List.of("r"), null, List.of("i"), new boolean[] {false}, 50));
+        fake.stateMachineConcurrency = 3;
+        DataSource.StateMachine sm =
+                ds.newStateMachine(List.of("r"), new long[] {0}, null, List.of("i"), new boolean[] {false}, 1, 4, 50);
+        assertEquals(5, sm.id());
+        assertEquals(3, sm.concurrency());
+        assertEquals(1, fake.stateMachineMinConcurrency);
+        assertEquals(4, fake.stateMachineMaxConcurrency);
         assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextGroup(5));
-        assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextRule(5));
-        ds.stateMachineRuleRejected(5);
+        assertEquals(Abi.STATE_MACHINE_DONE, ds.stateMachineNextRule(5, 2));
+        ds.stateMachineRuleRejected(5, 2);
+        assertEquals(List.of(2L), fake.nextRuleWorkers);
+        assertEquals(List.of(2L), fake.rejectedWorkers);
         assertTrue(ds.stateMachineShouldCheckInvariant(5, 0));
         ds.stateMachineFree(5);
         assertEquals(1, fake.freedStateMachines);
+    }
+
+    @Test
+    void clonesDrawThroughTheirOwnHandleAndAreReleased() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.integerValue = 4L;
+        LiveDataSource ds = source(fake);
+        DataSource clone = ds.cloneForWorker(2);
+        assertEquals(List.of(FakeLibhegel.TC), fake.clonesMade);
+        assertEquals(2L, fake.workersSet.get(FakeLibhegel.CLONE_BASE));
+        assertEquals(4, clone.generateInteger(0, 10));
+        clone.release();
+        assertEquals(List.of(FakeLibhegel.CLONE_BASE), fake.freedClones);
+        // The root handle is untouched by the clone's release.
+        assertEquals(1, fake.freedTestCases);
+    }
+
+    @Test
+    void cloneFailuresPropagateAndLeakNothing() {
+        FakeLibhegel cloneFails = new FakeLibhegel();
+        cloneFails.cloneRc = Abi.E_BACKEND;
+        assertThrows(HegelException.class, () -> source(cloneFails).cloneForWorker(0));
+        assertTrue(cloneFails.freedClones.isEmpty());
+
+        // A clone past the end of a replayed sequence is an overrun, like any other draw.
+        FakeLibhegel exhausted = new FakeLibhegel();
+        exhausted.cloneRc = Abi.E_STOP_TEST;
+        LiveDataSource ds0 = source(exhausted);
+        assertThrows(StopTest.class, () -> ds0.cloneForWorker(0));
+        assertTrue(ds0.isAborted());
+
+        FakeLibhegel workerFails = new FakeLibhegel();
+        workerFails.setWorkerFails = true;
+        assertThrows(HegelException.class, () -> source(workerFails).cloneForWorker(0));
+        // The clone was made, so it is released before the failure surfaces.
+        assertEquals(List.of(FakeLibhegel.CLONE_BASE), workerFails.freedClones);
+
+        // Cloning is a draw: it short-circuits once the case is aborted.
+        FakeLibhegel aborted = new FakeLibhegel();
+        aborted.generateIntegerRc = Abi.E_STOP_TEST;
+        LiveDataSource ds = source(aborted);
+        assertThrows(StopTest.class, () -> ds.generateInteger(0, 1));
+        assertThrows(StopTest.class, () -> ds.cloneForWorker(0));
+        assertTrue(aborted.clonesMade.isEmpty());
+    }
+
+    @Test
+    void concurrentUseOfOneHandleIsExplained() {
+        FakeLibhegel fake = new FakeLibhegel();
+        fake.poolAddRc = Abi.E_CONCURRENT_USE;
+        HegelException e = assertThrows(HegelException.class, () -> source(fake).poolAdd(3));
+        assertTrue(e.getMessage().contains("two threads"), e.getMessage());
+        assertTrue(e.getMessage().contains("ConcurrentPool"), e.getMessage());
     }
 
     @Test
@@ -112,10 +173,12 @@ class BindingErrorPathsTest {
         assertThrows(StopTest.class, () -> ds.newPool());
         assertThrows(StopTest.class, () -> ds.poolAdd(1));
         assertThrows(StopTest.class, () -> ds.poolGenerate(1, false));
-        assertThrows(StopTest.class, () -> ds.newStateMachine(List.of("r"), null, List.of(), new boolean[0], 50));
+        assertThrows(
+                StopTest.class,
+                () -> ds.newStateMachine(List.of("r"), new long[] {0}, null, List.of(), new boolean[0], 1, 1, 50));
         assertThrows(StopTest.class, () -> ds.stateMachineNextGroup(1));
-        assertThrows(StopTest.class, () -> ds.stateMachineNextRule(1));
-        assertThrows(StopTest.class, () -> ds.stateMachineRuleRejected(1));
+        assertThrows(StopTest.class, () -> ds.stateMachineNextRule(1, 0));
+        assertThrows(StopTest.class, () -> ds.stateMachineRuleRejected(1, 0));
         assertThrows(StopTest.class, () -> ds.stateMachineShouldCheckInvariant(1, 0));
         // Freeing the machine is not a draw: it must still work once the case is aborted.
         ds.stateMachineFree(1);
@@ -218,7 +281,8 @@ class BindingErrorPathsTest {
         sm.newStateMachineRc = Abi.E_INVALID_ARG;
         assertThrows(
                 IllegalArgumentException.class,
-                () -> source(sm).newStateMachine(List.of("r"), null, List.of(), new boolean[0], 50));
+                () -> source(sm)
+                        .newStateMachine(List.of("r"), new long[] {0}, null, List.of(), new boolean[0], 1, 1, 50));
 
         FakeLibhegel group = new FakeLibhegel();
         group.stateMachineNextGroupRc = Abi.E_STOP_TEST;
@@ -226,11 +290,11 @@ class BindingErrorPathsTest {
 
         FakeLibhegel next = new FakeLibhegel();
         next.stateMachineNextRuleRc = Abi.E_STOP_TEST;
-        assertThrows(StopTest.class, () -> source(next).stateMachineNextRule(1));
+        assertThrows(StopTest.class, () -> source(next).stateMachineNextRule(1, 0));
 
         FakeLibhegel rejected = new FakeLibhegel();
         rejected.stateMachineRuleRejectedRc = Abi.E_INVALID_ARG;
-        assertThrows(IllegalArgumentException.class, () -> source(rejected).stateMachineRuleRejected(1));
+        assertThrows(IllegalArgumentException.class, () -> source(rejected).stateMachineRuleRejected(1, 0));
 
         FakeLibhegel check = new FakeLibhegel();
         check.stateMachineShouldCheckInvariantRc = Abi.E_STOP_TEST;

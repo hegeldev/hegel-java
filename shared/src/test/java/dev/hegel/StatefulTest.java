@@ -161,7 +161,15 @@ class StatefulTest {
                 () -> Runner.run(
                                 Engine.get(),
                                 new Settings().database(Database.disabled()).testCases(1),
-                                tc -> tc.newStateMachine(List.of("r"), new double[] {0}, List.of(), new boolean[0], 50),
+                                tc -> tc.newStateMachine(
+                                        List.of("r"),
+                                        new long[] {0},
+                                        new double[] {0},
+                                        List.of(),
+                                        new boolean[0],
+                                        1,
+                                        1,
+                                        50),
                                 Reporter.silent())
                         .throwIfFailed());
         assertTrue(e.getMessage().toLowerCase().contains("weight"), e.getMessage());

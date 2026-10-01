@@ -200,6 +200,28 @@ public interface Libhegel {
      */
     boolean testCaseShouldCapture(long tc);
 
+    /**
+     * {@code hegel_test_case_clone}: a caller-owned handle onto an independent choice stream of
+     * the same test case. The clone shares the case's outcome and budgets (and its collections,
+     * pools and state machines, which are family-wide) but draws from its own sequence, so a clone
+     * and its source can be driven concurrently from different threads while staying
+     * deterministic under replay. Release it with {@link #testCaseFree}.
+     *
+     * <p>Cloning consumes one choice position on the source stream, so it is a draw: it returns
+     * the raw rc — {@link Abi#E_STOP_TEST} when the choice budget is exhausted (as on a replay of
+     * a shorter sequence), {@link Abi#E_CONCURRENT_USE} if the source is mid-operation on another
+     * thread, {@link Abi#E_ALREADY_COMPLETE} once the case has completed — and on OK writes the
+     * handle into {@code out[0]}.
+     */
+    int testCaseClone(long tc, long[] out);
+
+    /**
+     * {@code hegel_test_case_set_worker}: attribute the handle's engine-side output (notes and
+     * printer lines) to concurrent worker {@code workerIndex}, which must be non-negative. Blocks
+     * and clones derived from the handle afterwards inherit the attribution.
+     */
+    void testCaseSetWorker(long tc, long workerIndex);
+
     // Per-test-case draws. Each returns the raw rc.
     int generateBoolean(long tc, double p, boolean[] out);
 

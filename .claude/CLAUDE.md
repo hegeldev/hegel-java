@@ -171,26 +171,56 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   `@HegelTest`
   annotation + `HegelTestExtension` (a JUnit 5 `TestTemplateInvocationContextProvider` that drives
   the engine loop and invokes the user method per case).
-- **Stateful testing** — `Stateful.run(machine, tc)` reflects `@Rule`/`@Invariant` methods (sorted
-  by name for determinism) and registers them via `hegel_new_state_machine` as a *sequential*
-  machine (every rule in group 0, concurrency fixed at `1, 1`, worker index 0, and a per-machine
-  `step_count` — `Stateful.DEFAULT_STEP_COUNT` = 50, or the `run(machine, tc, stepCount)` overload;
-  the engine has no default). `@Rule(weight = w)` becomes the `rule_weights` array (validated
-  finite and positive in Java; `null` — the engine's all-equal default — when every rule is at 1);
-  the engine samples proportionally among the *enabled* rules, so weights are hints, and tests
-  check them per case, not in aggregate. It then drives the
-  engine's round protocol: `hegel_state_machine_next_group` opens each round (or reports
-  `HEGEL_STATE_MACHINE_DONE`, which is `INT64_MIN`), `hegel_state_machine_next_rule` hands out the
-  round's rules until the join point, a rule that fails its own assumption is reported with
-  `hegel_state_machine_rule_rejected` (and the round's STATEFUL_RULE span discarded), and at each
-  join point `hegel_state_machine_should_check_invariant` decides which invariants run — always
-  for `@Invariant(alwaysRun = true)`, sampled otherwise; the initial and final checks run every
-  invariant unconditionally. The machine handle is freed in a `finally`. An engine-level
-  `E_ASSUME` inside a rule (the data source is aborted) unwinds the whole case as invalid instead
-  of being reported as the rule's rejection. (Since engine 0.44 concurrency alone no longer marks
-  a run nondeterministic, and `HEGEL_RUN_STATUS_FAILED_NONDETERMINISTIC` is retired; this binding
-  drives machines sequentially anyway.) `Pool<T>` tracks previously generated values over
-  the engine's pool primitives so rules can reuse or consume them.
+- **Stateful testing** — `Stateful.run(machine, tc[, options])` reflects `@Rule`/`@Invariant`
+  methods (sorted by name for determinism) and registers them via `hegel_new_state_machine`:
+  `@Rule(group = "g")` names become `rule_groups` ids (0.. in first-appearance order; rules that
+  name none share `Stateful.ANONYMOUS_GROUP`, so a plain machine is all-zeros), `@Rule(weight = w)`
+  becomes the `rule_weights` array (validated finite and positive in Java; `null` — the engine's
+  all-equal default — when every rule is at 1; the engine samples proportionally among the
+  *enabled* rules, so weights are hints, and tests check them per case, not in aggregate), and
+  `Stateful.Options` carries the per-machine `step_count` (`Stateful.DEFAULT_STEP_COUNT` = 50; the
+  engine has no default) and the concurrency bounds (default `1, 1`). The engine draws the
+  concurrency level and the driver runs exactly that many workers. Two drivers share the
+  registration and the round protocol — `hegel_state_machine_next_group` opens each round on the
+  root handle (or reports `HEGEL_STATE_MACHINE_DONE`, which is `INT64_MIN`),
+  `hegel_state_machine_next_rule(worker)` hands out the round's rules until the worker's join point,
+  a rule that fails its own assumption is reported with `hegel_state_machine_rule_rejected(worker)`,
+  and at each join point `hegel_state_machine_should_check_invariant` (root handle) decides which
+  invariants run — always for `@Invariant(alwaysRun = true)`, sampled otherwise; the initial and
+  final checks run every invariant unconditionally:
+  - `maxConcurrency == 1` → the **sequential** driver, unchanged from before concurrency existed:
+    everything on the calling thread and the root handle as worker 0, one `STATEFUL_RULE` span
+    per round (discarded on rejection), `Step N: rule` notes.
+  - `maxConcurrency > 1` → the **concurrent** driver, modelled on hegel-rust's `run_concurrent_machine`
+    (even when the drawn level is 1, so a run's output format is uniform). Persistent daemon
+    worker threads (`hegel-worker-N`) live for the test case; per round the root thread notes the
+    header (`---------------- Round k: group "name" ----------------`), makes a **fresh clone per
+    worker** (`hegel_test_case_clone` + `hegel_test_case_set_worker`; cloning is a draw and can
+    return `E_STOP_TEST` on a replay, hence the raw-rc convention for `Libhegel.testCaseClone`),
+    hands each worker its clone through a queue, waits for one event per worker (the join point),
+    absorbs the workers' buffered draws/notes into the root in worker order (each line stamped
+    `[worker N +X.XXXms]` client-side — Java notes never go through `hegel_note`, so the engine's
+    own attribution is invisible here; draw names stay unique family-wide through the root's
+    synchronized name counter and are recorded plain), frees the clones, and resolves the round in
+    Rust's precedence: a control error (`LibhegelException`/`IllegalArgumentException`, or a worker
+    that exited without reporting) is rethrown first; then an overrun or an engine-level `E_ASSUME`
+    concludes the case, dropping any failures found alongside with a `Dropped concurrent failure
+    from worker N` note; otherwise the lowest worker's failure is rethrown as-is (its stack trace
+    is the worker's, so `originOf` still works) and the rest are noted as dropped. There is no
+    cancellation: a failing worker ends its own round and the others finish theirs (an overrun
+    aborts the family engine-side anyway). No spans are opened in the concurrent path (none of the
+    bindings do; the engine owns rule structure). The `Reporter` is only ever called from the
+    driving thread: verbose output of worker lines is delivered at the join. Workers are stopped
+    and joined in a `finally` before any leftover clone is freed.
+  The machine handle is freed in a `finally`. `Pool<T>` (sequential; bound to its creating handle,
+  unsynchronised) and `ConcurrentPool<T>` (one monitor across the engine call and the map update;
+  `add(tc, value)` draws through the calling rule's handle) track previously generated values over
+  the engine's pool primitives so rules can reuse or consume them. `LiveDataSource` maps
+  `E_CONCURRENT_USE` to a `HegelException` naming the fix (draw through the rule's own `TestCase`,
+  use `ConcurrentPool`). `FakeLibhegel.concurrentRounds` scripts per-worker rule queues so the
+  driver's join-point layout and every resolution path are tested deterministically
+  (`ConcurrentStatefulDriverTest`); `ConcurrentStatefulTest` covers the real engine (parallelism,
+  group exclusion, a found lost-update race, pools, blobs).
 - **Derivation** — `dev.hegel.generators.Derive` + `RecordGenerator` build generators from records,
   enums, scalars, and generic `List`/`Set`/`Optional`/`Map` by reflection.
 

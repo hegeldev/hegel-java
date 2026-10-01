@@ -91,24 +91,48 @@ interface DataSource {
 
     long poolGenerate(long poolId, boolean consume);
 
-    // Stateful testing. Machines are driven sequentially (one worker, one concurrency group).
+    // Stateful testing. The root source registers the machine, advances rounds and samples
+    // invariants; at concurrency > 1 each worker pulls its rules through its own clone.
 
-    /** {@code ruleWeights} is parallel to {@code ruleNames}, or {@code null} for equal weights. */
-    long newStateMachine(
+    /** What registering a state machine yields: its handle and the concurrency level the engine drew. */
+    record StateMachine(long id, int concurrency) {}
+
+    /**
+     * {@code ruleGroups} and {@code ruleWeights} are parallel to {@code ruleNames} ({@code null}
+     * weights = all equal); {@code invariantAlwaysCheck} is parallel to {@code invariantNames}.
+     * The engine draws the concurrency level in {@code [minConcurrency, maxConcurrency]}.
+     */
+    StateMachine newStateMachine(
             List<String> ruleNames,
+            long[] ruleGroups,
             double[] ruleWeights,
             List<String> invariantNames,
             boolean[] invariantAlwaysCheck,
+            long minConcurrency,
+            long maxConcurrency,
             int stepCount);
 
     /** Start the next round: its group id, or {@link Abi#STATE_MACHINE_DONE} when the machine is done. */
     long stateMachineNextGroup(long stateMachineId);
 
-    /** The next rule index for this round, or {@link Abi#STATE_MACHINE_DONE} at the round's join point. */
-    long stateMachineNextRule(long stateMachineId);
+    /**
+     * The next rule index for worker {@code workerIndex} this round, or {@link
+     * Abi#STATE_MACHINE_DONE} at the worker's join point.
+     */
+    long stateMachineNextRule(long stateMachineId, long workerIndex);
 
-    /** The rule most recently handed out failed an assumption: do not count it as a step. */
-    void stateMachineRuleRejected(long stateMachineId);
+    /** The rule most recently handed to worker {@code workerIndex} failed an assumption: retry the slot. */
+    void stateMachineRuleRejected(long stateMachineId, long workerIndex);
+
+    /**
+     * A source over an independent choice stream of the same test case ({@code
+     * hegel_test_case_clone}), attributed to concurrent worker {@code workerIndex}, for a worker
+     * thread to draw through. Release it with {@link #release()} once the worker is done with it.
+     */
+    DataSource cloneForWorker(long workerIndex);
+
+    /** Free the handle behind a source from {@link #cloneForWorker}. Safe once the case is aborted. */
+    void release();
 
     /** The engine's sampling decision for invariant {@code invariantIndex} at this join point. */
     boolean stateMachineShouldCheckInvariant(long stateMachineId, long invariantIndex);
