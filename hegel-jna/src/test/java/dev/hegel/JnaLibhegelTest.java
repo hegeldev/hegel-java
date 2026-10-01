@@ -74,6 +74,10 @@ class JnaLibhegelTest {
         assertThrows(HegelException.class, () -> lib.runStart(0, null));
         assertThrows(HegelException.class, () -> lib.runStartBlob(0, "blob", null));
         assertThrows(HegelException.class, () -> lib.testCaseShouldCapture(0));
+        assertThrows(HegelException.class, () -> lib.testCaseSetWorker(0, 0));
+        long[] clone = {7};
+        assertEquals(Abi.E_INVALID_HANDLE, lib.testCaseClone(0, clone));
+        assertEquals(7, clone[0]);
     }
 
     @Test

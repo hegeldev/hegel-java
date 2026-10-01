@@ -15,6 +15,10 @@ import java.util.Map;
  * shrinks like any other draw. Drawing from an empty pool rejects the current test case (as if by
  * {@code assume(false)}).
  *
+ * <p>A pool is bound to the test case it was created on and is not thread-safe: in a machine run
+ * with {@link Stateful.Options#maxConcurrency maxConcurrency} above 1, use a {@link
+ * ConcurrentPool} instead.
+ *
  * @param <T> the type of pooled values
  */
 public final class Pool<T> {

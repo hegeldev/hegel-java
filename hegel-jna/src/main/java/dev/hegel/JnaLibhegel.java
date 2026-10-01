@@ -122,6 +122,10 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_test_case_should_capture(Pointer ctx, Pointer tc, ByteByReference out);
 
+        int hegel_test_case_clone(Pointer ctx, Pointer tc, PointerByReference out);
+
+        int hegel_test_case_set_worker(Pointer ctx, Pointer tc, long workerIndex);
+
         int hegel_generate_boolean(Pointer ctx, Pointer tc, double p, byte hasForced, byte forced, ByteByReference out);
 
         int hegel_generate_integer(Pointer ctx, Pointer tc, long min, long max, LongByReference out);
@@ -546,6 +550,21 @@ final class JnaLibhegel implements Libhegel {
         ByteByReference out = new ByteByReference();
         check("hegel_test_case_should_capture", lib.hegel_test_case_should_capture(ctx(), pointer(tc), out));
         return out.getValue() != 0;
+    }
+
+    @Override
+    public int testCaseClone(long tc, long[] out) {
+        PointerByReference ref = new PointerByReference();
+        int code = lib.hegel_test_case_clone(ctx(), pointer(tc), ref);
+        if (code == Abi.OK) {
+            out[0] = address(ref.getValue());
+        }
+        return code;
+    }
+
+    @Override
+    public void testCaseSetWorker(long tc, long workerIndex) {
+        check("hegel_test_case_set_worker", lib.hegel_test_case_set_worker(ctx(), pointer(tc), workerIndex));
     }
 
     // --- draws ---

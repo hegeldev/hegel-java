@@ -43,6 +43,11 @@ final class LiveDataSource implements DataSource {
                 throw new AssumeRejected();
             case Abi.E_INVALID_ARG:
                 throw new IllegalArgumentException(nullToEmpty(lib.lastErrorMessage()));
+            case Abi.E_CONCURRENT_USE:
+                throw new HegelException("hegel_" + op
+                        + ": the test-case handle was used from two threads at once. In a concurrent"
+                        + " state machine, draw only through the TestCase handed to the rule and share"
+                        + " generated values through a ConcurrentPool.");
             default:
                 throw new HegelException(
                         "hegel_" + op + " failed (rc=" + rc + "): " + nullToEmpty(lib.lastErrorMessage()));
@@ -302,33 +307,33 @@ final class LiveDataSource implements DataSource {
     }
 
     @Override
-    public long newStateMachine(
+    public StateMachine newStateMachine(
             List<String> ruleNames,
+            long[] ruleGroups,
             double[] ruleWeights,
             List<String> invariantNames,
             boolean[] invariantAlwaysCheck,
+            long minConcurrency,
+            long maxConcurrency,
             int stepCount) {
         checkLive();
-        // Sequential: every rule in group 0 and exactly one worker, so the drawn concurrency level
-        // is always 1 and every rule/rejection call below is made on behalf of worker 0.
-        long[] groups = new long[ruleNames.size()];
         long[] id = new long[1];
         long[] concurrency = new long[1];
         translate(
                 lib.newStateMachine(
                         tc,
                         ruleNames,
-                        groups,
+                        ruleGroups,
                         ruleWeights,
                         invariantNames,
                         invariantAlwaysCheck,
-                        1,
-                        1,
+                        minConcurrency,
+                        maxConcurrency,
                         stepCount,
                         id,
                         concurrency),
                 "new_state_machine");
-        return id[0];
+        return new StateMachine(id[0], (int) concurrency[0]);
     }
 
     @Override
@@ -340,17 +345,39 @@ final class LiveDataSource implements DataSource {
     }
 
     @Override
-    public long stateMachineNextRule(long stateMachineId) {
+    public long stateMachineNextRule(long stateMachineId, long workerIndex) {
         checkLive();
         long[] index = new long[1];
-        translate(lib.stateMachineNextRule(tc, stateMachineId, 0, index), "state_machine_next_rule");
+        translate(lib.stateMachineNextRule(tc, stateMachineId, workerIndex, index), "state_machine_next_rule");
         return index[0];
     }
 
     @Override
-    public void stateMachineRuleRejected(long stateMachineId) {
+    public void stateMachineRuleRejected(long stateMachineId, long workerIndex) {
         checkLive();
-        translate(lib.stateMachineRuleRejected(tc, stateMachineId, 0), "state_machine_rule_rejected");
+        translate(lib.stateMachineRuleRejected(tc, stateMachineId, workerIndex), "state_machine_rule_rejected");
+    }
+
+    @Override
+    public DataSource cloneForWorker(long workerIndex) {
+        checkLive();
+        // Cloning consumes a choice position, so it is a draw: on a replay of a shorter sequence
+        // it reports STOP_TEST like any other draw, and the case is an overrun.
+        long[] clone = new long[1];
+        translate(lib.testCaseClone(tc, clone), "test_case_clone");
+        try {
+            lib.testCaseSetWorker(clone[0], workerIndex);
+        } catch (RuntimeException e) {
+            lib.testCaseFree(clone[0]);
+            throw e;
+        }
+        return new LiveDataSource(lib, clone[0]);
+    }
+
+    @Override
+    public void release() {
+        // Not gated on `aborted`: the clone handle is caller-owned and must be released exactly once.
+        lib.testCaseFree(tc);
     }
 
     @Override

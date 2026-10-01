@@ -6,7 +6,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -22,6 +24,18 @@ final class FakeLibhegel implements Libhegel {
     static final long TC = 0x300;
     static final long RESULT = 0x400;
     static final long STRING_GEN = 0x600;
+    /** Clone handles are {@code CLONE_BASE + n} for the n-th clone made, so they are distinct from {@link #TC}. */
+    static final long CLONE_BASE = 0x1000;
+
+    // Test-case clones (concurrent stateful workers).
+    int cloneRc = Abi.OK;
+    boolean setWorkerFails;
+    /** The source handle of each clone made, in order. */
+    final List<Long> clonesMade = new ArrayList<>();
+    /** Clone handles released through testCaseFree, in order. */
+    final List<Long> freedClones = new ArrayList<>();
+    /** The worker index each handle was attributed to. */
+    final Map<Long, Long> workersSet = new LinkedHashMap<>();
 
     String lastError = "fake error";
     String version = "0.0.0-fake";
@@ -127,9 +141,13 @@ final class FakeLibhegel implements Libhegel {
     private long nextVariableId;
     int poolGenerateRc = Abi.OK;
     Long poolGenerateValue; // null = the first added variable id (0)
-    // State machines. The fake plays the engine's sequential protocol: each round (next_group)
-    // hands out exactly one rule from `ruleSequence` (next_rule), then the join point; once the
-    // sequence is exhausted next_group reports DONE.
+    // State machines. The fake plays the engine's round protocol. Sequentially, each round
+    // (next_group) hands out exactly one rule from `ruleSequence` (next_rule), then the join
+    // point; once the sequence is exhausted next_group reports DONE. Concurrently, set
+    // `concurrentRounds`: round r hands worker w the rules `concurrentRounds[r][w]` (a missing or
+    // empty worker entry means that worker's round is over at once), and `stateMachineConcurrency`
+    // says how many workers new_state_machine reports. The protocol methods are synchronized
+    // because concurrent workers call them at the same time.
     int newStateMachineRc = Abi.OK;
     long stateMachineId = 5;
     List<String> stateMachineRules;
@@ -146,9 +164,18 @@ final class FakeLibhegel implements Libhegel {
     int stateMachineNextRuleRc = Abi.OK;
     long[] ruleSequence = {}; // the rule index handed out each round
     private int ruleIndex;
-    private boolean roundOpen;
+    long[][][] concurrentRounds; // null = the sequential protocol over ruleSequence
+    private int roundsServed;
+    private long[][] currentRound; // null = no round open
+    private int[] positions; // per worker, how far into its queue for the current round
+    /** The worker index of every next_rule call, in call order. */
+    final List<Long> nextRuleWorkers = new ArrayList<>();
+
     int stateMachineRuleRejectedRc = Abi.OK;
     int rejectedRules;
+    /** The worker index of every rule_rejected call, in call order. */
+    final List<Long> rejectedWorkers = new ArrayList<>();
+
     int stateMachineShouldCheckInvariantRc = Abi.OK;
     boolean shouldCheckInvariant = true; // the sampling decision for every invariant
     final List<Long> invariantChecksAsked = new ArrayList<>();
@@ -308,6 +335,26 @@ final class FakeLibhegel implements Libhegel {
     @Override
     public void testCaseFree(long tc) {
         freedTestCases++;
+        if (tc != TC) {
+            freedClones.add(tc);
+        }
+    }
+
+    @Override
+    public int testCaseClone(long tc, long[] out) {
+        if (cloneRc == Abi.OK) {
+            out[0] = CLONE_BASE + clonesMade.size();
+            clonesMade.add(tc);
+        }
+        return cloneRc;
+    }
+
+    @Override
+    public void testCaseSetWorker(long tc, long workerIndex) {
+        if (setWorkerFails) {
+            throw new HegelException("hegel_test_case_set_worker failed: " + lastError);
+        }
+        workersSet.put(tc, workerIndex);
     }
 
     @Override
@@ -566,27 +613,40 @@ final class FakeLibhegel implements Libhegel {
     }
 
     @Override
-    public int stateMachineNextGroup(long tc, long stateMachineId, long[] outGroupId) {
+    public synchronized int stateMachineNextGroup(long tc, long stateMachineId, long[] outGroupId) {
         if (stateMachineNextGroupRc == Abi.OK) {
-            roundOpen = ruleIndex < ruleSequence.length;
-            outGroupId[0] = roundOpen ? stateMachineGroupId : Abi.STATE_MACHINE_DONE;
+            if (concurrentRounds != null) {
+                currentRound = roundsServed < concurrentRounds.length ? concurrentRounds[roundsServed++] : null;
+            } else {
+                // Sequential: one rule for worker 0 per round.
+                currentRound = ruleIndex < ruleSequence.length ? new long[][] {{ruleSequence[ruleIndex++]}} : null;
+            }
+            positions = new int[(int) stateMachineConcurrency];
+            outGroupId[0] = currentRound != null ? stateMachineGroupId : Abi.STATE_MACHINE_DONE;
         }
         return stateMachineNextGroupRc;
     }
 
     @Override
-    public int stateMachineNextRule(long tc, long stateMachineId, long workerIndex, long[] outRuleIndex) {
+    public synchronized int stateMachineNextRule(long tc, long stateMachineId, long workerIndex, long[] outRuleIndex) {
         if (stateMachineNextRuleRc == Abi.OK) {
-            outRuleIndex[0] = roundOpen ? ruleSequence[ruleIndex++] : Abi.STATE_MACHINE_DONE;
-            roundOpen = false;
+            nextRuleWorkers.add(workerIndex);
+            int w = (int) workerIndex;
+            long[] queue = currentRound != null && w < currentRound.length ? currentRound[w] : new long[0];
+            if (positions[w] < queue.length) {
+                outRuleIndex[0] = queue[positions[w]++];
+            } else {
+                outRuleIndex[0] = Abi.STATE_MACHINE_DONE;
+            }
         }
         return stateMachineNextRuleRc;
     }
 
     @Override
-    public int stateMachineRuleRejected(long tc, long stateMachineId, long workerIndex) {
+    public synchronized int stateMachineRuleRejected(long tc, long stateMachineId, long workerIndex) {
         if (stateMachineRuleRejectedRc == Abi.OK) {
             rejectedRules++;
+            rejectedWorkers.add(workerIndex);
         }
         return stateMachineRuleRejectedRc;
     }

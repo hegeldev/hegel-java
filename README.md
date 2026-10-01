@@ -97,6 +97,34 @@ Hegel reports the minimal example showing that our sort is incorrectly dropping 
 
 The optional `"xs"` label passed to `draw` names the value in the falsifying-example output. See the [API documentation](https://javadoc.io/doc/dev.hegel/hegel) for a full tour of generators, combinators, control functions, and settings.
 
+## Stateful testing
+
+Model-based tests drive a state machine whose `@Rule` methods are the actions and whose `@Invariant`
+methods are the properties, with the engine choosing and shrinking the action sequence:
+
+```java
+Stateful.run(new IntegerStack(), tc);
+```
+
+Run the same machine with a concurrency bound to look for races: the engine draws how many worker
+threads apply the rules at once, `@Rule(group = "...")` says which rules may overlap, and a
+`ConcurrentPool` passes generated values between concurrent rules.
+
+```java
+Stateful.run(new Counter(tc), tc, Stateful.options().maxConcurrency(4));
+```
+
+See the `Stateful` Javadoc for complete sequential and concurrent examples. The concurrent one, a
+counter that loses updates under contention, is checked in as a runnable demonstration that is
+skipped unless asked for; run it from a checkout with
+
+```bash
+mvn test -pl hegel -am -Dtest=ConcurrentCounterExample -Dhegel.examples=true -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+(or `-pl hegel-jna -am` for the JNA frontend) and it fails with a report of the rounds and the
+worker-stamped rule and draw lines that led to the lost update.
+
 ## Using Hegel as a library
 
 Frontends for other JVM languages (or custom runners) use `Hegel.run` instead of `Hegel.test`. It

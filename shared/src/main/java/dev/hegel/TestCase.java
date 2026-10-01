@@ -8,9 +8,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -40,16 +40,58 @@ public final class TestCase {
     private final boolean reporting;
 
     private final Reporter reporter;
+    /**
+     * The root handle of this test case, whose draw-name counter every handle of the case shares:
+     * {@code this} for the root, the root for a worker handle (see {@link #forWorker}).
+     */
+    private final TestCase root;
+    /** The concurrent worker this is a per-round handle for, or {@code -1} for the root. */
+    private final int worker;
+    /** Reference instant for a worker handle's line stamps ({@link System#nanoTime()}). */
+    private final long startNanos;
+
     private final Map<String, Object> draws = new LinkedHashMap<>();
     private final List<String> notes = new ArrayList<>();
-    /** The recorded draws and notes in report order, each as the reporter call that replays it. */
-    private final List<Consumer<Reporter>> events = new ArrayList<>();
-    /** Uses per draw name, for numbering repeats ({@code x}, {@code x_2}, ...; {@code draw_N}). */
+    /**
+     * The recorded draws and notes in report order. On a worker handle this is the round's
+     * buffer, absorbed by the root at the join point ({@link #absorb}).
+     */
+    private final List<Event> events = new ArrayList<>();
+    /**
+     * Uses per draw name, for numbering repeats ({@code x}, {@code x_2}, ...; {@code draw_N}).
+     * Only the root's is used; worker handles go through {@link #nextName} on the root.
+     */
     private final Map<String, Integer> nameUses = new HashMap<>();
     /** Notes made while a top-level draw is in progress; flushed after that draw's line. */
     private final List<String> pendingNotes = new ArrayList<>();
 
     private int drawDepth;
+
+    /** A recorded draw ({@code message == null}) or note, as the reporter would be told about it. */
+    private static final class Event {
+        /** The draw's name as reported (stamped with the worker prefix on a worker handle). */
+        final String name;
+        /** The draw's plain name, the key it is recorded under. */
+        final String key;
+
+        final Object value;
+        final String message;
+
+        Event(String name, String key, Object value, String message) {
+            this.name = name;
+            this.key = key;
+            this.value = value;
+            this.message = message;
+        }
+
+        void replay(Reporter reporter, boolean finalReplay) {
+            if (message != null) {
+                reporter.note(message, finalReplay);
+            } else {
+                reporter.draw(name, value, finalReplay);
+            }
+        }
+    }
 
     TestCase(DataSource source, boolean captured, Reporter reporter) {
         this(source, captured, false, reporter);
@@ -60,6 +102,84 @@ public final class TestCase {
         this.captured = captured;
         this.reporting = verbose;
         this.reporter = reporter;
+        this.root = this;
+        this.worker = -1;
+        this.startNanos = 0;
+    }
+
+    private TestCase(DataSource source, TestCase root, int worker, long startNanos) {
+        this.source = source;
+        this.captured = root.captured;
+        this.reporting = root.reporting;
+        this.reporter = root.reporter;
+        this.root = root;
+        this.worker = worker;
+        this.startNanos = startNanos;
+    }
+
+    /**
+     * A handle for concurrent worker {@code worker} to draw through for one round of a stateful
+     * machine: an independent choice stream of the same case (see {@link
+     * DataSource#cloneForWorker}) whose draws and notes are buffered, stamped {@code [worker N
+     * +X.XXXms]} with the time since {@code startNanos}, and handed to this root at the join point
+     * by {@link #absorb}. Release it with {@link #release()} once the round is over.
+     */
+    TestCase forWorker(int worker, long startNanos) {
+        return new TestCase(source.cloneForWorker(worker), this, worker, startNanos);
+    }
+
+    /** The worker this handle belongs to, or {@code -1} for the root. */
+    int worker() {
+        return worker;
+    }
+
+    /** Free the clone handle behind a worker handle from {@link #forWorker}. */
+    void release() {
+        source.release();
+    }
+
+    /**
+     * Take over a worker handle's buffered draws and notes: record them here (on a captured
+     * execution) and hand them to the reporter (on a verbose one), in the order the worker made
+     * them. Called on the root at a join point, once the worker has finished its round, so the
+     * reporter only ever hears from the driving thread.
+     */
+    void absorb(TestCase workerHandle) {
+        for (Event event : workerHandle.events) {
+            record(event);
+        }
+        workerHandle.events.clear();
+    }
+
+    /** The stamp a worker handle's lines carry; empty on the root. */
+    private String prefix() {
+        if (worker < 0) {
+            return "";
+        }
+        double elapsedMillis = (System.nanoTime() - startNanos) / 1e6;
+        return String.format(Locale.ROOT, "[worker %d +%.3fms] ", worker, elapsedMillis);
+    }
+
+    /**
+     * Deliver a draw or note: buffered on a worker handle until the root absorbs it; on the root,
+     * kept for the report when captured and reported live when verbose.
+     */
+    private void record(Event event) {
+        if (worker >= 0) {
+            events.add(event);
+            return;
+        }
+        if (captured) {
+            events.add(event);
+            if (event.message != null) {
+                notes.add(event.message);
+            } else {
+                draws.put(event.key, event.value);
+            }
+        }
+        if (reporting) {
+            event.replay(reporter, false);
+        }
     }
 
     /**
@@ -112,14 +232,8 @@ public final class TestCase {
         }
         if (top) {
             if (captured || reporting) {
-                String name = displayName(label);
-                if (captured) {
-                    draws.put(name, value);
-                    events.add(r -> r.draw(name, value, true));
-                }
-                if (reporting) {
-                    reporter.draw(name, value, false);
-                }
+                String name = root.nextName(label);
+                record(new Event(prefix() + name, name, value, null));
             }
             flushPendingNotes();
         }
@@ -129,9 +243,10 @@ public final class TestCase {
     /**
      * The name a top-level draw reports under: a label prints bare the first time and numbered from
      * its second use ({@code x}, {@code x_2}, ...); an unlabelled draw is {@code draw_N}, counting
-     * unlabelled draws only.
+     * unlabelled draws only. Names are unique across the whole case — worker handles number
+     * through the root — hence synchronized: concurrent workers name their draws at the same time.
      */
-    private String displayName(String label) {
+    private synchronized String nextName(String label) {
         String base = label != null ? label : "draw";
         int uses = nameUses.merge(base, 1, Integer::sum);
         if (label == null) {
@@ -148,13 +263,7 @@ public final class TestCase {
     }
 
     private void emitNote(String message) {
-        if (captured) {
-            notes.add(message);
-            events.add(r -> r.note(message, true));
-        }
-        if (reporting) {
-            reporter.note(message, false);
-        }
+        record(new Event(null, null, null, prefix() + message));
     }
 
     /**
@@ -394,25 +503,36 @@ public final class TestCase {
         return source.poolGenerate(poolId, consume);
     }
 
-    long newStateMachine(
+    DataSource.StateMachine newStateMachine(
             List<String> ruleNames,
+            long[] ruleGroups,
             double[] ruleWeights,
             List<String> invariantNames,
             boolean[] invariantAlwaysCheck,
+            long minConcurrency,
+            long maxConcurrency,
             int stepCount) {
-        return source.newStateMachine(ruleNames, ruleWeights, invariantNames, invariantAlwaysCheck, stepCount);
+        return source.newStateMachine(
+                ruleNames,
+                ruleGroups,
+                ruleWeights,
+                invariantNames,
+                invariantAlwaysCheck,
+                minConcurrency,
+                maxConcurrency,
+                stepCount);
     }
 
     long stateMachineNextGroup(long stateMachineId) {
         return source.stateMachineNextGroup(stateMachineId);
     }
 
-    long stateMachineNextRule(long stateMachineId) {
-        return source.stateMachineNextRule(stateMachineId);
+    long stateMachineNextRule(long stateMachineId, long workerIndex) {
+        return source.stateMachineNextRule(stateMachineId, workerIndex);
     }
 
-    void stateMachineRuleRejected(long stateMachineId) {
-        source.stateMachineRuleRejected(stateMachineId);
+    void stateMachineRuleRejected(long stateMachineId, long workerIndex) {
+        source.stateMachineRuleRejected(stateMachineId, workerIndex);
     }
 
     boolean stateMachineShouldCheckInvariant(long stateMachineId, long invariantIndex) {
@@ -440,8 +560,8 @@ public final class TestCase {
 
     /** Hand the recorded draws and notes to {@code reporter}, in report order, flagged as a replay. */
     void replayTo(Reporter reporter) {
-        for (Consumer<Reporter> event : events) {
-            event.accept(reporter);
+        for (Event event : events) {
+            event.replay(reporter, true);
         }
     }
 
