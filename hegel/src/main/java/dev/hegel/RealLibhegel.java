@@ -373,7 +373,7 @@ final class RealLibhegel implements Libhegel {
                 linker,
                 lookup,
                 "hegel_string_generator_regex",
-                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_BOOLEAN, ADDRESS, ADDRESS));
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, JAVA_BOOLEAN, ADDRESS, ADDRESS));
         this.stringGeneratorEmail =
                 h(linker, lookup, "hegel_string_generator_email", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.stringGeneratorUrl =
@@ -1030,8 +1030,17 @@ final class RealLibhegel implements Libhegel {
     @Override
     public int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out) {
         try (Arena arena = Arena.ofConfined()) {
+            // The pattern crosses as a length-delimited UTF-8 buffer (libhegel 0.45), so it may
+            // contain NUL, which Python's `re` accepts.
+            byte[] bytes = utf8OrNull(pattern);
             MemorySegment outSeg = arena.allocate(ADDRESS);
-            int code = rc(stringGeneratorRegex, cstr(arena, pattern), fullmatch, segment(alphabet), outSeg);
+            int code = rc(
+                    stringGeneratorRegex,
+                    bytesOrNull(arena, bytes),
+                    bytes == null ? 0L : (long) bytes.length,
+                    fullmatch,
+                    segment(alphabet),
+                    outSeg);
             out[0] = outSeg.get(ADDRESS, 0).address();
             return code;
         }

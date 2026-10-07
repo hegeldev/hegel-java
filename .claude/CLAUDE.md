@@ -130,7 +130,9 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   the printing reporter prints it as `note: …`). A failure whose origin has no capture is an
   internal error. `Settings.reproduceFailure` drives the same loop over `hegel_run_start_blob`
   (the engine replays until a replay fails, under its budget): PASSED → `Runner.STALE_BLOB`
-  `HegelException`, ERROR → "blob is not valid" `HegelException`. There is no Java-side flaky
+  `HegelException`, ERROR → "blob replay ended in an error" `HegelException`; a blob the
+  engine cannot decode fails `hegel_run_start_blob` itself (0.44.1+) and surfaces as the binding's
+  `HegelException` with the engine's "could not be decoded" message. There is no Java-side flaky
   detection any more: the engine handles nondeterminism per `nondeterminismStrictness`
   (`NondeterminismStrictness.QUIET`/`WARN` confirm-by-replay and report with a caveat; `ERROR`
   aborts the run, surfacing as the engine's own `Flaky test detected` message). The runner returns a `RunReport` (status, client-side `RunStatistics` counted

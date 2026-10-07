@@ -82,7 +82,7 @@ class ReproduceFailureTest {
                 HegelException.class,
                 () -> Hegel.test(
                         FAILING, new Settings().database(Database.disabled()).reproduceFailure("!!!")));
-        assertTrue(e.getMessage().contains("not valid"), e.getMessage());
+        assertTrue(e.getMessage().contains("could not be decoded"), e.getMessage());
     }
 
     @Test

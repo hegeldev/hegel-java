@@ -182,7 +182,12 @@ final class JnaLibhegel implements Libhegel {
                 PointerByReference out);
 
         int hegel_string_generator_regex(
-                Pointer ctx, String pattern, byte fullmatch, Pointer alphabet, PointerByReference out);
+                Pointer ctx,
+                Pointer pattern,
+                long patternLen,
+                byte fullmatch,
+                Pointer alphabet,
+                PointerByReference out);
 
         int hegel_string_generator_email(Pointer ctx, PointerByReference out);
 
@@ -811,8 +816,15 @@ final class JnaLibhegel implements Libhegel {
 
     @Override
     public int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out) {
+        byte[] bytes = utf8OrNull(pattern);
         PointerByReference outRef = new PointerByReference();
-        int code = lib.hegel_string_generator_regex(ctx(), pattern, cbool(fullmatch), pointer(alphabet), outRef);
+        int code = lib.hegel_string_generator_regex(
+                ctx(),
+                bytesOrNull(bytes),
+                bytes == null ? 0L : bytes.length,
+                cbool(fullmatch),
+                pointer(alphabet),
+                outRef);
         out[0] = address(outRef.getValue());
         return code;
     }

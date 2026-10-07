@@ -166,11 +166,11 @@ final class Runner {
                 return new RunReport(RunStatus.PASSED, counts.snapshot(), null, List.of());
             case Abi.RUN_STATUS_ERROR:
                 // The run produced no verdict on the property: a failed health check, a
-                // nondeterminism abort under ERROR strictness, an engine panic — or, on a blob
-                // replay, a blob the engine could not decode.
+                // nondeterminism abort under ERROR strictness, an engine panic. (A blob the engine
+                // cannot decode never gets this far: hegel_run_start_blob rejects it.)
                 String error = nullToEmpty(lib.runResultError(result));
                 if (replayingBlob) {
-                    throw new HegelException("reproduceFailure: the supplied blob is not valid: " + error);
+                    throw new HegelException("reproduceFailure: the blob replay ended in an error: " + error);
                 }
                 return new RunReport(RunStatus.ERROR, counts.snapshot(), error, List.of());
             default:

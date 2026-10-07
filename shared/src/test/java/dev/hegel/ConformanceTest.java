@@ -214,6 +214,13 @@ class ConformanceTest {
     }
 
     @Test
+    void regexPatternsMayContainNul() {
+        // The pattern crosses the ABI as a length-delimited buffer (libhegel 0.45), so a NUL in
+        // it is generated, not replaced by U+FFFD.
+        assertAllExamples(fromRegex("a\0b"), s -> s.equals("a\0b"));
+    }
+
+    @Test
     void temporalGeneratorsProduceJavaTimeTypes() {
         // Typed (not strings): the engine's offset-free output parses into java.time values, so a draw
         // arriving here at all means it round-tripped through the type's parser.
