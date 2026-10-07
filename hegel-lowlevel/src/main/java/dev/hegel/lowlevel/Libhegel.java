@@ -165,9 +165,11 @@ public interface Libhegel {
     /**
      * {@code hegel_run_start_blob}: start a run that replays a reproduce blob until a replay fails
      * (under the engine's bounded budget) instead of exploring. Driven exactly like a run from
-     * {@link #runStart}: a reproducing replay is the run's failure, a run with no failures means
-     * the blob is stale, and an undecodable blob surfaces as the run's error from {@link
-     * #runResultError}. {@code output} has the same contract as in {@link #runStart}.
+     * {@link #runStart}: a reproducing replay is the run's failure and a run with no failures
+     * means the blob is stale. A blob the engine cannot decode (corrupt, or from an incompatible
+     * engine version) fails the call itself with {@code HEGEL_E_INVALID_ARG}, which the binding
+     * throws as a {@link LibhegelException} carrying the engine's message; no run is started.
+     * {@code output} has the same contract as in {@link #runStart}.
      */
     long runStartBlob(long settings, String blob, Consumer<String> output);
 
@@ -274,6 +276,10 @@ public interface Libhegel {
             String excludeCharacters,
             long[] out);
 
+    /**
+     * {@code hegel_string_generator_regex}. The pattern crosses as a length-delimited UTF-8 buffer,
+     * so it may contain the NUL character, which Python's {@code re} accepts.
+     */
     int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out);
 
     int stringGeneratorEmail(long[] out);

@@ -227,19 +227,42 @@ class JnaLibhegelTest {
     }
 
     @Test
-    void blobRunWithDefaultOutputStartsAndReportsTheBadBlob() {
+    void blobRunWithDefaultOutputReplaysTheBlob() {
         JnaLibhegel lib = real();
+        RunReport report = Hegel.run(
+                tc -> {
+                    tc.draw(Generators.integers(), "x");
+                    throw new AssertionError("boom");
+                },
+                new Settings().database(Database.disabled()).seed(1),
+                Reporter.silent());
+        String blob = report.failures().get(0).reproduceBlob().orElseThrow();
         long s = newSettings(lib);
-        // A null output callback leaves the run's output on stderr; the garbage blob surfaces as
-        // the run's error once it is pumped dry.
-        long run = lib.runStartBlob(s, "not-a-blob!!!", null);
+        lib.settingsDatabase(s, "");
+        // A null output callback leaves the run's output on stderr. Marking every replay valid
+        // pumps the run dry without a failure, which is the engine's "stale blob" verdict.
+        long run = lib.runStartBlob(s, blob, null);
         assertNotEquals(0, run);
-        assertEquals(0, lib.nextTestCase(run));
+        long tc;
+        while ((tc = lib.nextTestCase(run)) != 0) {
+            assertEquals(Abi.OK, lib.markComplete(tc, Abi.STATUS_VALID, null));
+            lib.testCaseFree(tc);
+        }
         long result = lib.runResult(run);
-        assertEquals(Abi.RUN_STATUS_ERROR, lib.runResultStatus(result));
-        assertNotNull(lib.runResultError(result));
+        assertEquals(Abi.RUN_STATUS_PASSED, lib.runResultStatus(result));
         lib.runResultFree(result);
         lib.runFree(run);
+        lib.settingsFree(s);
+    }
+
+    @Test
+    void undecodableBlobRunIsRejectedBeforeItStarts() {
+        JnaLibhegel lib = real();
+        long s = newSettings(lib);
+        // Since libhegel 0.44.1 hegel_run_start_blob rejects a blob it cannot decode with
+        // E_INVALID_ARG instead of starting a run that ends in an error.
+        HegelException e = assertThrows(HegelException.class, () -> lib.runStartBlob(s, "not-a-blob!!!", null));
+        assertTrue(e.getMessage().contains("could not be decoded"), e.getMessage());
         lib.settingsFree(s);
     }
 
@@ -254,5 +277,17 @@ class JnaLibhegelTest {
         assertEquals(Abi.OK, lib.stringGeneratorRegex("[a-z]+", true, alphabet[0], regex));
         lib.stringGeneratorFree(regex[0]);
         lib.stringGeneratorFree(alphabet[0]);
+    }
+
+    @Test
+    void regexPatternCrossesAsALengthDelimitedBuffer() {
+        // A NUL inside the pattern must survive the call (0.45 takes pointer + byte length), and
+        // a null pattern is the engine's E_INVALID_ARG rather than a crash.
+        JnaLibhegel lib = real();
+        long[] regex = new long[1];
+        assertEquals(Abi.OK, lib.stringGeneratorRegex("a\0b", true, 0, regex));
+        assertTrue(regex[0] != 0);
+        lib.stringGeneratorFree(regex[0]);
+        assertEquals(Abi.E_INVALID_ARG, lib.stringGeneratorRegex(null, true, 0, new long[1]));
     }
 }

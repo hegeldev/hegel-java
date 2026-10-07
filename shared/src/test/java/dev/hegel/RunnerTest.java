@@ -320,15 +320,14 @@ class RunnerTest {
     }
 
     @Test
-    void reproduceFailureRejectsAnInvalidBlob() {
-        // An undecodable blob surfaces as the blob run's error.
+    void reproduceFailureSurfacesAnErroredReplay() {
         FakeLibhegel fake = new FakeLibhegel();
         fake.runStatus = Abi.RUN_STATUS_ERROR;
-        fake.runError = "corrupt";
+        fake.runError = "engine panicked";
         HegelException e =
                 assertThrows(HegelException.class, () -> run(fake, new Settings().reproduceFailure("???"), tc -> {}));
-        assertTrue(e.getMessage().contains("not valid"), e.getMessage());
-        assertTrue(e.getMessage().contains("corrupt"), e.getMessage());
+        assertTrue(e.getMessage().contains("ended in an error"), e.getMessage());
+        assertTrue(e.getMessage().contains("engine panicked"), e.getMessage());
     }
 
     @Test
