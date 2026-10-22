@@ -72,9 +72,12 @@ final class RealLibhegel implements Libhegel {
     private static final StructLayout DATETIME_LAYOUT =
             MemoryLayout.structLayout(DATE_LAYOUT.withName("date"), TIME_LAYOUT.withName("time"));
 
-    // struct hegel_generate_bytes_result_t / hegel_generate_string_result_t { T* data; size_t len; }
-    private static final StructLayout BUFFER_RESULT_LAYOUT =
+    // struct hegel_string_t { const char *data; size_t len; } — the shape every string crosses in
+    // since libhegel 0.46 (by value, or by nullable pointer where absent is meaningful), shared by
+    // hegel_owned_string_t and hegel_generate_bytes_result_t.
+    private static final StructLayout STRING_LAYOUT =
             MemoryLayout.structLayout(ADDRESS.withName("data"), JAVA_LONG.withName("len"));
+    private static final long LEN_OFFSET = ADDRESS.byteSize();
 
     private static final FunctionDescriptor OUTPUT_CALLBACK_DESC =
             FunctionDescriptor.ofVoid(ADDRESS, ADDRESS, JAVA_LONG);
@@ -131,7 +134,7 @@ final class RealLibhegel implements Libhegel {
     private final MethodHandle generateBytes;
     private final MethodHandle generateBytesResultFree;
     private final MethodHandle generateString;
-    private final MethodHandle generateStringResultFree;
+    private final MethodHandle ownedStringFree;
     private final MethodHandle generateDate;
     private final MethodHandle generateTime;
     private final MethodHandle generateDatetime;
@@ -183,7 +186,9 @@ final class RealLibhegel implements Libhegel {
 
         // rc(ctx, args...) descriptors; the leading JAVA_INT is the hegel_result_t return.
         this.contextNew = h(linker, lookup, "hegel_context_new", FunctionDescriptor.of(ADDRESS));
-        this.contextLastError = h(linker, lookup, "hegel_context_last_error", FunctionDescriptor.of(ADDRESS, ADDRESS));
+        // Returns a hegel_string_t by value, so the downcall takes a SegmentAllocator first.
+        this.contextLastError =
+                h(linker, lookup, "hegel_context_last_error", FunctionDescriptor.of(STRING_LAYOUT, ADDRESS));
         this.settingsNew = h(linker, lookup, "hegel_settings_new", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.settingsFree = h(linker, lookup, "hegel_settings_free", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.settingsSetBackend = h(
@@ -270,7 +275,7 @@ final class RealLibhegel implements Libhegel {
                 linker,
                 lookup,
                 "hegel_run_start_blob",
-                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, STRING_LAYOUT, ADDRESS, ADDRESS, ADDRESS));
         this.nextTestCase =
                 h(linker, lookup, "hegel_next_test_case", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS));
         this.runResult =
@@ -282,7 +287,7 @@ final class RealLibhegel implements Libhegel {
                 linker,
                 lookup,
                 "hegel_test_case_from_blob",
-                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, STRING_LAYOUT, ADDRESS, ADDRESS, ADDRESS));
         this.testCaseFree =
                 h(linker, lookup, "hegel_test_case_free", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.testCaseShouldCapture = h(
@@ -336,8 +341,8 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_generate_string",
                 FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS));
-        this.generateStringResultFree = h(
-                linker, lookup, "hegel_generate_string_result_free", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
+        this.ownedStringFree =
+                h(linker, lookup, "hegel_owned_string_free", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.generateDate = h(
                 linker,
                 lookup,
@@ -367,13 +372,25 @@ final class RealLibhegel implements Libhegel {
                 lookup,
                 "hegel_string_generator_text",
                 FunctionDescriptor.of(
-                        JAVA_INT, ADDRESS, JAVA_LONG, JAVA_LONG, ADDRESS, JAVA_INT, JAVA_INT, ADDRESS, JAVA_LONG,
-                        ADDRESS, JAVA_LONG, ADDRESS, JAVA_LONG, ADDRESS, JAVA_LONG, ADDRESS));
+                        JAVA_INT,
+                        ADDRESS,
+                        JAVA_LONG,
+                        JAVA_LONG,
+                        ADDRESS,
+                        JAVA_INT,
+                        JAVA_INT,
+                        ADDRESS,
+                        JAVA_LONG,
+                        ADDRESS,
+                        JAVA_LONG,
+                        STRING_LAYOUT,
+                        STRING_LAYOUT,
+                        ADDRESS));
         this.stringGeneratorRegex = h(
                 linker,
                 lookup,
                 "hegel_string_generator_regex",
-                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_LONG, JAVA_BOOLEAN, ADDRESS, ADDRESS));
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, STRING_LAYOUT, JAVA_BOOLEAN, ADDRESS, ADDRESS));
         this.stringGeneratorEmail =
                 h(linker, lookup, "hegel_string_generator_email", FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS));
         this.stringGeneratorUrl =
@@ -449,7 +466,7 @@ final class RealLibhegel implements Libhegel {
                 linker,
                 lookup,
                 "hegel_target",
-                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_DOUBLE, ADDRESS));
+                FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS, JAVA_DOUBLE, STRING_LAYOUT));
         this.markComplete = h(
                 linker,
                 lookup,
@@ -527,15 +544,52 @@ final class RealLibhegel implements Libhegel {
         }
     }
 
-    private static MemorySegment cstr(Arena a, String s) {
-        return s == null ? MemorySegment.NULL : a.allocateFrom(s);
+    /**
+     * A by-value {@code hegel_string_t} of {@code s}'s UTF-8 bytes. {@code null} crosses as {@code
+     * {NULL, 0}}, which the engine reads as an empty string (a zero length accepts any pointer).
+     */
+    private static MemorySegment str(Arena a, String s) {
+        MemorySegment seg = a.allocate(STRING_LAYOUT); // zeroed: {NULL, 0}
+        if (s != null) {
+            byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
+            MemorySegment data = a.allocate(Math.max(bytes.length, 1));
+            MemorySegment.copy(bytes, 0, data, JAVA_BYTE, 0, bytes.length);
+            seg.set(ADDRESS, 0, data);
+            seg.set(JAVA_LONG, LEN_OFFSET, bytes.length);
+        }
+        return seg;
     }
 
-    static String readCString(MemorySegment ptr) {
-        if (ptr == null || ptr.address() == 0) {
-            return null;
+    /** A nullable {@code const hegel_string_t*}: {@code null} maps to NULL (absent), {@code ""} to present-and-empty. */
+    private static MemorySegment strPtr(Arena a, String s) {
+        return s == null ? MemorySegment.NULL : str(a, s);
+    }
+
+    /** A NULL-distinct {@code hegel_string_t[]}: {@code null} maps to NULL, an empty list to a valid pointer. */
+    private static MemorySegment strArray(Arena a, List<String> strings) {
+        if (strings == null) {
+            return MemorySegment.NULL;
         }
-        return ptr.reinterpret(Long.MAX_VALUE).getString(0, StandardCharsets.UTF_8);
+        MemorySegment array = a.allocate(STRING_LAYOUT, Math.max(strings.size(), 1));
+        for (int i = 0; i < strings.size(); i++) {
+            MemorySegment.copy(
+                    str(a, strings.get(i)), 0, array, i * STRING_LAYOUT.byteSize(), STRING_LAYOUT.byteSize());
+        }
+        return array;
+    }
+
+    /**
+     * Read a {@code hegel_string_t} the engine filled in ({@code len} bytes of UTF-8, interior NULs
+     * included). A NULL {@code data} pointer reads as {@code null}.
+     */
+    static String readString(MemorySegment string) {
+        return string.get(ADDRESS, 0).address() == 0 ? null : new String(copyBuffer(string), StandardCharsets.UTF_8);
+    }
+
+    /** Read through a {@code const hegel_string_t*} out-slot: NULL (absent) reads as {@code null}. */
+    static String readStringPtr(MemorySegment slot) {
+        MemorySegment string = slot.get(ADDRESS, 0);
+        return string.address() == 0 ? null : readString(string.reinterpret(STRING_LAYOUT.byteSize()));
     }
 
     /**
@@ -604,13 +658,17 @@ final class RealLibhegel implements Libhegel {
 
     @Override
     public void settingsDatabase(long s, String path) {
-        // libhegel copies the string during the call, so a per-call auto arena suffices.
-        check("hegel_settings_set_database", rc(settingsSetDatabase, segment(s), cstr(Arena.ofAuto(), path)));
+        // libhegel copies the string during the call, so a per-call arena suffices.
+        try (Arena arena = Arena.ofConfined()) {
+            check("hegel_settings_set_database", rc(settingsSetDatabase, segment(s), strPtr(arena, path)));
+        }
     }
 
     @Override
     public void settingsDatabaseKey(long s, String key) {
-        check("hegel_settings_set_database_key", rc(settingsSetDatabaseKey, segment(s), cstr(Arena.ofAuto(), key)));
+        try (Arena arena = Arena.ofConfined()) {
+            check("hegel_settings_set_database_key", rc(settingsSetDatabaseKey, segment(s), strPtr(arena, key)));
+        }
     }
 
     @Override
@@ -679,7 +737,7 @@ final class RealLibhegel implements Libhegel {
         Arena arena = Arena.ofConfined();
         MemorySegment callback = output == null ? MemorySegment.NULL : upcallStub(arena, output);
         MemorySegment out = arena.allocate(ADDRESS);
-        int code = rc(runStartBlob, segment(settings), cstr(arena, blob), callback, MemorySegment.NULL, out);
+        int code = rc(runStartBlob, segment(settings), str(arena, blob), callback, MemorySegment.NULL, out);
         if (code != Abi.OK) {
             arena.close();
             throw new HegelException("hegel_run_start_blob failed (rc="
@@ -725,7 +783,7 @@ final class RealLibhegel implements Libhegel {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment callback = output == null ? MemorySegment.NULL : upcallStub(arena, output);
             MemorySegment outSeg = arena.allocate(ADDRESS);
-            int code = rc(testCaseFromBlob, segment(settings), cstr(arena, blob), callback, MemorySegment.NULL, outSeg);
+            int code = rc(testCaseFromBlob, segment(settings), str(arena, blob), callback, MemorySegment.NULL, outSeg);
             if (code == Abi.OK) {
                 out[0] = outSeg.get(ADDRESS, 0).address();
             }
@@ -816,7 +874,7 @@ final class RealLibhegel implements Libhegel {
     @Override
     public int generateBytes(long tc, long minSize, long maxSize, byte[][] out) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment result = arena.allocate(BUFFER_RESULT_LAYOUT);
+            MemorySegment result = arena.allocate(STRING_LAYOUT);
             int code = rc(generateBytes, segment(tc), minSize, maxSize, result);
             if (code == Abi.OK) {
                 out[0] = copyBuffer(result);
@@ -829,20 +887,22 @@ final class RealLibhegel implements Libhegel {
     @Override
     public int generateString(long tc, long generator, String[] out) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment result = arena.allocate(BUFFER_RESULT_LAYOUT);
+            // An owned string: {data, len} plus a NUL the length excludes, released with
+            // hegel_owned_string_free once copied out.
+            MemorySegment result = arena.allocate(STRING_LAYOUT);
             int code = rc(generateString, segment(tc), segment(generator), result);
             if (code == Abi.OK) {
                 out[0] = new String(copyBuffer(result), StandardCharsets.UTF_8);
-                check("hegel_generate_string_result_free", rc(generateStringResultFree, result));
+                check("hegel_owned_string_free", rc(ownedStringFree, result));
             }
             return code;
         }
     }
 
-    /** Copy an engine-allocated {@code {data, len}} buffer out before it is freed. */
+    /** Copy the {@code len} bytes an engine-filled {@code {data, len}} struct points at. */
     private static byte[] copyBuffer(MemorySegment result) {
         MemorySegment data = result.get(ADDRESS, 0);
-        long len = result.get(JAVA_LONG, ADDRESS.byteSize());
+        long len = result.get(JAVA_LONG, LEN_OFFSET);
         return data.reinterpret(len).toArray(JAVA_BYTE);
     }
 
@@ -974,26 +1034,20 @@ final class RealLibhegel implements Libhegel {
             String excludeCharacters,
             long[] out) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment categoriesSeg = cstrArray(arena, categories);
-            MemorySegment excludeSeg = cstrArray(arena, excludeCategories);
-            byte[] include = utf8OrNull(includeCharacters);
-            byte[] exclude = utf8OrNull(excludeCharacters);
             MemorySegment outSeg = arena.allocate(ADDRESS);
             int code = rc(
                     stringGeneratorText,
                     minSize,
                     maxSize,
-                    cstr(arena, codec),
+                    strPtr(arena, codec),
                     (int) minCodepoint,
                     (int) maxCodepoint,
-                    categoriesSeg,
+                    strArray(arena, categories),
                     categories == null ? 0L : (long) categories.size(),
-                    excludeSeg,
+                    strArray(arena, excludeCategories),
                     excludeCategories == null ? 0L : (long) excludeCategories.size(),
-                    bytesOrNull(arena, include),
-                    include == null ? 0L : (long) include.length,
-                    bytesOrNull(arena, exclude),
-                    exclude == null ? 0L : (long) exclude.length,
+                    str(arena, includeCharacters),
+                    str(arena, excludeCharacters),
                     outSeg);
             // Read the (zero-initialised) out slot unconditionally: callers check the return code
             // before using it.
@@ -1002,45 +1056,13 @@ final class RealLibhegel implements Libhegel {
         }
     }
 
-    private static byte[] utf8OrNull(String s) {
-        return s == null ? null : s.getBytes(StandardCharsets.UTF_8);
-    }
-
-    private static MemorySegment bytesOrNull(Arena arena, byte[] bytes) {
-        if (bytes == null) {
-            return MemorySegment.NULL;
-        }
-        MemorySegment seg = arena.allocate(Math.max(bytes.length, 1));
-        MemorySegment.copy(bytes, 0, seg, JAVA_BYTE, 0, bytes.length);
-        return seg;
-    }
-
-    /** A NULL-distinct {@code char**}: {@code null} maps to NULL, an empty list to a valid pointer. */
-    private static MemorySegment cstrArray(Arena arena, List<String> strings) {
-        if (strings == null) {
-            return MemorySegment.NULL;
-        }
-        MemorySegment array = arena.allocate(ADDRESS, Math.max(strings.size(), 1));
-        for (int i = 0; i < strings.size(); i++) {
-            array.setAtIndex(ADDRESS, i, cstr(arena, strings.get(i)));
-        }
-        return array;
-    }
-
     @Override
     public int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out) {
         try (Arena arena = Arena.ofConfined()) {
-            // The pattern crosses as a length-delimited UTF-8 buffer (libhegel 0.45), so it may
-            // contain NUL, which Python's `re` accepts.
-            byte[] bytes = utf8OrNull(pattern);
+            // The pattern crosses as a length-delimited string, so it may contain NUL, which
+            // Python's `re` accepts.
             MemorySegment outSeg = arena.allocate(ADDRESS);
-            int code = rc(
-                    stringGeneratorRegex,
-                    bytesOrNull(arena, bytes),
-                    bytes == null ? 0L : (long) bytes.length,
-                    fullmatch,
-                    segment(alphabet),
-                    outSeg);
+            int code = rc(stringGeneratorRegex, str(arena, pattern), fullmatch, segment(alphabet), outSeg);
             out[0] = outSeg.get(ADDRESS, 0).address();
             return code;
         }
@@ -1109,7 +1131,9 @@ final class RealLibhegel implements Libhegel {
 
     @Override
     public int collectionReject(long tc, long id, String why) {
-        return rc(collectionReject, segment(tc), id, cstr(Arena.ofAuto(), why));
+        try (Arena arena = Arena.ofConfined()) {
+            return rc(collectionReject, segment(tc), id, strPtr(arena, why));
+        }
     }
 
     @Override
@@ -1150,7 +1174,7 @@ final class RealLibhegel implements Libhegel {
             long[] outId,
             long[] outConcurrency) {
         try (Arena arena = Arena.ofConfined()) {
-            MemorySegment rules = cstrArray(arena, ruleNames);
+            MemorySegment rules = strArray(arena, ruleNames);
             MemorySegment groups = arena.allocate(JAVA_LONG, Math.max(ruleGroups.length, 1));
             for (int i = 0; i < ruleGroups.length; i++) {
                 groups.setAtIndex(JAVA_LONG, i, ruleGroups[i]);
@@ -1163,7 +1187,7 @@ final class RealLibhegel implements Libhegel {
                     weights.setAtIndex(JAVA_DOUBLE, i, ruleWeights[i]);
                 }
             }
-            MemorySegment invariants = cstrArray(arena, invariantNames);
+            MemorySegment invariants = strArray(arena, invariantNames);
             MemorySegment alwaysCheck = arena.allocate(JAVA_BOOLEAN, Math.max(invariantAlwaysCheck.length, 1));
             for (int i = 0; i < invariantAlwaysCheck.length; i++) {
                 alwaysCheck.setAtIndex(JAVA_BOOLEAN, i, invariantAlwaysCheck[i]);
@@ -1236,12 +1260,16 @@ final class RealLibhegel implements Libhegel {
 
     @Override
     public int target(long tc, double value, String label) {
-        return rc(target, segment(tc), value, cstr(Arena.ofAuto(), label));
+        try (Arena arena = Arena.ofConfined()) {
+            return rc(target, segment(tc), value, str(arena, label));
+        }
     }
 
     @Override
     public int markComplete(long tc, int status, String origin) {
-        return rc(markComplete, segment(tc), status, cstr(Arena.ofAuto(), origin));
+        try (Arena arena = Arena.ofConfined()) {
+            return rc(markComplete, segment(tc), status, strPtr(arena, origin));
+        }
     }
 
     // --- results ---
@@ -1257,7 +1285,7 @@ final class RealLibhegel implements Libhegel {
     public String runResultError(long result) {
         MemorySegment seg = Arena.ofAuto().allocate(ADDRESS);
         check("hegel_run_result_error", rc(runResultError, segment(result), seg));
-        return readCString(seg.get(ADDRESS, 0));
+        return readStringPtr(seg);
     }
 
     @Override
@@ -1269,42 +1297,53 @@ final class RealLibhegel implements Libhegel {
 
     @Override
     public String failureBlob(long result, long index) {
-        return readFailureString(result, index, failureReproductionBlob, "hegel_failure_reproduction_blob");
+        return readFailureString(result, index, failureReproductionBlob, "hegel_failure_reproduction_blob", true);
     }
 
     @Override
     public String failureOrigin(long result, long index) {
-        return readFailureString(result, index, failureOrigin, "hegel_failure_origin");
+        return readFailureString(result, index, failureOrigin, "hegel_failure_origin", false);
     }
 
     @Override
     public String failureCaveat(long result, long index) {
-        return readFailureString(result, index, failureCaveat, "hegel_failure_caveat");
+        return readFailureString(result, index, failureCaveat, "hegel_failure_caveat", true);
     }
 
-    /** Fetch the {@code index}-th failure, read one of its strings with {@code reader}, free it. */
-    private String readFailureString(long result, long index, MethodHandle reader, String op) {
-        MemorySegment failureOut = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_run_result_failure", rc(runResultFailure, segment(result), index, failureOut));
-        MemorySegment failure = failureOut.get(ADDRESS, 0);
-        MemorySegment strOut = Arena.ofAuto().allocate(ADDRESS);
-        check(op, rc(reader, failure, strOut));
-        String value = readCString(strOut.get(ADDRESS, 0));
-        check("hegel_failure_free", rc(failureFree, failure));
-        return value;
+    /**
+     * Fetch the {@code index}-th failure, read one of its strings with {@code reader}, free it. An
+     * {@code optional} string comes back through a {@code const hegel_string_t*} slot (NULL when
+     * absent); a present one is written into a {@code hegel_string_t} the caller provides.
+     */
+    private String readFailureString(long result, long index, MethodHandle reader, String op, boolean optional) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment failureOut = arena.allocate(ADDRESS);
+            check("hegel_run_result_failure", rc(runResultFailure, segment(result), index, failureOut));
+            MemorySegment failure = failureOut.get(ADDRESS, 0);
+            MemorySegment strOut = arena.allocate(optional ? ADDRESS : STRING_LAYOUT);
+            check(op, rc(reader, failure, strOut));
+            String value = optional ? readStringPtr(strOut) : readString(strOut);
+            check("hegel_failure_free", rc(failureFree, failure));
+            return value;
+        }
     }
 
     // --- diagnostics ---
 
     @Override
     public String lastErrorMessage() {
-        return readCString((MemorySegment) invoke(contextLastError, ctx()));
+        // The string borrows the context's buffer; it is copied out before the arena closes.
+        try (Arena arena = Arena.ofConfined()) {
+            return readString((MemorySegment) invoke(contextLastError, arena, ctx()));
+        }
     }
 
     @Override
     public String version() {
-        MemorySegment seg = Arena.ofAuto().allocate(ADDRESS);
-        check("hegel_version", rc(version, seg));
-        return readCString(seg.get(ADDRESS, 0));
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment seg = arena.allocate(STRING_LAYOUT);
+            check("hegel_version", rc(version, seg));
+            return readString(seg);
+        }
     }
 }
