@@ -101,7 +101,12 @@ public `Generator`/`TestCase`/`Generators`/`Hegel`/`Stateful` surface stays in `
   classpath); `Engine` (shared) is the process-wide lazy holder of the loaded shared object (with a
   test hook) — it caches only the immutable, thread-safe library, never per-test state. Both bindings keep one libhegel error
   context per thread (read back by `lastErrorMessage()`), pass date/time/datetime structs by
-  value, copy engine-allocated string/bytes buffers out and free them, and bridge the per-run
+  value, pass every string as the engine's `hegel_string_t` (`{const char *data; size_t len}`,
+  since 0.46: by value for a required string, by nullable pointer where absent is meaningful, as a
+  contiguous struct array for name lists; a Java `null` crosses as `{NULL, 0}` by value and as
+  NULL by pointer) and read strings back the same way (`readString`/`readStringPtr` in FFM,
+  `readString`/`readStringAt` in JNA; `hegel_context_last_error` returns the struct by value),
+  copy engine-allocated string/bytes buffers out and free them (`hegel_owned_string_free`), and bridge the per-run
   output callback (`hegel_output_callback_t`) to a `Consumer<String>` — an FFM upcall stub whose
   arena lives until `runFree`, or a JNA `Callback` strongly referenced until `runFree`. In the
   JNA binding, C `bool` crosses as `byte` (JNA's default boolean mapping is a 32-bit int) and

@@ -49,12 +49,19 @@ class JnaLibhegelTest {
     }
 
     @Test
-    void readCStringHandlesNullAndValue() {
-        assertNull(JnaLibhegel.readCString(null));
-        byte[] bytes = "hello\0".getBytes(StandardCharsets.UTF_8);
-        Memory value = new Memory(bytes.length);
-        value.write(0, bytes, 0, bytes.length);
-        assertEquals("hello", JnaLibhegel.readCString(value));
+    void readStringHandlesNullDataAndInteriorNul() {
+        // A zeroed struct is {NULL, 0}: absent rather than empty.
+        assertNull(JnaLibhegel.readString(new JnaLibhegel.HegelString()));
+        // A length-delimited string keeps an interior NUL and ignores the terminator.
+        byte[] bytes = "a\0b\0".getBytes(StandardCharsets.UTF_8);
+        Memory data = new Memory(bytes.length);
+        data.write(0, bytes, 0, bytes.length);
+        Memory string = new Memory(16);
+        string.setPointer(0, data);
+        string.setLong(8, 3);
+        // Through a `const hegel_string_t *`, NULL is absent and a pointer is read.
+        assertNull(JnaLibhegel.readStringAt(null));
+        assertEquals("a\0b", JnaLibhegel.readStringAt(string));
     }
 
     @Test
@@ -281,13 +288,86 @@ class JnaLibhegelTest {
 
     @Test
     void regexPatternCrossesAsALengthDelimitedBuffer() {
-        // A NUL inside the pattern must survive the call (0.45 takes pointer + byte length), and
-        // a null pattern is the engine's E_INVALID_ARG rather than a crash.
+        // A NUL inside the pattern must survive the call (the pattern crosses as a hegel_string_t:
+        // pointer + byte length), and a null pattern crosses as {NULL, 0}, which the engine reads
+        // as the empty pattern rather than crashing on it.
         JnaLibhegel lib = real();
         long[] regex = new long[1];
         assertEquals(Abi.OK, lib.stringGeneratorRegex("a\0b", true, 0, regex));
         assertTrue(regex[0] != 0);
         lib.stringGeneratorFree(regex[0]);
-        assertEquals(Abi.E_INVALID_ARG, lib.stringGeneratorRegex(null, true, 0, new long[1]));
+        assertEquals(Abi.OK, lib.stringGeneratorRegex(null, true, 0, regex));
+        assertTrue(regex[0] != 0);
+        lib.stringGeneratorFree(regex[0]);
+    }
+
+    @Test
+    void stringsRoundTripThroughTheEngine() {
+        // Strings now cross in both directions as {data, len} structs: a by-value input (the
+        // target label), a nullable pointer (mark_complete's origin, the database path), a
+        // contiguous array (state-machine names), and the by-value/by-pointer outputs the result
+        // readers decode. A failure's origin coming back as the string sent proves the round trip.
+        JnaLibhegel lib = real();
+        long s = newSettings(lib);
+        lib.settingsDatabase(s, "");
+        lib.settingsTestCases(s, 5);
+        long run = lib.runStart(s, line -> {});
+        long tc;
+        while ((tc = lib.nextTestCase(run)) != 0) {
+            long[] value = new long[1];
+            int code = lib.generateInteger(tc, 0, 10, value);
+            if (code == Abi.OK) {
+                assertEquals(Abi.OK, lib.target(tc, value[0], "héllo wörld"));
+                assertEquals(Abi.OK, lib.markComplete(tc, Abi.STATUS_INTERESTING, "origin ✓"));
+            } else {
+                assertEquals(Abi.OK, lib.markComplete(tc, Abi.STATUS_OVERRUN, null));
+            }
+            lib.testCaseFree(tc);
+        }
+        long result = lib.runResult(run);
+        assertEquals(Abi.RUN_STATUS_FAILED, lib.runResultStatus(result));
+        assertNull(lib.runResultError(result));
+        assertEquals(1, lib.runResultFailureCount(result));
+        assertEquals("origin ✓", lib.failureOrigin(result, 0));
+        assertNotNull(lib.failureBlob(result, 0));
+        assertNull(lib.failureCaveat(result, 0));
+        lib.runResultFree(result);
+        lib.runFree(run);
+        lib.settingsFree(s);
+    }
+
+    @Test
+    void stringArraysCrossAsContiguousStructs() {
+        // An empty name inside the list crosses as {NULL, 0}; a valid machine comes back, proving
+        // the engine read every entry of the contiguous hegel_string_t array.
+        JnaLibhegel lib = real();
+        long s = newSettings(lib);
+        lib.settingsDatabase(s, "");
+        lib.settingsTestCases(s, 1);
+        long run = lib.runStart(s, line -> {});
+        long tc;
+        while ((tc = lib.nextTestCase(run)) != 0) {
+            long[] id = new long[1];
+            long[] concurrency = new long[1];
+            assertEquals(
+                    Abi.OK,
+                    lib.newStateMachine(
+                            tc,
+                            List.of("rule", "", "other"),
+                            new long[] {0, 0, 0},
+                            null,
+                            List.of(),
+                            new boolean[0],
+                            1,
+                            1,
+                            1,
+                            id,
+                            concurrency));
+            lib.stateMachineFree(id[0]);
+            assertEquals(Abi.OK, lib.markComplete(tc, Abi.STATUS_VALID, null));
+            lib.testCaseFree(tc);
+        }
+        lib.runFree(run);
+        lib.settingsFree(s);
     }
 }

@@ -14,9 +14,11 @@ import dev.hegel.lowlevel.LibraryLoader;
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -47,11 +49,23 @@ class RealLibhegelTest {
     }
 
     @Test
-    void readCStringHandlesNullAndValue() {
-        assertNull(RealLibhegel.readCString(null));
-        assertNull(RealLibhegel.readCString(MemorySegment.NULL));
+    void readStringHandlesNullDataAndInteriorNul() {
         try (Arena a = Arena.ofConfined()) {
-            assertEquals("hello", RealLibhegel.readCString(a.allocateFrom("hello")));
+            // A zeroed struct is {NULL, 0}: absent rather than empty.
+            MemorySegment string = a.allocate(16);
+            assertNull(RealLibhegel.readString(string));
+            // A length-delimited string keeps an interior NUL and ignores the terminator.
+            byte[] bytes = "a\0b\0".getBytes(StandardCharsets.UTF_8);
+            MemorySegment data = a.allocate(bytes.length);
+            MemorySegment.copy(bytes, 0, data, ValueLayout.JAVA_BYTE, 0, bytes.length);
+            string.set(ValueLayout.ADDRESS, 0, data);
+            string.set(ValueLayout.JAVA_LONG, 8, 3);
+            assertEquals("a\0b", RealLibhegel.readString(string));
+            // Through a `const hegel_string_t *` slot, NULL is absent and a pointer is read.
+            MemorySegment slot = a.allocate(ValueLayout.ADDRESS);
+            assertNull(RealLibhegel.readStringPtr(slot));
+            slot.set(ValueLayout.ADDRESS, 0, string);
+            assertEquals("a\0b", RealLibhegel.readStringPtr(slot));
         }
     }
 
@@ -278,13 +292,54 @@ class RealLibhegelTest {
 
     @Test
     void regexPatternCrossesAsALengthDelimitedBuffer() {
-        // A NUL inside the pattern must survive the call (0.45 takes pointer + byte length), and
-        // a null pattern is the engine's E_INVALID_ARG rather than a crash.
+        // A NUL inside the pattern must survive the call (the pattern crosses as a hegel_string_t:
+        // pointer + byte length), and a null pattern crosses as {NULL, 0}, which the engine reads
+        // as the empty pattern rather than crashing on it.
         RealLibhegel lib = real();
         long[] regex = new long[1];
         assertEquals(Abi.OK, lib.stringGeneratorRegex("a\0b", true, 0, regex));
         assertTrue(regex[0] != 0);
         lib.stringGeneratorFree(regex[0]);
-        assertEquals(Abi.E_INVALID_ARG, lib.stringGeneratorRegex(null, true, 0, new long[1]));
+        assertEquals(Abi.OK, lib.stringGeneratorRegex(null, true, 0, regex));
+        assertTrue(regex[0] != 0);
+        lib.stringGeneratorFree(regex[0]);
+    }
+
+    @Test
+    void stringsRoundTripThroughTheEngine() {
+        // Strings now cross in both directions as {data, len} structs: a by-value input (the
+        // target label), a nullable pointer (mark_complete's origin, the database path), a
+        // contiguous array (state-machine names), and the by-value/by-pointer outputs the result
+        // readers decode. A failure's origin coming back as the string sent proves the round trip.
+        RealLibhegel lib = real();
+        assertNotNull(lib.version());
+        String message = lib.lastErrorMessage();
+        assertTrue(message == null || message.isEmpty(), String.valueOf(message));
+        long s = newSettings(lib);
+        lib.settingsDatabase(s, "");
+        lib.settingsTestCases(s, 5);
+        long run = lib.runStart(s, line -> {});
+        long tc;
+        while ((tc = lib.nextTestCase(run)) != 0) {
+            long[] value = new long[1];
+            int code = lib.generateInteger(tc, 0, 10, value);
+            if (code == Abi.OK) {
+                assertEquals(Abi.OK, lib.target(tc, value[0], "héllo wörld"));
+                assertEquals(Abi.OK, lib.markComplete(tc, Abi.STATUS_INTERESTING, "origin ✓"));
+            } else {
+                assertEquals(Abi.OK, lib.markComplete(tc, Abi.STATUS_OVERRUN, null));
+            }
+            lib.testCaseFree(tc);
+        }
+        long result = lib.runResult(run);
+        assertEquals(Abi.RUN_STATUS_FAILED, lib.runResultStatus(result));
+        assertNull(lib.runResultError(result));
+        assertEquals(1, lib.runResultFailureCount(result));
+        assertEquals("origin ✓", lib.failureOrigin(result, 0));
+        assertNotNull(lib.failureBlob(result, 0));
+        assertNull(lib.failureCaveat(result, 0));
+        lib.runResultFree(result);
+        lib.runFree(run);
+        lib.settingsFree(s);
     }
 }

@@ -5,7 +5,6 @@ import com.sun.jna.Library;
 import com.sun.jna.Memory;
 import com.sun.jna.Native;
 import com.sun.jna.Pointer;
-import com.sun.jna.StringArray;
 import com.sun.jna.Structure;
 import com.sun.jna.ptr.ByteByReference;
 import com.sun.jna.ptr.DoubleByReference;
@@ -44,8 +43,9 @@ final class JnaLibhegel implements Libhegel {
 
     JnaLibhegel(Path libraryPath) {
         try {
-            this.lib = Native.load(
-                    libraryPath.toString(), HegelNative.class, Map.of(Library.OPTION_STRING_ENCODING, "UTF-8"));
+            // Every string crosses as an explicit hegel_string_t (UTF-8 bytes plus length), so no
+            // JNA String conversion is involved.
+            this.lib = Native.load(libraryPath.toString(), HegelNative.class);
         } catch (UnsatisfiedLinkError e) {
             throw new HegelException("Failed to open libhegel at " + libraryPath + ": " + e.getMessage());
         }
@@ -55,7 +55,7 @@ final class JnaLibhegel implements Libhegel {
     interface HegelNative extends Library {
         Pointer hegel_context_new();
 
-        Pointer hegel_context_last_error(Pointer ctx);
+        HegelString.ByValue hegel_context_last_error(Pointer ctx);
 
         int hegel_settings_new(Pointer ctx, PointerByReference out);
 
@@ -73,9 +73,10 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_settings_set_report_multiple_failures(Pointer ctx, Pointer s, byte yes);
 
-        int hegel_settings_set_database(Pointer ctx, Pointer s, String path);
+        // A Structure parameter crosses as a pointer to it (NULL for null): `const hegel_string_t *`.
+        int hegel_settings_set_database(Pointer ctx, Pointer s, HegelString path);
 
-        int hegel_settings_set_database_key(Pointer ctx, Pointer s, String key);
+        int hegel_settings_set_database_key(Pointer ctx, Pointer s, HegelString key);
 
         int hegel_settings_set_phases(Pointer ctx, Pointer s, int mask);
 
@@ -97,7 +98,7 @@ final class JnaLibhegel implements Libhegel {
         int hegel_run_start_blob(
                 Pointer ctx,
                 Pointer settings,
-                String blob,
+                HegelString.ByValue blob,
                 LineCallback callback,
                 Pointer userData,
                 PointerByReference out);
@@ -113,7 +114,7 @@ final class JnaLibhegel implements Libhegel {
         int hegel_test_case_from_blob(
                 Pointer ctx,
                 Pointer settings,
-                String blob,
+                HegelString.ByValue blob,
                 LineCallback callback,
                 Pointer userData,
                 PointerByReference out);
@@ -143,13 +144,13 @@ final class JnaLibhegel implements Libhegel {
                 double smallestNonzeroMagnitude,
                 DoubleByReference out);
 
-        int hegel_generate_bytes(Pointer ctx, Pointer tc, long minSize, long maxSize, BufferResult out);
+        int hegel_generate_bytes(Pointer ctx, Pointer tc, long minSize, long maxSize, HegelString out);
 
-        int hegel_generate_bytes_result_free(Pointer ctx, BufferResult result);
+        int hegel_generate_bytes_result_free(Pointer ctx, HegelString result);
 
-        int hegel_generate_string(Pointer ctx, Pointer tc, Pointer generator, BufferResult out);
+        int hegel_generate_string(Pointer ctx, Pointer tc, Pointer generator, HegelString out);
 
-        int hegel_generate_string_result_free(Pointer ctx, BufferResult result);
+        int hegel_owned_string_free(Pointer ctx, HegelString result);
 
         int hegel_generate_date(Pointer ctx, Pointer tc, HegelDate.ByValue min, HegelDate.ByValue max, HegelDate out);
 
@@ -168,26 +169,19 @@ final class JnaLibhegel implements Libhegel {
                 Pointer ctx,
                 long minSize,
                 long maxSize,
-                String codec,
+                HegelString codec,
                 int minCodepoint,
                 int maxCodepoint,
                 Pointer categories,
                 long categoriesLen,
                 Pointer excludeCategories,
                 long excludeCategoriesLen,
-                Pointer includeCharacters,
-                long includeCharactersLen,
-                Pointer excludeCharacters,
-                long excludeCharactersLen,
+                HegelString.ByValue includeCharacters,
+                HegelString.ByValue excludeCharacters,
                 PointerByReference out);
 
         int hegel_string_generator_regex(
-                Pointer ctx,
-                Pointer pattern,
-                long patternLen,
-                byte fullmatch,
-                Pointer alphabet,
-                PointerByReference out);
+                Pointer ctx, HegelString.ByValue pattern, byte fullmatch, Pointer alphabet, PointerByReference out);
 
         int hegel_string_generator_email(Pointer ctx, PointerByReference out);
 
@@ -205,7 +199,7 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_collection_more(Pointer ctx, Pointer tc, long id, ByteByReference out);
 
-        int hegel_collection_reject(Pointer ctx, Pointer tc, long id, String why);
+        int hegel_collection_reject(Pointer ctx, Pointer tc, long id, HegelString why);
 
         int hegel_new_pool(Pointer ctx, Pointer tc, LongByReference out);
 
@@ -213,7 +207,8 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_pool_generate(Pointer ctx, Pointer tc, long poolId, byte consume, LongByReference out);
 
-        // State-machine handles cross as raw addresses (long), like every other opaque handle.
+        // State-machine handles cross as raw addresses (long), like every other opaque handle; the
+        // name lists are contiguous hegel_string_t arrays (see strArray).
         int hegel_new_state_machine(
                 Pointer ctx,
                 Pointer tc,
@@ -242,9 +237,9 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_state_machine_free(Pointer ctx, long stateMachineId);
 
-        int hegel_target(Pointer ctx, Pointer tc, double value, String label);
+        int hegel_target(Pointer ctx, Pointer tc, double value, HegelString.ByValue label);
 
-        int hegel_mark_complete(Pointer ctx, Pointer tc, int status, String origin);
+        int hegel_mark_complete(Pointer ctx, Pointer tc, int status, HegelString origin);
 
         int hegel_run_result_status(Pointer ctx, Pointer result, IntByReference out);
 
@@ -258,11 +253,13 @@ final class JnaLibhegel implements Libhegel {
 
         int hegel_failure_reproduction_blob(Pointer ctx, Pointer failure, PointerByReference out);
 
-        int hegel_failure_origin(Pointer ctx, Pointer failure, PointerByReference out);
+        // A present string is written into the caller's hegel_string_t; an optional one (blob,
+        // caveat) comes back as a `const hegel_string_t *` slot, NULL when absent.
+        int hegel_failure_origin(Pointer ctx, Pointer failure, HegelString out);
 
         int hegel_failure_caveat(Pointer ctx, Pointer failure, PointerByReference out);
 
-        int hegel_version(Pointer ctx, PointerByReference out);
+        int hegel_version(Pointer ctx, HegelString out);
     }
 
     /** {@code struct hegel_date_t { int32_t year; uint8_t month; uint8_t day; }} */
@@ -295,12 +292,29 @@ final class JnaLibhegel implements Libhegel {
         public static class ByValue extends HegelDatetime implements Structure.ByValue {}
     }
 
-    /** {@code struct hegel_generate_bytes_result_t / hegel_generate_string_result_t { T* data; size_t len; }} */
+    /**
+     * {@code struct hegel_string_t { const char *data; size_t len; }} — the shape every string
+     * crosses in since libhegel 0.46 (by value, or by pointer where absent is meaningful), shared
+     * by {@code hegel_owned_string_t} and {@code hegel_generate_bytes_result_t}. {@code len} counts
+     * UTF-8 bytes; inputs need no NUL terminator and a zero length accepts a NULL {@code data}.
+     */
     @Structure.FieldOrder({"data", "len"})
-    public static class BufferResult extends Structure {
+    public static class HegelString extends Structure {
         public Pointer data;
         public long len;
+
+        public HegelString() {}
+
+        /** A view over an engine-owned struct at {@code p}, read on construction. */
+        HegelString(Pointer p) {
+            super(p);
+            read();
+        }
+
+        public static class ByValue extends HegelString implements Structure.ByValue {}
     }
+
+    private static final int STRING_SIZE = new HegelString().size();
 
     interface OutputCallback extends Callback {
         void invoke(Pointer userData, Pointer line, long len);
@@ -359,8 +373,67 @@ final class JnaLibhegel implements Libhegel {
         }
     }
 
-    static String readCString(Pointer ptr) {
-        return ptr == null ? null : ptr.getString(0, "UTF-8");
+    /**
+     * A by-value {@code hegel_string_t} of {@code s}'s UTF-8 bytes. {@code null} crosses as {@code
+     * {NULL, 0}}, which the engine reads as an empty string. The struct holds its buffer, so the
+     * bytes stay alive as long as the struct is referenced (the call's argument list does).
+     */
+    private static HegelString.ByValue str(String s) {
+        HegelString.ByValue value = new HegelString.ByValue();
+        if (s != null) {
+            byte[] bytes = s.getBytes(StandardCharsets.UTF_8);
+            Memory buf = new Memory(Math.max(bytes.length, 1));
+            buf.write(0, bytes, 0, bytes.length);
+            value.data = buf;
+            value.len = bytes.length;
+        }
+        return value;
+    }
+
+    /** A nullable {@code const hegel_string_t*}: {@code null} maps to NULL (absent), {@code ""} to present-and-empty. */
+    private static HegelString strPtr(String s) {
+        return s == null ? null : str(s);
+    }
+
+    /**
+     * A NULL-distinct contiguous {@code hegel_string_t[]}: {@code null} maps to NULL, an empty list
+     * to a valid pointer. The structs and the bytes they point at share one allocation, so the
+     * block passed as the argument keeps everything alive for the call.
+     */
+    private static Pointer strArray(List<String> strings) {
+        if (strings == null) {
+            return null;
+        }
+        byte[][] encoded = new byte[strings.size()][];
+        long total = (long) STRING_SIZE * strings.size();
+        for (int i = 0; i < encoded.length; i++) {
+            encoded[i] = strings.get(i).getBytes(StandardCharsets.UTF_8);
+            total += encoded[i].length;
+        }
+        Memory block = new Memory(Math.max(total, 1));
+        long offset = (long) STRING_SIZE * strings.size();
+        for (int i = 0; i < encoded.length; i++) {
+            long entry = (long) STRING_SIZE * i;
+            // A zero-length string needs no bytes; NULL data is accepted with a zero length.
+            block.setPointer(entry, encoded[i].length == 0 ? null : block.share(offset));
+            block.setLong(entry + Native.POINTER_SIZE, encoded[i].length);
+            block.write(offset, encoded[i], 0, encoded[i].length);
+            offset += encoded[i].length;
+        }
+        return block;
+    }
+
+    /**
+     * Read a {@code hegel_string_t} the engine filled in ({@code len} bytes of UTF-8, interior NULs
+     * included). A NULL {@code data} pointer reads as {@code null}.
+     */
+    static String readString(HegelString string) {
+        return string.data == null ? null : new String(copyBuffer(string), StandardCharsets.UTF_8);
+    }
+
+    /** Read through a {@code const hegel_string_t*}: NULL (absent) reads as {@code null}. */
+    static String readStringAt(Pointer string) {
+        return string == null ? null : readString(new HegelString(string));
     }
 
     // --- settings ---
@@ -416,12 +489,12 @@ final class JnaLibhegel implements Libhegel {
 
     @Override
     public void settingsDatabase(long s, String path) {
-        check("hegel_settings_set_database", lib.hegel_settings_set_database(ctx(), pointer(s), path));
+        check("hegel_settings_set_database", lib.hegel_settings_set_database(ctx(), pointer(s), strPtr(path)));
     }
 
     @Override
     public void settingsDatabaseKey(long s, String key) {
-        check("hegel_settings_set_database_key", lib.hegel_settings_set_database_key(ctx(), pointer(s), key));
+        check("hegel_settings_set_database_key", lib.hegel_settings_set_database_key(ctx(), pointer(s), strPtr(key)));
     }
 
     @Override
@@ -493,7 +566,7 @@ final class JnaLibhegel implements Libhegel {
     public long runStartBlob(long settings, String blob, Consumer<String> output) {
         LineCallback callback = output == null ? null : new LineCallback(output);
         PointerByReference out = new PointerByReference();
-        int code = lib.hegel_run_start_blob(ctx(), pointer(settings), blob, callback, null, out);
+        int code = lib.hegel_run_start_blob(ctx(), pointer(settings), str(blob), callback, null, out);
         if (code != Abi.OK) {
             throw new HegelException("hegel_run_start_blob failed (rc="
                     + code
@@ -538,7 +611,7 @@ final class JnaLibhegel implements Libhegel {
         // needs to live for its duration.
         LineCallback callback = output == null ? null : new LineCallback(output);
         PointerByReference outRef = new PointerByReference();
-        int code = lib.hegel_test_case_from_blob(ctx(), pointer(settings), blob, callback, null, outRef);
+        int code = lib.hegel_test_case_from_blob(ctx(), pointer(settings), str(blob), callback, null, outRef);
         if (code == Abi.OK) {
             out[0] = address(outRef.getValue());
         }
@@ -627,7 +700,7 @@ final class JnaLibhegel implements Libhegel {
 
     @Override
     public int generateBytes(long tc, long minSize, long maxSize, byte[][] out) {
-        BufferResult result = new BufferResult();
+        HegelString result = new HegelString();
         int code = lib.hegel_generate_bytes(ctx(), pointer(tc), minSize, maxSize, result);
         if (code == Abi.OK) {
             out[0] = copyBuffer(result);
@@ -638,17 +711,19 @@ final class JnaLibhegel implements Libhegel {
 
     @Override
     public int generateString(long tc, long generator, String[] out) {
-        BufferResult result = new BufferResult();
+        // An owned string: {data, len} plus a NUL the length excludes, released with
+        // hegel_owned_string_free once copied out.
+        HegelString result = new HegelString();
         int code = lib.hegel_generate_string(ctx(), pointer(tc), pointer(generator), result);
         if (code == Abi.OK) {
             out[0] = new String(copyBuffer(result), StandardCharsets.UTF_8);
-            check("hegel_generate_string_result_free", lib.hegel_generate_string_result_free(ctx(), result));
+            check("hegel_owned_string_free", lib.hegel_owned_string_free(ctx(), result));
         }
         return code;
     }
 
-    /** Copy an engine-allocated {@code {data, len}} buffer out before it is freed. */
-    private static byte[] copyBuffer(BufferResult result) {
+    /** Copy the {@code len} bytes an engine-filled {@code {data, len}} struct points at. */
+    private static byte[] copyBuffer(HegelString result) {
         return result.data.getByteArray(0, (int) result.len);
     }
 
@@ -769,26 +844,20 @@ final class JnaLibhegel implements Libhegel {
             String includeCharacters,
             String excludeCharacters,
             long[] out) {
-        Pointer categoriesArr = cstrArray(categories);
-        Pointer excludeArr = cstrArray(excludeCategories);
-        byte[] include = utf8OrNull(includeCharacters);
-        byte[] exclude = utf8OrNull(excludeCharacters);
         PointerByReference outRef = new PointerByReference();
         int code = lib.hegel_string_generator_text(
                 ctx(),
                 minSize,
                 maxSize,
-                codec,
+                strPtr(codec),
                 (int) minCodepoint,
                 (int) maxCodepoint,
-                categoriesArr,
+                strArray(categories),
                 categories == null ? 0L : categories.size(),
-                excludeArr,
+                strArray(excludeCategories),
                 excludeCategories == null ? 0L : excludeCategories.size(),
-                bytesOrNull(include),
-                include == null ? 0L : include.length,
-                bytesOrNull(exclude),
-                exclude == null ? 0L : exclude.length,
+                str(includeCharacters),
+                str(excludeCharacters),
                 outRef);
         // Read the (null-initialised) out slot unconditionally: callers check the return code
         // before using it.
@@ -796,35 +865,12 @@ final class JnaLibhegel implements Libhegel {
         return code;
     }
 
-    private static byte[] utf8OrNull(String s) {
-        return s == null ? null : s.getBytes(StandardCharsets.UTF_8);
-    }
-
-    private static Pointer bytesOrNull(byte[] bytes) {
-        if (bytes == null) {
-            return null;
-        }
-        Memory buf = new Memory(Math.max(bytes.length, 1));
-        buf.write(0, bytes, 0, bytes.length);
-        return buf;
-    }
-
-    /** A NULL-distinct {@code char**}: {@code null} maps to NULL, an empty list to a valid pointer. */
-    private static Pointer cstrArray(List<String> strings) {
-        return strings == null ? null : new StringArray(strings.toArray(new String[0]), "UTF-8");
-    }
-
     @Override
     public int stringGeneratorRegex(String pattern, boolean fullmatch, long alphabet, long[] out) {
-        byte[] bytes = utf8OrNull(pattern);
+        // The pattern crosses as a length-delimited string, so it may contain NUL, which Python's
+        // `re` accepts.
         PointerByReference outRef = new PointerByReference();
-        int code = lib.hegel_string_generator_regex(
-                ctx(),
-                bytesOrNull(bytes),
-                bytes == null ? 0L : bytes.length,
-                cbool(fullmatch),
-                pointer(alphabet),
-                outRef);
+        int code = lib.hegel_string_generator_regex(ctx(), str(pattern), cbool(fullmatch), pointer(alphabet), outRef);
         out[0] = address(outRef.getValue());
         return code;
     }
@@ -890,7 +936,7 @@ final class JnaLibhegel implements Libhegel {
 
     @Override
     public int collectionReject(long tc, long id, String why) {
-        return lib.hegel_collection_reject(ctx(), pointer(tc), id, why);
+        return lib.hegel_collection_reject(ctx(), pointer(tc), id, strPtr(why));
     }
 
     @Override
@@ -950,11 +996,11 @@ final class JnaLibhegel implements Libhegel {
         int code = lib.hegel_new_state_machine(
                 ctx(),
                 pointer(tc),
-                cstrArray(ruleNames),
+                strArray(ruleNames),
                 groups,
                 weights,
                 ruleNames.size(),
-                cstrArray(invariantNames),
+                strArray(invariantNames),
                 alwaysCheck,
                 invariantNames.size(),
                 minConcurrency,
@@ -1013,12 +1059,12 @@ final class JnaLibhegel implements Libhegel {
 
     @Override
     public int target(long tc, double value, String label) {
-        return lib.hegel_target(ctx(), pointer(tc), value, label);
+        return lib.hegel_target(ctx(), pointer(tc), value, str(label));
     }
 
     @Override
     public int markComplete(long tc, int status, String origin) {
-        return lib.hegel_mark_complete(ctx(), pointer(tc), status, origin);
+        return lib.hegel_mark_complete(ctx(), pointer(tc), status, strPtr(origin));
     }
 
     // --- results ---
@@ -1034,7 +1080,7 @@ final class JnaLibhegel implements Libhegel {
     public String runResultError(long result) {
         PointerByReference ref = new PointerByReference();
         check("hegel_run_result_error", lib.hegel_run_result_error(ctx(), pointer(result), ref));
-        return readCString(ref.getValue());
+        return readStringAt(ref.getValue());
     }
 
     @Override
@@ -1051,7 +1097,7 @@ final class JnaLibhegel implements Libhegel {
         Pointer failure = failureOut.getValue();
         PointerByReference blobOut = new PointerByReference();
         check("hegel_failure_reproduction_blob", lib.hegel_failure_reproduction_blob(ctx(), failure, blobOut));
-        String blob = readCString(blobOut.getValue());
+        String blob = readStringAt(blobOut.getValue());
         check("hegel_failure_free", lib.hegel_failure_free(ctx(), failure));
         return blob;
     }
@@ -1061,9 +1107,9 @@ final class JnaLibhegel implements Libhegel {
         PointerByReference failureOut = new PointerByReference();
         check("hegel_run_result_failure", lib.hegel_run_result_failure(ctx(), pointer(result), index, failureOut));
         Pointer failure = failureOut.getValue();
-        PointerByReference originOut = new PointerByReference();
+        HegelString originOut = new HegelString();
         check("hegel_failure_origin", lib.hegel_failure_origin(ctx(), failure, originOut));
-        String origin = readCString(originOut.getValue());
+        String origin = readString(originOut);
         check("hegel_failure_free", lib.hegel_failure_free(ctx(), failure));
         return origin;
     }
@@ -1075,7 +1121,7 @@ final class JnaLibhegel implements Libhegel {
         Pointer failure = failureOut.getValue();
         PointerByReference caveatOut = new PointerByReference();
         check("hegel_failure_caveat", lib.hegel_failure_caveat(ctx(), failure, caveatOut));
-        String caveat = readCString(caveatOut.getValue());
+        String caveat = readStringAt(caveatOut.getValue());
         check("hegel_failure_free", lib.hegel_failure_free(ctx(), failure));
         return caveat;
     }
@@ -1084,13 +1130,14 @@ final class JnaLibhegel implements Libhegel {
 
     @Override
     public String lastErrorMessage() {
-        return readCString(lib.hegel_context_last_error(ctx()));
+        // Returned by value; the bytes borrow the context's buffer and are copied out here.
+        return readString(lib.hegel_context_last_error(ctx()));
     }
 
     @Override
     public String version() {
-        PointerByReference ref = new PointerByReference();
-        check("hegel_version", lib.hegel_version(ctx(), ref));
-        return readCString(ref.getValue());
+        HegelString out = new HegelString();
+        check("hegel_version", lib.hegel_version(ctx(), out));
+        return readString(out);
     }
 }
